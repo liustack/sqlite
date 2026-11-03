@@ -47,7 +47,7 @@ func TestKeepNarrowFromEnv(t *testing.T) {
 // tests and negative builds, one at a time, and a plain build with an output
 // folder goes on.
 func TestReleaseError(t *testing.T) {
-	plain := devSwitches{NonFormat: defaultNonFormat, PostLink: "auto", PostArgs: strings.Join(gen.PostLinkOptArgs, " ")}
+	plain := devSwitches{PostLink: "auto", PostArgs: strings.Join(gen.PostLinkOptArgs, " ")}
 	if err := releaseError(plain, "out"); err != nil {
 		t.Fatalf("a plain release build: %v", err)
 	}
@@ -61,7 +61,6 @@ func TestReleaseError(t *testing.T) {
 		"GEN_KEEP_NARROW":             func(d *devSwitches) { d.KeepNarrow = true },
 		"GEN_EDIT_LOWERED":            func(d *devSwitches) { d.EditLowered = "1" },
 		"GEN_FORCE_NOSPLIT":           func(d *devSwitches) { d.ForceNoSplit = "f" },
-		"-non-format-variadic":        func(d *devSwitches) { d.NonFormat = "" },
 		"without polls (-poll=false)": func(d *devSwitches) { d.NoPoll = true },
 	} {
 		d := plain
@@ -102,9 +101,9 @@ func TestSizeLog2BeforeLLVM(t *testing.T) {
 // TestParseAlign64: -align64 takes name:offset pairs with the offset a
 // multiple of 8 below 64, and nothing else.
 func TestParseAlign64(t *testing.T) {
-	got, err := parseAlign64(engineAlign64)
-	if err != nil || !reflect.DeepEqual(got, map[string]int{"JS_CallInternal": 40, "lre_exec_backtrack": 16}) {
-		t.Fatalf("the default: %v, %v", got, err)
+	got, err := parseAlign64("sqlite3VdbeExec:40,sqlite3BtreeNext:16")
+	if err != nil || !reflect.DeepEqual(got, map[string]int{"sqlite3VdbeExec": 40, "sqlite3BtreeNext": 16}) {
+		t.Fatalf("two pairs: %v, %v", got, err)
 	}
 	if got, err := parseAlign64(""); err != nil || len(got) != 0 {
 		t.Fatalf("empty: %v, %v", got, err)
@@ -259,7 +258,7 @@ func TestPostLinkOn(t *testing.T) {
 // generator says, with its own arguments: it refuses a choice of its own.
 func TestReleaseErrorPostLink(t *testing.T) {
 	args := strings.Join(gen.PostLinkOptArgs, " ")
-	if err := releaseError(devSwitches{NonFormat: defaultNonFormat, PostLink: "auto", PostArgs: args}, "out"); err != nil {
+	if err := releaseError(devSwitches{PostLink: "auto", PostArgs: args}, "out"); err != nil {
 		t.Errorf("the default switches: %v", err)
 	}
 	// An empty value is a choice too: -postlink-opt-args= would run opt with
@@ -268,10 +267,10 @@ func TestReleaseErrorPostLink(t *testing.T) {
 		name string
 		d    devSwitches
 	}{
-		{"-postlink-opt other than auto", devSwitches{NonFormat: defaultNonFormat, PostLink: "off", PostArgs: args}},
-		{"-postlink-opt other than auto", devSwitches{NonFormat: defaultNonFormat, PostLink: "", PostArgs: args}},
-		{"-postlink-opt-args", devSwitches{NonFormat: defaultNonFormat, PostLink: "auto", PostArgs: args + " -force-specialization"}},
-		{"-postlink-opt-args", devSwitches{NonFormat: defaultNonFormat, PostLink: "auto", PostArgs: ""}},
+		{"-postlink-opt other than auto", devSwitches{PostLink: "off", PostArgs: args}},
+		{"-postlink-opt other than auto", devSwitches{PostLink: "", PostArgs: args}},
+		{"-postlink-opt-args", devSwitches{PostLink: "auto", PostArgs: args + " -force-specialization"}},
+		{"-postlink-opt-args", devSwitches{PostLink: "auto", PostArgs: ""}},
 	} {
 		if err := releaseError(c.d, "out"); err == nil || !strings.Contains(err.Error(), c.name) {
 			t.Errorf("%+v: %v", c.d, err)

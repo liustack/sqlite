@@ -1,8 +1,8 @@
 // Copyright (c) 2026 The liustack/sqlite Authors.
 // SPDX-License-Identifier: MIT
 //
-// Whole-engine driver: compile every C file of engine/ and engine/libc
-// freestanding with LLVM 22.1.8, link them into one module, run the
+// Whole-engine driver: compile engine/sqlite.c and the string functions of
+// engine/libc freestanding with LLVM 22.1.8, link them into one module, run the
 // shadow-stack pass, llc, the checks and the lowering over every function,
 // and emit Go assembly split by C source file, the read-only data and the Go
 // declarations. With -keep-going it does not stop at the first function it
@@ -48,7 +48,6 @@ var (
 	verifyBin = flag.String("verify-bin", "", "a linked binary of the output package: match every generated function and engine_rodata against llc's object")
 	verifyPkg = flag.String("verify-pkg", "", "the output package's import path (link symbol prefix) for -verify-bin")
 	verifyAll = flag.Bool("verify-all", false, "with -verify-bin: fail unless every function was in the binary and checked (build it with -tags goasmkeep)")
-	nonFormat = flag.String("non-format-variadic", defaultNonFormat, "variadic functions whose extra arguments are not printf arguments, left out of the format check (for -src tests)")
 	srcList   = flag.String("src", "", "comma-separated C files to compile instead of the engine tree (for tests)")
 	sizeLog2  = flag.Int("shadow-size-log2", 20, "log2 of the shadow-stack region the engine is generated for (the host's region must be at least as big); engine_decl_<arch>.go records it")
 	release   = flag.Bool("release", false, "formal build: refuse every switch made for surveys, tests and negative builds, and fail if any function would be a stub")
@@ -57,19 +56,8 @@ var (
 	postLink  = flag.String("postlink-opt", "auto", "run the optimizer (-O2, gen.PostLinkOptArgs) over the linked module before the shadow-stack pass: on, off, or auto (on for the architectures measured, gen.PostLinkOptFor)")
 	postArgs  = flag.String("postlink-opt-args", strings.Join(gen.PostLinkOptArgs, " "), "the options of that optimizer run, separated by spaces (-release refuses a change)")
 	pollOff   = flag.Int("poll-offset", gen.PollCounterOffset, "offset of the poll counter from the base of the shadow-stack region (engine_decl_<arch>.go records it)")
-	align64F  = flag.String("align64", engineAlign64, "functions whose body starts at a fixed place in a line of 64 bytes, as name:offset (a multiple of 8 below 64), comma separated (with -src the default is none)")
+	align64F  = flag.String("align64", "", "functions whose body starts at a fixed place in a line of 64 bytes, as name:offset (a multiple of 8 below 64), comma separated")
 )
-
-var defaultNonFormat = strings.Join(gen.EngineNonFormatVariadic, ",")
-
-// engineAlign64 places the loops of the engine that run longest, the
-// interpreter and the regexp matcher, at a fixed place in a line of 64 bytes,
-// so that a change elsewhere in the program no longer moves them within their
-// lines. The offsets are the fastest of those measured (docs/performance.md,
-// "Code positions"): the matcher at 16 rather than 0, the interpreter at 40,
-// which is where it ran fastest once a JSValue is copied in two moves of 8
-// bytes (EngineValueFlags), against 0 before.
-const engineAlign64 = "JS_CallInternal:40,lre_exec_backtrack:16"
 
 // parseAlign64 reads -align64: name:offset pairs, the offset a multiple of 8
 // below 64.
@@ -120,7 +108,7 @@ func main() {
 	negative := keepNarrow || forceNoSplit != ""
 	if *release {
 		if err := releaseError(devSwitches{KeepGoing: *keepGoing, LooseVarargs: *looseVar, Poison: *poisonF, KeepNarrow: keepNarrow,
-			EditLowered: editLoweredEnv, ForceNoSplit: forceNoSplit, NonFormat: *nonFormat, NoPoll: !*pollOn,
+			EditLowered: editLoweredEnv, ForceNoSplit: forceNoSplit, NoPoll: !*pollOn,
 			PostLink: *postLink, PostArgs: *postArgs}, *out); err != nil {
 			die(err)
 		}
@@ -135,17 +123,10 @@ func main() {
 	if err := gen.CheckPollOffset(*pollOff, *sizeLog2); err != nil {
 		die(err)
 	}
-	// The functions put on 64 bytes: the engine's by default, none for a -src
-	// build unless -align64 names some.
-	align64 := map[string]int{}
-	alignSet := false
-	flag.Visit(func(f *flag.Flag) { alignSet = alignSet || f.Name == "align64" })
-	// The offsets were measured on amd64: arm64 takes none unless named.
-	if (*srcList == "" && *arch == "amd64") || alignSet {
-		var err error
-		if align64, err = parseAlign64(*align64F); err != nil {
-			die(err)
-		}
+	// The functions put on 64 bytes: none unless -align64 names some.
+	align64, err := parseAlign64(*align64F)
+	if err != nil {
+		die(err)
 	}
 	must(os.MkdirAll(*work, 0o755))
 	clang := filepath.Join(*llvm, "clang")
@@ -153,17 +134,10 @@ func main() {
 	// 1. Compile every C file to IR.
 	type src struct{ path, group string }
 	var srcs []src
-	for _, f := range []string{"quickjs", "libregexp", "libunicode", "cutils", "dtoa", "heap", "tlsf"} {
-		srcs = append(srcs, src{filepath.Join(*engineDir, f+".c"), f})
-	}
-	for _, dir := range []string{"libc/string", "libc/math"} {
-		ms, _ := filepath.Glob(filepath.Join(*engineDir, dir, "*.c"))
-		for _, m := range ms {
-			srcs = append(srcs, src{m, "libc"})
-		}
-	}
-	for _, f := range []string{"math.c", "stdio.c", "abort.c"} {
-		srcs = append(srcs, src{filepath.Join(*engineDir, "libc", f), "libc"})
+	srcs = append(srcs, src{filepath.Join(*engineDir, "sqlite.c"), "sqlite"})
+	ms, _ := filepath.Glob(filepath.Join(*engineDir, "libc", "string", "*.c"))
+	for _, m := range ms {
+		srcs = append(srcs, src{m, "libc"})
 	}
 	if *srcList != "" {
 		srcs = nil
@@ -185,26 +159,16 @@ func main() {
 	var wg sync.WaitGroup
 	sem := make(chan bool, *jobs)
 	var cerr error
-	formatCalls := 0
 	for i, s := range srcs {
 		ll := filepath.Join(*work, fmt.Sprintf("%03d_%s.ll", i, strings.TrimSuffix(filepath.Base(s.path), ".c")))
 		lls = append(lls, ll)
 		args := append([]string{}, cflags...)
 		if s.group == "libc" {
-			// abort.c asks the host (engine/host.h).
-			args = append(args, "-I"+libc, "-I"+filepath.Join(libc, "internal"), "-I"+*engineDir, "-include",
+			// musl's files take its feature macros from features.h.
+			args = append(args, "-I"+libc, "-I"+filepath.Join(libc, "internal"), "-include",
 				filepath.Join(libc, "internal/features.h"))
 		} else {
-			args = append(args, "-I"+libc, "-I"+*engineDir, `-DCONFIG_VERSION="2026-06-04"`)
-			args = append(args, gen.ValueFlagsFor(*arch, s.group)...)
-		}
-		// The formats of the engine's own files are read in IR as written,
-		// before the optimizer changes the calls that carry them.
-		var plainLL string
-		var plainArgs []string
-		if s.group != "libc" {
-			plainLL = strings.TrimSuffix(ll, ".ll") + ".plain.ll"
-			plainArgs = append(append(append([]string{}, args...), "-O0"), "-S", "-emit-llvm", "-o", plainLL, s.path)
+			args = append(args, "-I"+libc, "-I"+*engineDir)
 		}
 		args = append(args, "-S", "-emit-llvm", "-o", ll, s.path)
 		wg.Add(1)
@@ -217,22 +181,6 @@ func main() {
 				cerr = err
 				mu.Unlock()
 				return
-			}
-			if plainLL != "" {
-				if _, err := capture(clang, plainArgs...); err != nil {
-					mu.Lock()
-					cerr = err
-					mu.Unlock()
-					return
-				}
-				// The formats the engine's C gives its libc are all ones stdio.c takes.
-				vs, n := gen.CountFormats(readFile(plainLL), strings.Split(*nonFormat, ","))
-				mu.Lock()
-				formatCalls += n
-				for _, v := range vs {
-					reject(v.Func, "format", v.Rule+": "+v.Line)
-				}
-				mu.Unlock()
 			}
 			b, _ := os.ReadFile(ll)
 			var names []string
@@ -253,7 +201,6 @@ func main() {
 		groups[i] = s.group
 	}
 	group := firstGroups(defined, groups)
-	fmt.Fprintf(os.Stderr, "format strings: %d calls of the formatter checked\n", formatCalls)
 	linked := filepath.Join(*work, "engine.ll")
 	must1(capture(filepath.Join(*llvm, "llvm-link"), append([]string{"-S", "-o", linked}, lls...)...))
 	if postOn {
@@ -819,7 +766,7 @@ func archError(arch, mode string, poison, loose bool) error {
 // build is tested.
 type devSwitches struct {
 	KeepGoing, LooseVarargs, Poison, KeepNarrow, NoPoll bool
-	EditLowered, ForceNoSplit, NonFormat                string
+	EditLowered, ForceNoSplit                           string
 	PostLink, PostArgs                                  string
 }
 
@@ -838,7 +785,6 @@ func releaseError(d devSwitches, out string) error {
 	add(d.KeepNarrow, "GEN_KEEP_NARROW")
 	add(d.EditLowered != "", "GEN_EDIT_LOWERED")
 	add(d.ForceNoSplit != "", "GEN_FORCE_NOSPLIT")
-	add(d.NonFormat != defaultNonFormat, "-non-format-variadic")
 	add(d.NoPoll, "an engine without polls (-poll=false)")
 	add(d.PostLink != "auto", "-postlink-opt other than auto")
 	add(d.PostArgs != strings.Join(gen.PostLinkOptArgs, " "), "-postlink-opt-args")
