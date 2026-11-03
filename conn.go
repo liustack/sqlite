@@ -26,6 +26,7 @@ type conn struct {
 	wl          *writeLock // the file's write lock, nil for memory
 	writing     bool       // the connection holds wl
 	busyTimeout time.Duration
+	cache       map[string]*stmt // statements of the queue (writer.go)
 }
 
 var (
@@ -59,11 +60,11 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		s.Finalize()
 		return nil, errors.New("sqlite: a prepared statement takes one statement: use Exec for several")
 	}
-	return newStmt(c, s, false), nil
+	return newStmt(c, s, query, false), nil
 }
 
-func newStmt(c *conn, s *csqlite.Stmt, once bool) *stmt {
-	return &stmt{c: c, s: s, nparams: s.ParamCount(), readOnly: s.ReadOnly(), once: once}
+func newStmt(c *conn, s *csqlite.Stmt, sql string, once bool) *stmt {
+	return &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), mergeable: s.Mergeable(), once: once}
 }
 
 func (c *conn) Close() error {
@@ -73,7 +74,10 @@ func (c *conn) Close() error {
 	c.closed = true
 	if c.writing {
 		c.writing = false
-		c.wl.release()
+		c.wl.release(c)
+	}
+	for _, s := range c.cache {
+		s.Close()
 	}
 	if c.wl != nil {
 		closeWriteLock(c.path, c.wl)
@@ -146,7 +150,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 			}
 			return &res, nil
 		}
-		st := newStmt(c, s, false)
+		st := newStmt(c, s, query[:len(query)-len(tail)], false)
 		n := min(st.nparams, len(args))
 		r, err := st.exec(ctx, args[:n])
 		s.Finalize()
@@ -171,7 +175,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		s.Finalize()
 		return nil, errors.New("sqlite: a query takes one statement")
 	}
-	st := newStmt(c, s, true)
+	st := newStmt(c, s, query, true)
 	r, err := st.query(ctx, args)
 	if err != nil {
 		s.Finalize()

@@ -22,7 +22,11 @@ import (
 type stmt struct {
 	c       *conn
 	s       *csqlite.Stmt
+	sql     string
 	nparams int
+	// mergeable says the statement may join the queue of group commit
+	// (writer.go).
+	mergeable bool
 	// readOnly says the statement writes nothing (sqlite3_stmt_readonly).
 	readOnly bool
 	// once is a statement of conn.QueryContext: its rows finalize it.
@@ -69,10 +73,22 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 }
 
 func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, error) {
-	if err := s.bind(args); err != nil {
+	c := s.c
+	if s.mergeable && c.wl != nil && !c.writing && c.c.AutoCommit() {
+		return c.wl.submit(ctx, c, s, args)
+	}
+	if err := c.beginWrite(ctx, s.readOnly); err != nil {
 		return nil, err
 	}
-	if err := s.c.beginWrite(ctx, s.readOnly); err != nil {
+	r, err := s.run(ctx, args)
+	c.endWrite()
+	return r, err
+}
+
+// run binds args and steps the statement once, with the write lock held if
+// it writes.
+func (s *stmt) run(ctx context.Context, args []driver.NamedValue) (*result, error) {
+	if err := s.bind(args); err != nil {
 		return nil, err
 	}
 	stop := s.c.watch(ctx)
@@ -81,7 +97,6 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	if rerr := s.s.Reset(); err == nil {
 		err = rerr
 	}
-	s.c.endWrite()
 	if err != nil {
 		return nil, ctxErr(ctx, err)
 	}

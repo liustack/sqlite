@@ -14,7 +14,7 @@
 
 ## Current state of the repository
 
-The driver runs on linux and darwin, amd64 and arm64. Group commit is not written yet.
+The driver runs on linux and darwin, amd64 and arm64. Group commit merges concurrent autocommit writes.
 
 - `engine/`: the C tree. `sqlite3.c` and `sqlite3.h` (SQLite 3.54.1), `sqlite.c` (the compile options), `os.c` and `host.h` (the VFS and mutexes that call the Go host), `flags.sh` (the clang flags, which the generator reads), `vendor.sh`. It has no Go file.
 - `engine/libc/`: the small libc SQLite is compiled against: headers, and musl's string functions (`vendor.sh` copies and checks them). No stdio, no math functions: SQLite is built without them.

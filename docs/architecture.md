@@ -17,7 +17,7 @@ From the bottom up:
 2. **The generator** (`internal/goasm/gen/`): turns the C tree into Go assembly, one Go function per C function, and a Go file that declares them. Maintainers run it (`make gen`). Users never do.
 3. **The engine package** (`internal/csqlite`): the generated Go assembly and its declarations, checked in, with the Go host beside them: shadow stacks, polls, malloc, mutexes, the callbacks of the VFS, and the small C API the driver calls.
 4. **The files** (`internal/vfs`): pure Go, no engine. SQLite's file and lock rules on linux and darwin, with OFD locks (locks that belong to an open file, so two connections of one process conflict as two processes do) and the `-shm` file mapped for WAL.
-5. **The driver** (the root package): `database/sql/driver` on top of that API, with one writer per database file and, later, group commit.
+5. **The driver** (the root package): `database/sql/driver` on top of that API, with one writer per database file and group commit.
 
 ## From C to Go assembly
 
@@ -53,7 +53,19 @@ Inside the driver, a connection takes its file's write lock before a statement t
 
 ## Group commit
 
-Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver will take the autocommit DML of many callers, run it as one transaction and commit once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
+Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver takes the autocommit DML of many callers, runs it as one transaction and commits once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
+
+How it works (`writer.go`): a statement that comes to the file's write lock while another connection holds it joins the file's queue instead of waiting. The connection that gives the lock back runs the queue on itself, up to 256 statements: `BEGIN IMMEDIATE`, then each statement between `SAVEPOINT` and `RELEASE` (`ROLLBACK TO` when it fails, and its caller gets the error), then `COMMIT`, and only then does each caller get its result. When a failure ends the whole transaction, the statements that had run are run again in a new one. With no other writer a statement runs directly, so one writer pays nothing.
+
+Which statements may join: the driver installs an authorizer in C (`goClassify` in `engine/os.c`) that sees each statement as it is prepared. A statement joins only when it writes tables of the main database and touches nothing only its own connection has: no other schema (temp, attached), no write from a trigger (it may be a temporary trigger), no `last_insert_rowid()`, `changes()` or `total_changes()`, and nothing that is not DML. Only `Exec` merges. A statement in a transaction never does.
+
+On an Apple M4 (WAL, `synchronous=NORMAL`, one autocommit `INSERT` per call, `bench/`), the time per insert:
+
+| Writers | mattn (cgo) | this driver |
+| --- | --- | --- |
+| 1 | 6.0 µs | 7.0 µs |
+| 8 | 7.7 µs | 5.5 µs |
+| 64 | 8.8 µs | 3.0 µs |
 
 A prototype of it in application code, on mattn/go-sqlite3 (WAL, one writer goroutine taking whatever callers are waiting, up to 256), measured on an Apple M4:
 
