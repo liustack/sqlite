@@ -207,7 +207,13 @@ func EmitRodata(p *DataPlan, names NameMap, header string) string {
 		n = 8
 	}
 	size := alignUp(n, 8)
-	fmt.Fprintf(&b, "GLOBL ·%s(SB), RODATA|NOPTR, $%d\n", RodataGo, size)
+	flags := "RODATA|NOPTR"
+	if p.Writable {
+		// Writable globals live here too (writable.go). It holds no Go
+		// pointer either way: every pointer in it is to itself or to code.
+		flags = "NOPTR"
+	}
+	fmt.Fprintf(&b, "GLOBL ·%s(SB), %s, $%d\n", RodataGo, flags, size)
 	blob := append(append([]byte(nil), p.Blob...), make([]byte, size-len(p.Blob))...)
 	ri := 0
 	for off := 0; off < size; {

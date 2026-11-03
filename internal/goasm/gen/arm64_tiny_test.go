@@ -55,7 +55,7 @@ func TestLowerARM64EngineTiny(t *testing.T) {
 		"load of data not in the body": {wrap("ldr d0, data"), "not in the body"},
 		"unplaced data":                {wrap("adr x8, other"), "unplaced data"},
 		"offset from a function":       {wrap("adr x8, callee+4"), "address of the function"},
-		"GOT":                          {wrap("ldr x0, :got:data"), "unreviewed relocation form"},
+		"GOT page":                     {wrap("ldr x0, [x8, :got_lo12:data]"), "unreviewed relocation form"},
 		"prefetch of a label":          {wrap("prfm pldl1keep, data"), "unreviewed reference"},
 	} {
 		if _, err := lower(c.lines); err == nil || !strings.Contains(err.Error(), c.want) {

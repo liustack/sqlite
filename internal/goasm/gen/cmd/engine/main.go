@@ -212,6 +212,15 @@ func main() {
 		must(gen.PostLinkOpt(*llvm, strings.Fields(*postArgs), linked, linkedOpt))
 		linked = linkedOpt
 	}
+	// Writable globals are reached through the GOT, whose loads the lowering
+	// turns into their addresses in engine_rodata (writable.go).
+	exposed, exposedNames, err := gen.ExposeWritableData(readFile(linked))
+	if err != nil {
+		die(err)
+	}
+	linked = filepath.Join(*work, "engine.exposed.ll")
+	writeFile(linked, exposed)
+	fmt.Fprintf(os.Stderr, "writable globals: %d\n", len(exposedNames))
 	tCompile := time.Since(t0)
 
 	// 2. Rules the C breaks, as the IR shows them.
@@ -321,7 +330,7 @@ func main() {
 			reject(name, "object", "external reference to "+name+" outside the allow list")
 		}
 	}
-	if err := gen.CheckObject(objPath, allowAll(allow, rep)); err != nil {
+	if err := gen.CheckObjectData(objPath, allowAll(allow, rep), true); err != nil {
 		reject("", "object", err.Error())
 	}
 

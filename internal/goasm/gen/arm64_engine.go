@@ -74,6 +74,9 @@ var (
 	reA64LastOp = regexp.MustCompile(`, ([.\w$]+)([+-]\d+)?$`)
 	reA64RegTok = regexp.MustCompile(`\b([xw])(\d+)\b`)
 	reA64Mod    = regexp.MustCompile(`:(got|abs_|tprel|dtprel|tlsdesc|gottprel)`)
+	// reA64GotLd is the load of the address of a writable global from the
+	// GOT (see writable.go).
+	reA64GotLd = regexp.MustCompile(`^ldr (x\d+), :got:([.\w$]+)$`)
 )
 
 // a64NoDest are the mnemonics whose first operand is read, not written.
@@ -347,6 +350,19 @@ func LowerARM64EngineFunc(lines []string, fn FuncSpec, env *ARM64Env) (string, M
 				return fail("label %s while the frame is half built", l)
 			}
 			out = append(out, l)
+			continue
+		}
+		// The address of a writable global from the GOT: its address in
+		// engine_rodata.
+		if m := reA64GotLd.FindStringSubmatch(l); m != nil {
+			if _, ok := env.Plan.BlobOff[m[2]]; !ok {
+				return fail("GOT load of %s, which is not in engine_rodata: %q", m[2], l)
+			}
+			mat, err := materialize(m[1], m[2], 0)
+			if err != nil {
+				return fail("%v: %q", err, l)
+			}
+			out = append(out, mat...)
 			continue
 		}
 		if reA64Mod.MatchString(l) {
@@ -858,6 +874,10 @@ func arm64TextRefs(u *AsmUnit, fail func(fn, f string, a ...any)) []textRef {
 	for _, fn := range u.FuncOrder {
 		for _, raw := range u.Funcs[fn].Lines {
 			l := a64Clean(raw)
+			if m := reA64GotLd.FindStringSubmatch(l); m != nil {
+				refs = append(refs, textRef{fn: fn, sym: m[2], got: true})
+				continue
+			}
 			if reA64Mod.MatchString(l) {
 				fail(fn, "unreviewed relocation form %q", l)
 				continue

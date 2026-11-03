@@ -53,6 +53,14 @@ func CheckIR(ll string) error {
 // relocation to a symbol outside the closed allow list (the engine's own
 // functions plus the named host callbacks).
 func CheckObject(objPath string, allow map[string]bool) error {
+	return CheckObjectData(objPath, allow, false)
+}
+
+// CheckObjectData is CheckObject, which with writable takes writable data
+// sections, and references to the globals in them, as the whole-engine driver
+// does once ExposeWritableData has run (see writable.go). Thread-local data
+// stays an error.
+func CheckObjectData(objPath string, allow map[string]bool, writable bool) error {
 	f, err := elf.Open(objPath)
 	if err != nil {
 		return err
@@ -66,7 +74,10 @@ func CheckObject(objPath string, allow map[string]bool) error {
 			continue
 		}
 		if s.Flags&elf.SHF_WRITE != 0 && s.Flags&elf.SHF_ALLOC != 0 && s.Size > 0 {
-			if s.Type == elf.SHT_NOBITS || s.Type == elf.SHT_PROGBITS {
+			if s.Flags&elf.SHF_TLS != 0 {
+				return fmt.Errorf("thread-local data section %q of %d bytes", s.Name, s.Size)
+			}
+			if !writable && (s.Type == elf.SHT_NOBITS || s.Type == elf.SHT_PROGBITS) {
 				return fmt.Errorf("writable data section %q of %d bytes (engine must have no mutable globals)", s.Name, s.Size)
 			}
 		}
@@ -93,7 +104,8 @@ func CheckObject(objPath string, allow map[string]bool) error {
 			// pools) is allowed; everything else must be on the list.
 			if int(sym.Section) > 0 && int(sym.Section) < len(f.Sections) {
 				sec := f.Sections[sym.Section]
-				if sec.Flags&elf.SHF_ALLOC != 0 && sec.Flags&(elf.SHF_WRITE|elf.SHF_EXECINSTR) == 0 {
+				if sec.Flags&elf.SHF_ALLOC != 0 && sec.Flags&elf.SHF_EXECINSTR == 0 && sec.Flags&elf.SHF_TLS == 0 &&
+					(sec.Flags&elf.SHF_WRITE == 0 || writable) {
 					continue
 				}
 			}

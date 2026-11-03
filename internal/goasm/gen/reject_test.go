@@ -21,7 +21,7 @@ func TestRejectSamples(t *testing.T) {
 	cases := map[string]string{
 		"writable_bss.c":  "writable data section",
 		"writable_data.c": "writable data section",
-		"thread_local.c":  "writable data section",
+		"thread_local.c":  "thread-local data section",
 		"external.c":      "outside the allow list",
 		"tail_call.c":     "tail call",
 		"variadic.c":      "variadic",

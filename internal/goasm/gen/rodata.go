@@ -18,7 +18,10 @@
 //     offsets between two of its objects are resolved here;
 //   - nowhere, if nothing uses it.
 //
-// Anything else is an error: a writable section, an absolute 32-bit address,
+// Writable globals go into engine_rodata as well, reached only through the
+// GOT (see writable.go), and the symbol is then writable.
+//
+// Anything else is an error: a direct reference to writable data, an absolute 32-bit address,
 // a pointer in data that must sit inside a function, a non-LEA reference to
 // data that holds pointers.
 package gen
@@ -70,6 +73,9 @@ type DataPlan struct {
 	Errors map[string][]error
 	// Stats for the report.
 	Objects, BlobObjects, InBodyObjects, DupObjects, Dropped int
+	// Writable says engine_rodata holds writable globals: it is written
+	// without RODATA.
+	Writable bool
 	// arch is the target the text is for: amd64 or arm64.
 	arch string
 }
@@ -85,6 +91,9 @@ var reImmSym = regexp.MustCompile(`\$([._A-Za-z][\w.$]*)`)
 type textRef struct {
 	fn, sym string
 	lea     bool
+	// got is a load of the address of sym from the GOT, which the lowering
+	// turns into the address itself.
+	got bool
 }
 
 func isTextLabel(s string) bool {
@@ -106,8 +115,8 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 	fail := func(fn string, f string, a ...any) { p.Errors[fn] = append(p.Errors[fn], fmt.Errorf(f, a...)) }
 	p.Objects = len(u.DataOrder)
 	for _, o := range u.DataOrder {
-		if !strings.HasPrefix(o.Section, ".rodata") && !strings.HasPrefix(o.Section, ".data.rel.ro") {
-			fail("", "data object %s in section %s: the engine may have read-only data only", o.Label, o.Section)
+		if !strings.HasPrefix(o.Section, ".rodata") && !strings.HasPrefix(o.Section, ".data.rel.ro") && !writableSection(o.Section) {
+			fail("", "data object %s in section %s, which is neither read-only data nor writable data", o.Label, o.Section)
 		}
 	}
 	// References from code.
@@ -163,11 +172,15 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 			usedBy[o] = map[string]bool{}
 		}
 		usedBy[o][r.fn] = true
+		if writableSection(o.Section) && !r.got {
+			fail(r.fn, "direct reference to writable data %s: it must be reached through the GOT (ExposeWritableData)", o.Label)
+			continue
+		}
 		private := strings.HasPrefix(o.Label, ".LCPI") || strings.HasPrefix(o.Label, ".LJTI") || owner[o] != ""
 		if private {
 			continue
 		}
-		if r.lea {
+		if r.lea || r.got {
 			addBlob(o)
 		} else {
 			nonLEA[o] = append(nonLEA[o], r.fn)
@@ -265,6 +278,9 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 			continue
 		}
 		p.BlobObjects++
+		if writableSection(o.Section) {
+			p.Writable = true
+		}
 		start := alignUp(len(p.Blob), 1<<o.Align)
 		p.Blob = append(p.Blob, make([]byte, start-len(p.Blob))...)
 		p.BlobOff[o.Label] = start
@@ -336,7 +352,7 @@ func amd64TextRefs(u *AsmUnit, fail func(fn, f string, a ...any)) []textRef {
 			}
 			mn := strings.Fields(l)[0]
 			for _, m := range reRIP.FindAllStringSubmatch(l, -1) {
-				refs = append(refs, textRef{name, m[1], strings.HasPrefix(mn, "lea")})
+				refs = append(refs, textRef{fn: name, sym: m[1], lea: strings.HasPrefix(mn, "lea")})
 			}
 			if m := reAbsSym.FindStringSubmatch(l); m != nil && !strings.Contains(l, "(%rip)") {
 				fail(name, "absolute address of %s (needs a 32-bit relocation): %q", m[1], l)
