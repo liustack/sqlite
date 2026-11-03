@@ -10,18 +10,20 @@
 // built with SQLITE_OS_OTHER, and a small C shim turns its sqlite3_vfs and
 // sqlite3_io_methods calls into calls of this package.
 //
-// It behaves like os_unix.c, with one difference in how locks are kept.
-// os_unix uses POSIX record locks, which belong to the process: two
-// connections of one process do not conflict, and closing any descriptor of
-// a file drops all of the process's locks on it, so os_unix counts locks per
-// inode in memory. This package uses locks on open file descriptions (OFD
-// locks) instead. They belong to the open file, so two Files of one path
-// conflict on the database file the way two processes do, and nothing is
-// kept per inode for it. The wal-index (-shm) is shared per database in
-// the process as in os_unix: one descriptor holds the process's locks and
-// the counts of who holds what are kept in memory (see shmNode). The byte
-// ranges are those of os_unix, so the locks also work against SQLite built
-// from C, as long as that SQLite runs in another process.
+// It behaves like os_unix.c, and keeps locks the same way: the Files of one
+// database in the process share a node (see inode and shmNode) that counts
+// in memory which File holds what, refuses conflicts between them without
+// asking the kernel, and holds the process's locks on one descriptor. The
+// kernel is asked only when the process's lock changes.
+//
+// The difference is the kind of kernel lock. os_unix uses POSIX record
+// locks, which belong to the process, and closing any descriptor of a file
+// drops all of them, so os_unix keeps the descriptors of closed connections
+// open until the last lock goes. This package uses locks on open file
+// descriptions (OFD locks), which belong to the node's own descriptor:
+// closing a File's descriptor drops nothing, so it is closed at once. The
+// byte ranges are those of os_unix, so the locks also work against SQLite
+// built from C, as long as that SQLite runs in another process.
 //
 // Results are SQLite result codes, with the values of sqlite3.h.
 //
@@ -40,19 +42,20 @@ import (
 
 // File is an open file, as os_unix's unixFile.
 type File struct {
-	fd      int
-	path    string // the name given to Open, "" for a temporary file
-	lock    int    // the lock level held
-	noLock  bool   // not a main database: Lock and Unlock do nothing, as os_unix
-	dirSync bool   // a new journal: sync its directory on the first Sync
-	chunk   int64  // SQLITE_FCNTL_CHUNK_SIZE
-	dev     uint64 // device and inode when opened, for HasMoved
-	ino     uint64
-	shm     *shm
+	fd       int
+	path     string // the name given to Open, "" for a temporary file
+	lock     int    // the lock level held
+	noLock   bool   // not a main database: Lock and Unlock do nothing, as os_unix
+	readOnly bool   // opened for reading only
+	dirSync  bool   // a new journal: sync its directory on the first Sync
+	chunk    int64  // SQLITE_FCNTL_CHUNK_SIZE
+	dev      uint64 // device and inode when opened, for HasMoved
+	ino      uint64
+	inode    *inode // the locks of the main database, shared in the process
+	shm      *shm
 
-	// Space for the arguments of fcntl and fstat, so that the calls made
-	// for every page do not allocate.
-	fl unix.Flock_t
+	// Space for the argument of fstat, so that the calls made for every
+	// page do not allocate.
 	st unix.Stat_t
 }
 
@@ -137,6 +140,11 @@ func Open(name string, flags int) (f *File, outFlags int, rc int) {
 			return nil, 0, IOErrFstat
 		}
 		f.dev, f.ino = uint64(f.st.Dev), uint64(f.st.Ino)
+		f.readOnly = flags&OpenReadOnly != 0
+		if rc := f.attachInode(fileName); rc != OK {
+			unix.Close(fd)
+			return nil, 0, rc
+		}
 	}
 	f.dirSync = isNewJrnl
 	return f, flags, OK
@@ -229,10 +237,15 @@ func retry(fn func() error) error {
 }
 
 // Close closes the file, and its shared memory if ShmUnmap was not called.
-// Closing twice is harmless.
+// The locks the File holds are released, and those of other Files of the
+// database are kept. Closing twice is harmless.
 func (f *File) Close() int {
 	if f.shm != nil {
 		f.ShmUnmap(false)
+	}
+	if f.inode != nil {
+		f.Unlock(LockNone)
+		f.detachInode()
 	}
 	if f.fd >= 0 {
 		// As os_unix, a failed close is not an error for SQLite.
