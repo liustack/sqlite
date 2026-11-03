@@ -16,7 +16,7 @@ From the bottom up:
 1. **The C tree** (`engine/`): the SQLite amalgamation as released, the compile options (`engine/sqlite.c`), a VFS and mutexes that call Go (`engine/os.c`, `engine/host.h`) and a small libc (`engine/libc/`). It is compiled freestanding, with no system headers.
 2. **The generator** (`internal/goasm/gen/`): turns the C tree into Go assembly, one Go function per C function, and a Go file that declares them. Maintainers run it (`make gen`). Users never do.
 3. **The engine package** (`internal/csqlite`): the generated Go assembly and its declarations, checked in, with the Go host beside them: shadow stacks, polls, malloc, mutexes, the callbacks of the VFS, and the small C API the driver calls.
-4. **The files** (`internal/vfs`): pure Go, no engine. SQLite's file and lock rules on linux and darwin, with OFD locks (locks that belong to an open file, so two connections of one process conflict as two processes do) and the `-shm` file mapped for WAL.
+4. **The files** (`internal/vfs`): pure Go, no engine. SQLite's file and lock rules on linux and darwin, as os_unix keeps them: the connections of one process to a database share one set of locks, kept apart from each other in memory, and the kernel is asked only when the process's lock changes. The kernel locks are OFD locks (locks that belong to an open file), so closing one connection never drops the locks of another. The `-shm` file is mapped for WAL.
 5. **The driver** (the root package): `database/sql/driver` on top of that API, with one writer per database file and group commit.
 
 ## From C to Go assembly
