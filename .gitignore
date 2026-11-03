@@ -1,0 +1,6 @@
+*.test
+*.out
+.DS_Store
+
+# Made by make gen and make check-*.
+/.build/
