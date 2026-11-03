@@ -24,6 +24,7 @@ package gen
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -91,4 +92,51 @@ func writableSection(s string) bool {
 		}
 	}
 	return false
+}
+
+// reGOTPCREL is any use of a GOT entry in amd64 text, and reGOTUse the ones
+// the lowering takes: a whole load of the address into a 64-bit register,
+// and the compare, add and subtract of the address that x86 folds the load
+// into.
+var (
+	reGOTPCREL = regexp.MustCompile(`@GOTPCREL`)
+	reGOTUse   = regexp.MustCompile(`^(movq|cmpq|addq|subq)\s+([.\w$]+)@GOTPCREL\(%rip\),\s*(%r\w+)$`)
+)
+
+// amd64GOTRef reads a use of a GOT entry in the cleaned line l: the
+// instruction, the global and the register. ok is false when l names no GOT
+// entry, and err is set when it does in a form the lowering does not take.
+func amd64GOTRef(l string) (op, sym, reg string, ok bool, err error) {
+	if !reGOTPCREL.MatchString(l) {
+		return "", "", "", false, nil
+	}
+	m := reGOTUse.FindStringSubmatch(norm(l))
+	if m == nil {
+		return "", "", "", true, fmt.Errorf("unreviewed GOT reference %q", l)
+	}
+	return m[1], m[2], m[3], true, nil
+}
+
+// lowerAMD64GOT turns the load of the GOT entry of sym into reg into a LEA
+// of sym in engine_rodata, and a compare, add or subtract that x86 folded it
+// into into the same instruction on the slot of sym (DataPlan.GOTSlot).
+func (env *LowerEnv) lowerAMD64GOT(op, sym, reg string, rec *[]RefRecord) (string, error) {
+	off, ok := env.Plan.BlobOff[sym]
+	if !ok {
+		return "", fmt.Errorf("GOT load of %s, which is not in engine_rodata", sym)
+	}
+	if op == "movq" {
+		if rec != nil {
+			*rec = append(*rec, RefRecord{Label: sym, Blob: true, GOT: true})
+		}
+		return "leaq\t__goasm_rodata+" + strconv.Itoa(off) + "(%rip), " + reg, nil
+	}
+	slot, ok := env.Plan.GOTSlot[sym]
+	if !ok {
+		return "", fmt.Errorf("%s of the GOT entry of %s, which has no slot", op, sym)
+	}
+	if rec != nil {
+		*rec = append(*rec, RefRecord{Label: sym, Blob: true, GOT: true, Slot: true})
+	}
+	return op + "\t__goasm_rodata+" + strconv.Itoa(slot) + "(%rip), " + reg, nil
 }

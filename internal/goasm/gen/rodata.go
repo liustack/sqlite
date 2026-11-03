@@ -45,6 +45,9 @@ type BlobReloc struct {
 	// addend), for the post-link check to resolve in llc's object.
 	Label    string
 	LabelAdd int64
+	// GOT marks the slot of a writable global (DataPlan.GOTSlot): a pointer
+	// to Label in engine_rodata that no object of llc's holds.
+	GOT bool
 }
 
 // BlobDiff is a value inside engine_rodata that PlanData resolved from a
@@ -76,6 +79,19 @@ type DataPlan struct {
 	// Writable says engine_rodata holds writable globals: it is written
 	// without RODATA.
 	Writable bool
+	// GOTSlot is, for each writable global whose GOT load x86 folded into a
+	// compare or an add, the offset of an 8-byte slot at the end of
+	// engine_rodata that holds its address: the lowering reads the slot
+	// where llc read the GOT entry (writable.go).
+	GOTSlot map[string]int
+	// Pad is, per function and per copy label, the zero bytes written after
+	// a copy that llc reads past its end. Such a read comes from code that
+	// copies a variable length out of a constant (an inlined memcpy whose
+	// source llc knows) and runs only when the length is longer than the
+	// constant, which the C never does. llc's bytes past the object are
+	// whatever follows it, so the copy reads zeros instead and the read stays
+	// in the function's data.
+	Pad map[string]map[string]int
 	// arch is the target the text is for: amd64 or arm64.
 	arch string
 }
@@ -92,8 +108,12 @@ type textRef struct {
 	fn, sym string
 	lea     bool
 	// got is a load of the address of sym from the GOT, which the lowering
-	// turns into the address itself.
-	got bool
+	// turns into the address itself. fold is a GOT load x86 folded into
+	// another instruction, which reads the global's slot.
+	got, fold bool
+	// reach is how far past sym a non-LEA read ends (offset plus width), 0
+	// when the width is not known.
+	reach int
 }
 
 func isTextLabel(s string) bool {
@@ -111,7 +131,7 @@ func PlanDataARM64(u *AsmUnit, funcs map[string]bool) *DataPlan { return planDat
 
 func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 	p := &DataPlan{BlobOff: map[string]int{}, InBody: map[string][]*DataObj{}, Rename: map[string]map[string]string{},
-		Errors: map[string][]error{}, arch: arch}
+		Errors: map[string][]error{}, GOTSlot: map[string]int{}, Pad: map[string]map[string]int{}, arch: arch}
 	fail := func(fn string, f string, a ...any) { p.Errors[fn] = append(p.Errors[fn], fmt.Errorf(f, a...)) }
 	p.Objects = len(u.DataOrder)
 	for _, o := range u.DataOrder {
@@ -154,7 +174,9 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 			work = append(work, o)
 		}
 	}
-	nonLEA := map[*DataObj][]string{} // object -> functions reading it without LEA
+	nonLEA := map[*DataObj][]string{}      // object -> functions reading it without LEA
+	reach := map[*DataObj]map[string]int{} // object -> function -> end of its furthest read
+	folded := map[string]bool{}            // globals whose GOT load x86 folded
 	usedBy := map[*DataObj]map[string]bool{}
 	for _, r := range refs {
 		if funcs[r.sym] {
@@ -180,10 +202,17 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 		if private {
 			continue
 		}
+		if r.fold {
+			folded[r.sym] = true
+		}
 		if r.lea || r.got {
 			addBlob(o)
 		} else {
 			nonLEA[o] = append(nonLEA[o], r.fn)
+			if reach[o] == nil {
+				reach[o] = map[string]int{}
+			}
+			reach[o][r.fn] = max(reach[o][r.fn], r.reach)
 		}
 	}
 	for len(work) > 0 {
@@ -251,11 +280,23 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 						fail(fn, "non-LEA reference to %s, which holds pointers", o.Label)
 					}
 				} else {
+					size, err := dataSize(o, p.arch)
+					if err != nil {
+						fail("", "data %s: %v", o.Label, err)
+						continue
+					}
 					seen := map[string]bool{}
 					for _, fn := range fns {
 						if !seen[fn] {
 							seen[fn] = true
-							addBody(fn, o, ".Ldup."+fn+"."+strings.TrimPrefix(o.Label, "."))
+							label := ".Ldup." + fn + "." + strings.TrimPrefix(o.Label, ".")
+							addBody(fn, o, label)
+							if pad := reach[o][fn] - size; pad > 0 {
+								if p.Pad[fn] == nil {
+									p.Pad[fn] = map[string]int{}
+								}
+								p.Pad[fn][label] = pad
+							}
 							p.DupObjects++
 						}
 					}
@@ -336,6 +377,17 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 			p.Blob[f.off+k] = byte(v >> (8 * k))
 		}
 	}
+	// The slots of the globals whose GOT load x86 folded, after the objects.
+	for _, sym := range SortedKeys(folded) {
+		off, ok := p.BlobOff[sym]
+		if !ok {
+			continue
+		}
+		slot := alignUp(len(p.Blob), 8)
+		p.Blob = append(p.Blob, make([]byte, slot+8-len(p.Blob))...)
+		p.GOTSlot[sym] = slot
+		p.Relocs = append(p.Relocs, BlobReloc{Off: slot, Add: int64(off), Label: sym, GOT: true})
+	}
 	sort.Slice(p.Relocs, func(i, j int) bool { return p.Relocs[i].Off < p.Relocs[j].Off })
 	return p
 }
@@ -351,8 +403,21 @@ func amd64TextRefs(u *AsmUnit, fail func(fn, f string, a ...any)) []textRef {
 				continue
 			}
 			mn := strings.Fields(l)[0]
+			if op, sym, _, ok, err := amd64GOTRef(l); ok {
+				if err != nil {
+					fail(name, "%v", err)
+				} else {
+					refs = append(refs, textRef{fn: name, sym: sym, got: true, fold: op != "movq"})
+				}
+				continue
+			}
 			for _, m := range reRIP.FindAllStringSubmatch(l, -1) {
-				refs = append(refs, textRef{fn: name, sym: m[1], lea: strings.HasPrefix(mn, "lea")})
+				r := textRef{fn: name, sym: m[1], lea: strings.HasPrefix(mn, "lea")}
+				if w := amd64LoadWidth(mn); !r.lea && w > 0 {
+					off, _ := strconv.Atoi(strings.TrimPrefix(m[2], "+"))
+					r.reach = off + w
+				}
+				refs = append(refs, r)
 			}
 			if m := reAbsSym.FindStringSubmatch(l); m != nil && !strings.Contains(l, "(%rip)") {
 				fail(name, "absolute address of %s (needs a 32-bit relocation): %q", m[1], l)
@@ -363,6 +428,39 @@ func amd64TextRefs(u *AsmUnit, fail func(fn, f string, a ...any)) []textRef {
 		}
 	}
 	return refs
+}
+
+// amd64LoadWidth is the number of bytes a load of the mnemonic reads from
+// memory, for the moves that read a constant, and 0 for any other. A read
+// whose width is not known gets no padding: the post-link check still
+// rejects it if it leaves the object.
+func amd64LoadWidth(mn string) int {
+	switch mn {
+	case "movups", "movaps", "movdqu", "movdqa", "movupd", "movapd":
+		return 16
+	case "movq", "movsd":
+		return 8
+	case "movl", "movss", "movd":
+		return 4
+	case "movw":
+		return 2
+	case "movb":
+		return 1
+	}
+	return 0
+}
+
+// dataSize is the number of bytes the directives of o encode.
+func dataSize(o *DataObj, arch string) (int, error) {
+	n := 0
+	for _, l := range o.Lines {
+		b, _, err := encodeDirectiveArch(l, n, arch)
+		if err != nil {
+			return 0, err
+		}
+		n += len(b)
+	}
+	return n, nil
 }
 
 func alignUp(x, a int) int { return (x + a - 1) / a * a }
@@ -785,6 +883,9 @@ func (p *DataPlan) BodyData(fn string) string {
 				continue
 			}
 			b.WriteString(p.RenameLine(fn, l) + "\n")
+		}
+		if n := p.Pad[fn][p.Rename[fn][o.Label]]; n > 0 {
+			fmt.Fprintf(&b, ".zero %d\n", n)
 		}
 	}
 	return strings.TrimSuffix(b.String(), "\n")

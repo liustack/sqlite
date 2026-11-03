@@ -253,6 +253,11 @@ func openObj(path string) (*objFile, error) {
 				return nil, err
 			}
 		}
+		// Zeroed writable data (.bss, writable.go) has no bytes in the file:
+		// its bytes are zeros.
+		if s.Type == elf.SHT_NOBITS && s.Flags&elf.SHF_ALLOC != 0 && s.Flags&elf.SHF_TLS == 0 {
+			o.data[i] = make([]byte, s.Size)
+		}
 	}
 	if o.text < 0 {
 		return nil, fmt.Errorf("%s: no .text", path)
@@ -1477,6 +1482,34 @@ func (m *matcher) one(x insn) error {
 	if err != nil {
 		return err
 	}
+	if r != nil && gotReloc[r.typ] && in.Op != x86asm.MOV {
+		// A compare, add or subtract of the GOT entry, which the lowering
+		// made the same instruction on the global's slot in engine_rodata.
+		bm, _, ok := memOf(b.in)
+		if !ok || bm.Base != x86asm.RIP {
+			return fmt.Errorf("generated %v at %#x for %v", b.in, b.at, in)
+		}
+		if got := uint64(int64(b.at) + int64(b.in.Len) + bm.Disp); got != target {
+			return fmt.Errorf("generated %v at %#x reads %#x, the slot is at %#x", b.in, b.at, got, target)
+		}
+		if !sameMeaning(in, b.in, &bm) {
+			return fmt.Errorf("generated %v at %#x for %v", b.in, b.at, in)
+		}
+		return nil
+	}
+	if r != nil && gotReloc[r.typ] {
+		// The load of a GOT entry, which the lowering made a LEA of the
+		// global in engine_rodata (writable.go): the same register, the
+		// address dataRef resolved.
+		bm, _, ok := memOf(b.in)
+		if b.in.Op != x86asm.LEA || b.in.DataSize != 64 || !ok || bm.Base != x86asm.RIP || b.in.Args[0] != in.Args[0] {
+			return fmt.Errorf("generated %v at %#x for the GOT load %v", b.in, b.at, in)
+		}
+		if got := uint64(int64(b.at) + int64(b.in.Len) + bm.Disp); got != target {
+			return fmt.Errorf("generated %v at %#x points to %#x, the global is at %#x", b.in, b.at, got, target)
+		}
+		return nil
+	}
 	if hasMem && mem.Base == x86asm.RIP {
 		bm, _, ok := memOf(b.in)
 		if !ok || bm.Base != x86asm.RIP {
@@ -1573,6 +1606,9 @@ func (m *matcher) dataRef(x insn, r *relAt, mem x86asm.Mem) (uint64, error) {
 	}
 	ref := m.r.Refs[m.refs]
 	m.refs++
+	if ref.GOT || (r != nil && gotReloc[r.typ]) {
+		return m.gotRef(x, r, ref)
+	}
 	var at loc
 	var sym *elf.Symbol
 	if r != nil {
@@ -1630,8 +1666,11 @@ func (m *matcher) dataRef(x insn, r *relAt, mem x86asm.Mem) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
-		if ref.Add < 0 || ref.Add+int64(x.in.MemBytes) > int64(n) {
-			return 0, fmt.Errorf("reads %d bytes at %s%+d, outside its %d bytes", x.in.MemBytes, ref.Label, ref.Add, n)
+		// Past the object's end the copy has its zero padding (DataPlan.Pad),
+		// which bodyData checks.
+		pad := k.c.Plan.Pad[m.r.Name][label]
+		if ref.Add < 0 || ref.Add+int64(x.in.MemBytes) > int64(n+pad) {
+			return 0, fmt.Errorf("reads %d bytes at %s%+d, outside its %d bytes and %d of padding", x.in.MemBytes, ref.Label, ref.Add, n, pad)
 		}
 	}
 	return uint64(int64(m.body) + int64(ls.Value-m.lowSym.Value) + ref.Add), nil
@@ -1975,11 +2014,24 @@ func (m *matcher) bodyData() error {
 		if err != nil {
 			return err
 		}
-		// The data sits after the code, inside the function's symbol.
-		if ls.Value < m.lowSym.Value+codeLen || ls.Value+uint64(n) > m.lowSym.Value+m.lowSym.Size {
+		pad := k.c.Plan.Pad[m.r.Name][label]
+		// The data and its padding sit after the code, inside the function's
+		// symbol.
+		if ls.Value < m.lowSym.Value+codeLen || ls.Value+uint64(n+pad) > m.lowSym.Value+m.lowSym.Size {
 			return fmt.Errorf("body data %s lies outside the function's data area", o.Label)
 		}
 		at := m.body + (ls.Value - m.lowSym.Value)
+		if pad > 0 {
+			zeros, err := k.bin.read(at+uint64(n), pad)
+			if err != nil {
+				return err
+			}
+			for i, b := range zeros {
+				if b != 0 {
+					return fmt.Errorf("body data %s: padding byte %d is %#02x, not zero", o.Label, i, b)
+				}
+			}
+		}
 		// The code reads the object as llc aligned it: an SSE instruction with a
 		// memory operand faults on a constant pool that is not on its 16 bytes.
 		// So the alignment has to hold where the object sits in the binary, and
@@ -2323,6 +2375,29 @@ func (k *checker) checkRodata() error {
 			return fmt.Errorf("engine_rodata: the label %s belongs to none of its objects", l)
 		}
 	}
+	// The slots of writable globals (writable.go), which no object of llc's
+	// holds: each the address of its global in engine_rodata.
+	for label, slot := range p.GOTSlot {
+		r, ok := relocs[slot]
+		if !ok || !r.GOT || r.Label != label || r.Func || slot+8 > len(blob) {
+			return fmt.Errorf("engine_rodata: the slot of %s at %d holds no pointer to it", label, slot)
+		}
+		off, ok := p.BlobOff[label]
+		if !ok || r.Add != int64(off) {
+			return fmt.Errorf("engine_rodata: the slot of %s points %d into it, the global is at %d", label, r.Add, off)
+		}
+		if got, want := le64(blob[slot:]), rs.Value+uint64(off); got != want {
+			return fmt.Errorf("engine_rodata: the slot of %s holds %#x in the binary, want %#x", label, got, want)
+		}
+		for w := 0; w < 8; w++ {
+			if covered[slot+w] {
+				return fmt.Errorf("engine_rodata: the slot of %s overlaps an object", label)
+			}
+			covered[slot+w] = true
+		}
+		used[slot] = true
+		k.rep.Checked["engine_rodata GOT slots"]++
+	}
 	for off := range relocs {
 		if !used[off] {
 			return fmt.Errorf("engine_rodata: a planned pointer at %d belongs to no object llc relocates there", off)
@@ -2504,4 +2579,49 @@ func (m *matcher) regResult(name string, cf CallFacts) error {
 		return fmt.Errorf("call: llc takes the result from %v, %s returns it in %v", defs, name, res)
 	}
 	return nil
+}
+
+// gotReloc are the relocations of llc's load of a GOT entry.
+var gotReloc = map[elf.R_X86_64]bool{elf.R_X86_64_GOTPCREL: true, elf.R_X86_64_GOTPCRELX: true, elf.R_X86_64_REX_GOTPCRELX: true}
+
+// gotRef resolves llc's load of the GOT entry of a writable global, which
+// the lowering declared as a GOT reference: a 64-bit mov of the entry of
+// that global into a register, the global defined in a writable section of
+// llc's object and placed in engine_rodata. It returns the address of the
+// global in the binary.
+func (m *matcher) gotRef(x insn, r *relAt, ref RefRecord) (uint64, error) {
+	k := m.k
+	if !ref.GOT || r == nil || !gotReloc[r.typ] {
+		return 0, fmt.Errorf("a GOT load the lowering did not declare as one")
+	}
+	_, slotOp := slotOps[x.in.Op]
+	switch {
+	case x.in.DataSize != 64:
+		return 0, fmt.Errorf("a %d-bit use of the GOT entry of %s", x.in.DataSize, ref.Label)
+	case x.in.Op == x86asm.MOV && ref.Slot, slotOp && !ref.Slot:
+		return 0, fmt.Errorf("%v of the GOT entry of %s, which the lowering declared otherwise", x.in.Op, ref.Label)
+	case x.in.Op != x86asm.MOV && !slotOp:
+		return 0, fmt.Errorf("uses the GOT entry of %s in a %v", ref.Label, x.in.Op)
+	}
+	if _, ok := x.in.Args[0].(x86asm.Reg); !ok {
+		return 0, fmt.Errorf("loads the GOT entry of %s into memory", ref.Label)
+	}
+	if r.sym.Name != ref.Label || ref.Add != 0 || r.add != -4 || r.off != x.in.Len-4 {
+		return 0, fmt.Errorf("the GOT entry of %s%+d is %s%+d at %d in llc's object", ref.Label, ref.Add, r.sym.Name, r.add, r.off)
+	}
+	if int(r.sym.Section) <= 0 || int(r.sym.Section) >= len(k.llc.f.Sections) || !writableSection(k.llc.f.Sections[r.sym.Section].Name) {
+		return 0, fmt.Errorf("%s is not writable data of llc's object", ref.Label)
+	}
+	off, ok := k.c.Plan.BlobOff[ref.Label]
+	if ref.Slot {
+		off, ok = k.c.Plan.GOTSlot[ref.Label]
+	}
+	if !ok {
+		return 0, fmt.Errorf("%s is not in engine_rodata", ref.Label)
+	}
+	rs, ok := k.bin.syms[k.c.Pkg+"."+RodataGo]
+	if !ok {
+		return 0, fmt.Errorf("no engine_rodata in the binary")
+	}
+	return uint64(int64(rs.Value) + int64(off)), nil
 }
