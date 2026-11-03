@@ -4,11 +4,12 @@ Compares SQLite drivers for Go's `database/sql` on the same workloads and the sa
 
 | Tag       | Driver                          | Built with        |
 | --------- | ------------------------------- | ----------------- |
+| `liustack` | github.com/liustack/sqlite (this repository) | C compiled to Go assembly |
 | `mattn`   | github.com/mattn/go-sqlite3     | cgo               |
 | `modernc` | modernc.org/sqlite              | C translated to Go |
 | `ncruces` | github.com/ncruces/go-sqlite3   | wasm on wazero    |
 
-Several of these register the driver name `sqlite` or `sqlite3`, and ours will too, so only one can be linked into a binary. A build tag picks the driver (`driver_<tag>.go`). Each file gives `DriverName`, `DriverTag` and `DSN(path)`. To add a driver, add a file with the same three things.
+Several of these register the driver name `sqlite` or `sqlite3`, so only one can be linked into a binary. A build tag picks the driver (`driver_<tag>.go`). Each file gives `DriverName`, `DriverTag` and `DSN(path)`. To add a driver, add a file with the same three things.
 
 ## Run
 
@@ -19,7 +20,7 @@ bench/run.sh modernc ncruces              # some drivers only
 BENCH='^BenchmarkPoint$' bench/run.sh     # some workloads only
 ```
 
-`run.sh` runs `go test -tags <tag> -bench` per driver (cgo on only for `mattn`), writes `results/<goos>-<goarch>/<tag>.txt` and `header.txt` (Go version, CPU, OS, driver versions), then prints a [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) table with one column per driver. The first driver is the base, and the other columns show the change against it. `results/` is not checked in.
+`run.sh` builds one test binary per driver (cgo on only for `mattn`) and checks its settings with `TestPragmas`. Then the drivers take turns, one run of every benchmark each, `COUNT` times, so that other load on the machine falls on all of them alike. It writes `results/<goos>-<goarch>/<tag>.txt` and `header.txt` (Go version, CPU, OS, driver versions), then prints a [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) table with one column per driver. The first driver is the base, and the other columns show the change against it. `results/` is not checked in.
 
 By hand: `cd bench && CGO_ENABLED=0 go test -tags modernc -run '^$' -bench . -benchmem`.
 
