@@ -124,10 +124,16 @@ func (f *File) LockState() int {
 	return f.lock
 }
 
+// fcntlHook, when set by a test, is called before each lock fcntl.
+var fcntlHook func()
+
 // setLock sets a lock of typ (F_RDLCK, F_WRLCK or F_UNLCK) on n bytes from
 // start, without waiting. n 0 is to the end of the file. fl is space for the
 // argument.
 func setLock(fd int, fl *unix.Flock_t, typ int16, start, n int64) error {
+	if fcntlHook != nil {
+		fcntlHook()
+	}
 	*fl = unix.Flock_t{Type: typ, Whence: 0, Start: start, Len: n}
 	for {
 		err := unix.FcntlFlock(uintptr(fd), fOFDSetlk, fl)
@@ -141,6 +147,9 @@ func setLock(fd int, fl *unix.Flock_t, typ int16, start, n int64) error {
 // lock on n bytes from start: F_UNLCK, F_RDLCK or F_WRLCK. The locks of
 // this open file description do not count.
 func testLock(fd int, fl *unix.Flock_t, start, n int64) (int16, error) {
+	if fcntlHook != nil {
+		fcntlHook()
+	}
 	*fl = unix.Flock_t{Type: unix.F_WRLCK, Whence: 0, Start: start, Len: n}
 	for {
 		err := unix.FcntlFlock(uintptr(fd), fOFDGetlk, fl)

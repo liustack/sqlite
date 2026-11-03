@@ -9,33 +9,57 @@ package vfs
 
 import (
 	"os"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
-// shm is the wal-index of a File in WAL mode, as os_unix's unixShmNode: the
-// "-shm" file next to the database, mapped MAP_SHARED in regions.
+// shmNode is the wal-index of one database in this process, as os_unix's
+// unixShmNode: the "-shm" file next to the database, opened once and mapped
+// MAP_SHARED in regions, shared by all the Files of that database.
 //
-// os_unix shares one node between the connections of a process and counts
-// their locks in memory. Here every File opens and maps the -shm itself and
-// locks it with OFD locks, so connections of one process see each other
-// through the kernel, as connections of different processes do. Two
-// mappings of one file share their pages, so they see each other's writes.
-type shm struct {
-	fd       int
-	path     string
-	readOnly bool      // the -shm could only be opened for reading
-	unlocked bool      // read-only and no one had it open: the DMS lock is not held
-	regions  []uintptr // address of each region mapped
-	maps     []mapping // what to unmap
-	shared   uint16    // slots locked shared
-	excl     uint16    // slots locked exclusive
+// The node's descriptor holds the process's locks on the -shm, and the node
+// counts which connection of the process holds which slot. A connection
+// conflicting with another of the process is refused here, and the kernel
+// is asked only when the process's lock on a slot changes. With one lock
+// owner per process, the kernel's lock list on the file stays short, and
+// most read marks are taken with no system call at all.
+type shmNode struct {
+	id   fileID // of the database file
+	path string
+	fd   int
+	nRef int // Files using the node, under shmNodes
+
+	mu       sync.Mutex
+	readOnly bool          // the -shm could only be opened for reading
+	unlocked bool          // read-only and no one had it open: the DMS lock is not held
+	lock     [ShmNLock]int // per slot: shared holders in the process, or -1 for exclusive
+	regions  []uintptr     // address of each region mapped
+	maps     []mapping     // what to unmap
+	fl       unix.Flock_t  // space for the fcntl argument
 }
+
+type fileID struct{ dev, ino uint64 }
 
 type mapping struct {
 	addr unsafe.Pointer
 	size uintptr
+}
+
+// shmNodes are the open nodes, by database file. The mutex is held to find,
+// make, count and close nodes, as os_unix's unixBigLock.
+var shmNodes struct {
+	sync.Mutex
+	m map[fileID]*shmNode
+}
+
+// shm is a File's use of the node, as os_unix's unixShm: the slots this
+// connection holds.
+type shm struct {
+	node   *shmNode
+	shared uint16 // slots locked shared
+	excl   uint16 // slots locked exclusive
 }
 
 // ShmMap returns the address of region n of the wal-index, each region size
@@ -50,12 +74,14 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 			return 0, rc
 		}
 	}
-	s := f.shm
-	if s.unlocked {
-		if rc := s.lockDMS(&f.fl); rc != OK {
+	node := f.shm.node
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if node.unlocked {
+		if rc := node.lockDMS(); rc != OK {
 			return 0, rc
 		}
-		s.unlocked = false
+		node.unlocked = false
 	}
 
 	// With pages larger than a region, map whole pages.
@@ -66,27 +92,28 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 	want := (n + perMap) / perMap * perMap
 
 	rc := OK
-	if len(s.regions) < want {
-		rc = s.mapRegions(f, want, size, perMap, extend)
+	if len(node.regions) < want {
+		rc = node.mapRegions(want, size, perMap, extend)
 	}
 	var addr uintptr
-	if n < len(s.regions) {
-		addr = s.regions[n]
+	if n < len(node.regions) {
+		addr = node.regions[n]
 	}
-	if s.readOnly && rc == OK {
+	if node.readOnly && rc == OK {
 		rc = ReadOnly
 	}
 	return addr, rc
 }
 
 // mapRegions maps regions until there are want of them, making the file
-// larger first when extend is set.
-func (s *shm) mapRegions(f *File, want, size, perMap int, extend bool) int {
-	if err := unix.Fstat(s.fd, &f.st); err != nil {
+// larger first when extend is set. node.mu is held.
+func (node *shmNode) mapRegions(want, size, perMap int, extend bool) int {
+	var st unix.Stat_t
+	if err := unix.Fstat(node.fd, &st); err != nil {
 		return IOErrShmSize
 	}
 	need := int64(want) * int64(size)
-	if f.st.Size < need {
+	if st.Size < need {
 		if !extend {
 			return OK
 		}
@@ -95,10 +122,10 @@ func (s *shm) mapRegions(f *File, want, size, perMap int, extend bool) int {
 		// memory is used.
 		const pgsz = 4096
 		zero := []byte{0}
-		for pg := f.st.Size / pgsz; pg < need/pgsz; pg++ {
+		for pg := st.Size / pgsz; pg < need/pgsz; pg++ {
 			var n int
 			err := retry(func() (err error) {
-				n, err = unix.Pwrite(s.fd, zero, pg*pgsz+pgsz-1)
+				n, err = unix.Pwrite(node.fd, zero, pg*pgsz+pgsz-1)
 				return err
 			})
 			if err != nil || n != 1 {
@@ -108,65 +135,87 @@ func (s *shm) mapRegions(f *File, want, size, perMap int, extend bool) int {
 	}
 
 	prot := unix.PROT_READ | unix.PROT_WRITE
-	if s.readOnly {
+	if node.readOnly {
 		prot = unix.PROT_READ
 	}
-	for len(s.regions) < want {
+	for len(node.regions) < want {
 		m := mapping{size: uintptr(size * perMap)}
-		p, err := unix.MmapPtr(s.fd, int64(size)*int64(len(s.regions)), nil, m.size, prot, unix.MAP_SHARED)
+		p, err := unix.MmapPtr(node.fd, int64(size)*int64(len(node.regions)), nil, m.size, prot, unix.MAP_SHARED)
 		if err != nil {
 			return IOErrShmMap
 		}
 		m.addr = p
-		s.maps = append(s.maps, m)
+		node.maps = append(node.maps, m)
 		for i := range perMap {
-			s.regions = append(s.regions, uintptr(p)+uintptr(i*size))
+			node.regions = append(node.regions, uintptr(p)+uintptr(i*size))
 		}
 	}
 	return OK
 }
 
-// openShm opens the -shm file, as os_unix's unixOpenSharedMemory, and takes
-// the DMS lock.
+// openShm attaches the File to the node of its database, as os_unix's
+// unixOpenSharedMemory. The first File of the process opens the -shm and
+// takes the DMS lock. The others find the node.
 func (f *File) openShm() int {
+	id := fileID{f.dev, f.ino}
+	shmNodes.Lock()
+	defer shmNodes.Unlock()
+
+	rc := OK
+	node := shmNodes.m[id]
+	if node == nil {
+		if node, rc = newShmNode(f, id); rc != OK && rc != ReadOnlyCantInit {
+			return rc
+		}
+		if shmNodes.m == nil {
+			shmNodes.m = make(map[fileID]*shmNode)
+		}
+		shmNodes.m[id] = node
+	}
+	node.nRef++
+	f.shm = &shm{node: node}
+	return rc
+}
+
+// newShmNode opens the -shm of f and takes the DMS lock.
+func newShmNode(f *File, id fileID) (*shmNode, int) {
 	if err := unix.Fstat(f.fd, &f.st); err != nil {
-		return IOErrFstat
+		return nil, IOErrFstat
 	}
 	mode := uint32(f.st.Mode) & 0777
-	s := &shm{fd: -1, path: f.path + "-shm"}
+	node := &shmNode{id: id, path: f.path + "-shm", fd: -1}
 
-	fd, err := openFile(s.path, unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
+	fd, err := openFile(node.path, unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
 	if err != nil {
-		fd, err = openFile(s.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
+		fd, err = openFile(node.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
 		if err != nil {
-			return CantOpen
+			return nil, CantOpen
 		}
-		s.readOnly = true
+		node.readOnly = true
 	}
-	s.fd = fd
+	node.fd = fd
 	// A -shm made by root is given to the owner of the database.
 	if os.Geteuid() == 0 {
 		unix.Fchown(fd, int(f.st.Uid), int(f.st.Gid))
 	}
 
-	rc := s.lockDMS(&f.fl)
+	rc := node.lockDMS()
 	if rc != OK && rc != ReadOnlyCantInit {
 		unix.Close(fd)
-		return rc
+		return nil, rc
 	}
-	s.unlocked = rc == ReadOnlyCantInit
-	f.shm = s
-	return rc
+	node.unlocked = rc == ReadOnlyCantInit
+	return node, rc
 }
 
 // lockDMS takes a read lock on the DMS byte, as os_unix's
-// unixLockSharedMemory. The DMS byte is read locked by every connection that
-// has the -shm open. When no one holds it, this connection is the first, and
+// unixLockSharedMemory. The DMS byte is read locked by every process that
+// has the -shm open. When no one holds it, this process is the first, and
 // the -shm may hold anything a crash left: it takes a write lock, truncates
 // the file, and turns the lock into a read lock. A write lock held by
 // another means that one is truncating: SQLITE_BUSY, and SQLite tries again.
-func (s *shm) lockDMS(fl *unix.Flock_t) int {
-	typ, err := testLock(s.fd, fl, shmDMS, 1)
+func (node *shmNode) lockDMS() int {
+	typ, err := testLock(node.fd, &node.fl, shmDMS, 1)
 	if err != nil {
 		return IOErrLock
 	}
@@ -174,19 +223,19 @@ func (s *shm) lockDMS(fl *unix.Flock_t) int {
 	case unix.F_WRLCK:
 		return Busy
 	case unix.F_UNLCK:
-		if s.readOnly {
+		if node.readOnly {
 			return ReadOnlyCantInit
 		}
-		if err := setLock(s.fd, fl, unix.F_WRLCK, shmDMS, 1); err != nil {
+		if err := setLock(node.fd, &node.fl, unix.F_WRLCK, shmDMS, 1); err != nil {
 			return Busy
 		}
 		// To 3 bytes and not 0, as os_unix, so that a legitimate
 		// truncation can be told from the work of a stray process.
-		if err := retry(func() error { return unix.Ftruncate(s.fd, 3) }); err != nil {
+		if err := retry(func() error { return unix.Ftruncate(node.fd, 3) }); err != nil {
 			return IOErrShmOpen
 		}
 	}
-	if err := setLock(s.fd, fl, unix.F_RDLCK, shmDMS, 1); err != nil {
+	if err := setLock(node.fd, &node.fl, unix.F_RDLCK, shmDMS, 1); err != nil {
 		return Busy
 	}
 	return OK
@@ -203,54 +252,142 @@ func (f *File) ShmLock(offset, n, flags int) int {
 		return IOErrShmLock
 	}
 	mask := uint16(1<<(offset+n) - 1<<offset)
-	start, size := int64(shmBase+offset), int64(n)
-
+	node := s.node
+	node.mu.Lock()
+	rc := OK
 	switch {
 	case flags&ShmUnlock != 0:
-		if (s.shared|s.excl)&mask == 0 {
-			return OK
+		if (s.shared|s.excl)&mask != 0 {
+			rc = s.unlock(offset, n, mask)
 		}
-		if err := setLock(s.fd, &f.fl, unix.F_UNLCK, start, size); err != nil {
-			return lockError(err, IOErrShmLock)
-		}
-		s.shared &^= mask
-		s.excl &^= mask
 
 	case flags&ShmShared != 0:
 		if s.shared&mask != 0 {
-			return OK
+			break
 		}
-		if err := setLock(s.fd, &f.fl, unix.F_RDLCK, start, size); err != nil {
-			return lockError(err, IOErrShmLock)
+		switch {
+		case node.lock[offset] < 0:
+			// Another connection of the process holds it exclusive.
+			rc = Busy
+		case node.lock[offset] == 0:
+			if err := setLock(node.fd, &node.fl, unix.F_RDLCK, int64(shmBase+offset), 1); err != nil {
+				rc = lockError(err, IOErrShmLock)
+			}
 		}
-		s.shared |= mask
+		if rc == OK {
+			node.lock[offset]++
+			s.shared |= mask
+		}
 
 	default:
-		if err := setLock(s.fd, &f.fl, unix.F_WRLCK, start, size); err != nil {
+		for _, l := range node.lock[offset : offset+n] {
+			if l != 0 {
+				// Another connection of the process holds one of them.
+				rc = Busy
+				break
+			}
+		}
+		if rc == OK {
+			if err := setLock(node.fd, &node.fl, unix.F_WRLCK, int64(shmBase+offset), int64(n)); err != nil {
+				rc = lockError(err, IOErrShmLock)
+			}
+		}
+		if rc == OK {
+			for i := offset; i < offset+n; i++ {
+				node.lock[i] = -1
+			}
+			s.excl |= mask
+		}
+	}
+	node.mu.Unlock()
+	return rc
+}
+
+// unlock releases the slots of mask, n from offset, that s holds. A shared
+// slot stays locked in the kernel while other connections of the process
+// hold it. node.mu is held.
+func (s *shm) unlock(offset, n int, mask uint16) int {
+	node := s.node
+	for i := offset; i < offset+n; i++ {
+		bit := uint16(1) << i
+		switch {
+		case s.excl&bit != 0:
+		case s.shared&bit != 0 && node.lock[i] > 1:
+			node.lock[i]--
+			s.shared &^= bit
+			mask &^= bit
+		case s.shared&bit == 0:
+			mask &^= bit
+		}
+	}
+	if mask == 0 {
+		return OK
+	}
+	// Unlock the run of slots left in one call when it is one run, which it
+	// is for everything SQLite asks.
+	lo, hi := offset, offset+n
+	for lo < hi && mask&(1<<lo) == 0 {
+		lo++
+	}
+	for hi > lo && mask&(1<<(hi-1)) == 0 {
+		hi--
+	}
+	if run := uint16(1<<hi - 1<<lo); run == mask {
+		if err := setLock(node.fd, &node.fl, unix.F_UNLCK, int64(shmBase+lo), int64(hi-lo)); err != nil {
 			return lockError(err, IOErrShmLock)
 		}
-		s.excl |= mask
+	} else {
+		for i := lo; i < hi; i++ {
+			if mask&(1<<i) == 0 {
+				continue
+			}
+			if err := setLock(node.fd, &node.fl, unix.F_UNLCK, int64(shmBase+i), 1); err != nil {
+				return lockError(err, IOErrShmLock)
+			}
+		}
 	}
+	for i := lo; i < hi; i++ {
+		if mask&(1<<i) != 0 {
+			node.lock[i] = 0
+		}
+	}
+	s.shared &^= mask
+	s.excl &^= mask
 	return OK
 }
 
-// ShmUnmap unmaps the wal-index and closes the -shm file, which drops its
-// locks. delete deletes the file: SQLite asks for that only while it holds
-// EXCLUSIVE on the database and no other connection has the -shm open.
-// Without a wal-index it does nothing.
-func (f *File) ShmUnmap(delete bool) int {
+// ShmUnmap detaches the File from the wal-index and releases the slots it
+// still holds. The last File of the process unmaps the memory and closes
+// the -shm, which drops the DMS lock. remove then deletes the file: SQLite
+// asks for that only while it holds EXCLUSIVE on the database and no other
+// connection has the -shm open. Without a wal-index it does nothing.
+func (f *File) ShmUnmap(remove bool) int {
 	s := f.shm
 	if s == nil {
 		return OK
 	}
-	for _, m := range s.maps {
+	f.shm = nil
+	node := s.node
+	if held := s.shared | s.excl; held != 0 {
+		node.mu.Lock()
+		s.unlock(0, ShmNLock, held)
+		node.mu.Unlock()
+	}
+
+	shmNodes.Lock()
+	defer shmNodes.Unlock()
+	node.nRef--
+	if node.nRef > 0 {
+		return OK
+	}
+	delete(shmNodes.m, node.id)
+	for _, m := range node.maps {
 		unix.MunmapPtr(m.addr, m.size)
 	}
-	if delete {
-		unix.Unlink(s.path)
+	if remove {
+		unix.Unlink(node.path)
 	}
-	unix.Close(s.fd)
-	f.shm = nil
+	unix.Close(node.fd)
 	return OK
 }
 
@@ -262,6 +399,15 @@ func (f *File) shmShared() bool {
 	if f.shm == nil {
 		return false
 	}
-	typ, err := testLock(f.shm.fd, &f.fl, shmDMS, 1)
+	node := f.shm.node
+	shmNodes.Lock()
+	others := node.nRef > 1
+	shmNodes.Unlock()
+	if others {
+		return true
+	}
+	node.mu.Lock()
+	typ, err := testLock(node.fd, &node.fl, shmDMS, 1)
+	node.mu.Unlock()
 	return err == nil && typ != unix.F_UNLCK
 }

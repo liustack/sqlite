@@ -16,9 +16,12 @@
 // a file drops all of the process's locks on it, so os_unix counts locks per
 // inode in memory. This package uses locks on open file descriptions (OFD
 // locks) instead. They belong to the open file, so two Files of one path
-// conflict the way two processes do, and nothing is kept per inode. The
-// byte ranges are those of os_unix, so the locks also work against SQLite
-// built from C, as long as that SQLite runs in another process.
+// conflict on the database file the way two processes do, and nothing is
+// kept per inode for it. The wal-index (-shm) is shared per database in
+// the process as in os_unix: one descriptor holds the process's locks and
+// the counts of who holds what are kept in memory (see shmNode). The byte
+// ranges are those of os_unix, so the locks also work against SQLite built
+// from C, as long as that SQLite runs in another process.
 //
 // Results are SQLite result codes, with the values of sqlite3.h.
 //

@@ -9,8 +9,13 @@ package vfs
 
 import (
 	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // region returns the mapped memory at addr as a byte slice. The memory is
@@ -202,5 +207,163 @@ func TestShmLockAllocs(t *testing.T) {
 	})
 	if n != 0 {
 		t.Errorf("ShmLock allocates %v times per call", n)
+	}
+}
+
+// countFcntl counts the lock fcntl calls made until the test ends.
+func countFcntl(t *testing.T) *int {
+	n := new(int)
+	fcntlHook = func() { *n++ }
+	t.Cleanup(func() { fcntlHook = nil })
+	return n
+}
+
+// heldBy tells which lock another open file description of the -shm sees
+// on slot i (or on the DMS byte for i == ShmNLock): F_UNLCK, F_RDLCK or
+// F_WRLCK. It stands for another process.
+func heldBy(t *testing.T, name string, i int) int16 {
+	t.Helper()
+	fd, err := unix.Open(name+"-shm", unix.O_RDWR|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	var fl unix.Flock_t
+	typ, err := testLock(fd, &fl, int64(shmBase+i), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return typ
+}
+
+func TestShmLockCounted(t *testing.T) {
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	calls := countFcntl(t)
+
+	const lockShared, unShared = ShmLock | ShmShared, ShmUnlock | ShmShared
+	lockT(t, "a shared 3", a.ShmLock(3, 1, lockShared), OK)
+	if *calls != 1 {
+		t.Errorf("first shared lock made %d fcntl calls, want 1", *calls)
+	}
+	lockT(t, "b shared 3", b.ShmLock(3, 1, lockShared), OK)
+	if *calls != 1 {
+		t.Errorf("second shared lock made %d fcntl calls, want 0", *calls-1)
+	}
+
+	// Exclusive is refused in the process, without asking the kernel.
+	lockT(t, "b excl 4", b.ShmLock(4, 1, ShmLock|ShmExclusive), OK)
+	*calls = 0
+	lockT(t, "a excl 3", a.ShmLock(3, 1, ShmLock|ShmExclusive), Busy)
+	lockT(t, "a excl 3..5", a.ShmLock(3, 3, ShmLock|ShmExclusive), Busy)
+	lockT(t, "a shared 4", a.ShmLock(4, 1, lockShared), Busy)
+	if *calls != 0 {
+		t.Errorf("refusals made %d fcntl calls, want 0", *calls)
+	}
+	lockT(t, "b unlock 4", b.ShmLock(4, 1, ShmUnlock|ShmExclusive), OK)
+
+	// One holder unlocking keeps the lock for the other.
+	lockT(t, "a unlock 3", a.ShmLock(3, 1, unShared), OK)
+	if *calls != 1 {
+		t.Errorf("unlocks made %d fcntl calls, want 1 (for the exclusive)", *calls)
+	}
+	if got := heldBy(t, name, 3); got != unix.F_RDLCK {
+		t.Errorf("slot 3 seen from outside = %d, want F_RDLCK", got)
+	}
+	// Unlocking what a no longer holds does not take b's share.
+	lockT(t, "a unlock 3 again", a.ShmLock(3, 1, unShared), OK)
+	if got := heldBy(t, name, 3); got != unix.F_RDLCK {
+		t.Errorf("slot 3 seen from outside = %d, want F_RDLCK", got)
+	}
+	lockT(t, "b unlock 3", b.ShmLock(3, 1, unShared), OK)
+	if got := heldBy(t, name, 3); got != unix.F_UNLCK {
+		t.Errorf("slot 3 seen from outside = %d, want F_UNLCK", got)
+	}
+}
+
+func TestShmNodeDMS(t *testing.T) {
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	calls := countFcntl(t)
+	// The second connection of the process finds the -shm open and does
+	// no DMS check.
+	shmMapT(t, b, 0, false)
+	if *calls != 0 {
+		t.Errorf("second ShmMap made %d fcntl calls, want 0", *calls)
+	}
+	fcntlHook = nil
+
+	// The DMS lock stays while any connection of the process has the -shm.
+	if got := heldBy(t, name, ShmNLock); got != unix.F_RDLCK {
+		t.Errorf("DMS seen from outside = %d, want F_RDLCK", got)
+	}
+	a.ShmUnmap(false)
+	if got := heldBy(t, name, ShmNLock); got != unix.F_RDLCK {
+		t.Errorf("DMS after a unmapped = %d, want F_RDLCK", got)
+	}
+	b.ShmUnmap(false)
+	if _, err := os.Stat(name + "-shm"); err != nil {
+		t.Fatal(err)
+	}
+	if got := heldBy(t, name, ShmNLock); got != unix.F_UNLCK {
+		t.Errorf("DMS after all unmapped = %d, want F_UNLCK", got)
+	}
+}
+
+func TestShmCloseReleasesLocks(t *testing.T) {
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { b.ShmUnmap(false) })
+	lockT(t, "a excl 0", a.ShmLock(0, 1, ShmLock|ShmExclusive), OK)
+	lockT(t, "a shared 3", a.ShmLock(3, 1, ShmLock|ShmShared), OK)
+	// a goes away without unlocking: the process must not keep its locks.
+	a.Close()
+	lockT(t, "b excl 0", b.ShmLock(0, 1, ShmLock|ShmExclusive), OK)
+	lockT(t, "b excl 3", b.ShmLock(3, 1, ShmLock|ShmExclusive), OK)
+	if got := heldBy(t, name, 3); got != unix.F_WRLCK {
+		t.Errorf("slot 3 seen from outside = %d, want F_WRLCK", got)
+	}
+}
+
+// TestShmLockParallel has goroutines, each with its own File, take and drop
+// shared read marks and the exclusive write lock at once, as readers and a
+// writer do. The writer must never hold the write lock while another does.
+func TestShmLockParallel(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "par.db")
+	files := make([]*File, 8)
+	for i := range files {
+		files[i] = openT(t, name, mainDB)
+		shmMapT(t, files[i], 0, true)
+	}
+	var inWriter atomic.Int32
+	var wg sync.WaitGroup
+	for i, f := range files {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			slot := 3 + i%5
+			for range 2000 {
+				if f.ShmLock(slot, 1, ShmLock|ShmShared) == OK {
+					f.ShmLock(slot, 1, ShmUnlock|ShmShared)
+				}
+				if f.ShmLock(0, 1, ShmLock|ShmExclusive) == OK {
+					if inWriter.Add(1) != 1 {
+						t.Error("two writers at once")
+					}
+					inWriter.Add(-1)
+					f.ShmLock(0, 1, ShmUnlock|ShmExclusive)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	for _, f := range files {
+		f.ShmUnmap(false)
+	}
+	if got := heldBy(t, name, 0); got != unix.F_UNLCK {
+		t.Errorf("write lock left behind: %d", got)
 	}
 }
