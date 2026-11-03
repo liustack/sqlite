@@ -577,7 +577,7 @@ func ckBuild(t *testing.T, llvm string, c ckCase) ([]Meta, error) {
 		metas = append(metas, m)
 	}
 	callbacks := map[string]bool{}
-	for _, h := range append(append([]string{}, HostCallbacks...), GeneratorCallbacks...) {
+	for _, h := range GeneratorCallbacks {
 		callbacks[h] = true
 	}
 	if _, _, err := ChooseNoSplit(metas, nil, nil, plan, unit, callbacks, nil); err != nil {

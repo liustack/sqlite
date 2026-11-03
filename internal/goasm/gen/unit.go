@@ -119,15 +119,18 @@ func SharedCFlags(flagsFile, triple string) ([]string, error) {
 	return strings.Fields(strings.Join(lines, " ")), nil
 }
 
-// HostCallbacks is the closed list of Go callbacks engine C may call (see
-// engine/host.h, and host_memory_grow of engine/heap.h).
-var HostCallbacks = []string{"host_poll", "host_memory_grow", "host_now", "host_call", "host_release"}
+// HostPrefix starts the name of every Go callback the engine's C may call.
+// They are declared in engine/host.h and written in Go in the package of the
+// generated code, which the linker resolves them to.
+const HostPrefix = "host_"
 
-// GeneratorCallbacks are the Go callbacks the generator itself puts into the
-// engine, which C never calls: host_trap stands for a trap instruction (see
-// pass/shadow.cpp). The C tree still may not name them, since
-// engine/libc/symbols.txt allows only HostCallbacks.
-var GeneratorCallbacks = []string{"host_trap"}
+// IsHostCallback says whether name is a Go callback of the host.
+func IsHostCallback(name string) bool { return strings.HasPrefix(name, HostPrefix) }
+
+// GeneratorCallbacks are the Go callbacks the shadow-stack pass itself puts
+// into the engine: host_poll where the code polls, host_trap for a trap
+// instruction (see pass/shadow.cpp).
+var GeneratorCallbacks = []string{"host_poll", "host_trap"}
 
 // Unit is one C file compiled through the shadow-stack pass.
 type Unit struct {
