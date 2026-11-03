@@ -337,10 +337,10 @@ func main() {
 	if err != nil {
 		die(err)
 	}
-	// The engine has the table of its layout. C files of a test (-src) may
-	// leave it out, and their package gets no constants of it.
+	// A C tree that defines the table of its layout for the host gets Go
+	// constants of it. SQLite has none.
 	var layout []int64
-	if *srcList == "" || unit.Data[gen.HostLayoutSymbol] != nil {
+	if unit.Data[gen.HostLayoutSymbol] != nil {
 		if layout, err = gen.HostLayout(unit); err != nil {
 			die(err)
 		}
