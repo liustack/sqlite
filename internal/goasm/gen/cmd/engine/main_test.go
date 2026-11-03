@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -275,5 +276,16 @@ func TestReleaseErrorPostLink(t *testing.T) {
 		if err := releaseError(c.d, "out"); err == nil || !strings.Contains(err.Error(), c.name) {
 			t.Errorf("%+v: %v", c.d, err)
 		}
+	}
+}
+
+// TestLLCArgsJumpTables: arm64 keeps every entry of a jump table at four
+// bytes, since the lowering makes a function longer than llc measured it.
+func TestLLCArgsJumpTables(t *testing.T) {
+	if !slices.Contains(llcArgsFor("arm64", "p.so"), "-aarch64-enable-compress-jump-tables=false") {
+		t.Error("arm64 compresses its jump tables")
+	}
+	if slices.Contains(llcArgsFor("amd64", "p.so"), "-aarch64-enable-compress-jump-tables=false") {
+		t.Error("amd64 takes an option of aarch64")
 	}
 }

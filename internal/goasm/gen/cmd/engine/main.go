@@ -288,21 +288,7 @@ func main() {
 	// llc assigns (facts.cpp). Every function stays in .text: llc would put
 	// a cold one (abort) in .text.unlikely., which the lowering and the
 	// check take for one text.
-	llcArgs := []string{"-O2", "-relocation-model=pic", "-enable-shrink-wrap=false", "-profile-guided-section-prefix=false",
-		"-load", *pass}
-	if *arch == "arm64" {
-		// The tiny code model reaches data with one instruction that names
-		// the whole address (adr, a load of a label), which the lowering
-		// takes on its own, and never with adrp and :lo12:, whose second
-		// instruction holds only where the register still has the page.
-		llcArgs = append(llcArgs, "-code-model=tiny")
-		// tbz and tbnz reach 32 KiB, and llc makes a farther one a tbz over
-		// a b by the code it writes. The lowering then adds code (the calls,
-		// the polls), so a tbz llc left near its reach can end past it, which
-		// the assembler refuses. Half the reach leaves the lowering room to
-		// double a function.
-		llcArgs = append(llcArgs, "-aarch64-tbz-offset-bits=13")
-	}
+	llcArgs := llcArgsFor(*arch, *pass)
 	factsPath := filepath.Join(*work, "engine.facts")
 	probeFacts := filepath.Join(*work, "probes.facts")
 	os.Remove(factsPath)
@@ -1284,4 +1270,30 @@ func missingNamesDecl(stubs []gen.Meta) string {
 	}
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// llcArgsFor gives the options of every llc run of the engine for arch, with
+// the plugins of the pass's shared object.
+func llcArgsFor(arch, pass string) []string {
+	args := []string{"-O2", "-relocation-model=pic", "-enable-shrink-wrap=false", "-profile-guided-section-prefix=false",
+		"-load", pass}
+	if arch == "arm64" {
+		// The tiny code model reaches data with one instruction that names
+		// the whole address (adr, a load of a label), which the lowering
+		// takes on its own, and never with adrp and :lo12:, whose second
+		// instruction holds only where the register still has the page.
+		args = append(args, "-code-model=tiny")
+		// tbz and tbnz reach 32 KiB, and llc makes a farther one a tbz over
+		// a b by the code it writes. The lowering then adds code (the calls,
+		// the polls), so a tbz llc left near its reach can end past it, which
+		// the assembler refuses. Half the reach leaves the lowering room to
+		// double a function.
+		args = append(args, "-aarch64-tbz-offset-bits=13")
+		// llc stores the entries of a jump table in one or two bytes when
+		// the distances it measured fit. The lowering makes the function
+		// longer, and an entry no longer fits (sqlite3VdbeExec): every entry
+		// takes four bytes.
+		args = append(args, "-aarch64-enable-compress-jump-tables=false")
+	}
+	return args
 }
