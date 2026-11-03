@@ -172,3 +172,38 @@ func TestFileWALConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// Only DML that changes main and touches nothing of its own connection is
+// mergeable.
+func TestMergeable(t *testing.T) {
+	c := open(t, filepath.Join(t.TempDir(), "t.db"))
+	if err := c.Exec("CREATE TABLE t(a, b); CREATE TEMP TABLE tt(a); CREATE TABLE trig(a); " +
+		"CREATE TRIGGER tr AFTER INSERT ON trig BEGIN INSERT INTO t VALUES (new.a, 0); END"); err != nil {
+		t.Fatal(err)
+	}
+	for sql, want := range map[string]bool{
+		"INSERT INTO t VALUES (1, 2)":                                true,
+		"UPDATE t SET b = b + 1 WHERE a = ?":                         true,
+		"DELETE FROM t WHERE a IN (SELECT a FROM t)":                 true,
+		"INSERT INTO main.t SELECT a, b FROM t":                      true,
+		"REPLACE INTO t VALUES (1, 2)":                               true,
+		"SELECT * FROM t":                                            false,
+		"INSERT INTO tt VALUES (1)":                                  false,
+		"INSERT INTO t SELECT a, 0 FROM tt":                          false,
+		"INSERT INTO t VALUES (last_insert_rowid(), 0)":              false,
+		"INSERT INTO trig VALUES (1)":                                false,
+		"CREATE TABLE u(a)":                                          false,
+		"PRAGMA user_version = 3":                                    false,
+		"BEGIN":                                                      false,
+		"WITH x(v) AS (VALUES (1)) INSERT INTO t SELECT v, v FROM x": true,
+	} {
+		s, _, err := c.Prepare(sql)
+		if err != nil {
+			t.Fatal(sql, err)
+		}
+		if got := s.Mergeable(); got != want {
+			t.Errorf("%s: mergeable %v", sql, got)
+		}
+		s.Finalize()
+	}
+}

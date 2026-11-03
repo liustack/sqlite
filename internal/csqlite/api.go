@@ -150,6 +150,9 @@ func Open(name string, flags int, vfs string) (*Conn, error) {
 	}
 	r := int32(sqlite3_open_v2(a.top, zName, pdb, uintptr(flags|OpenExResCode), zVfs))
 	c.db = *(*uintptr)(at(pdb))
+	if r == OK {
+		r = int32(go_classify(c.sp, c.db, c.classifyWord()))
+	}
 	if r != OK {
 		err := c.err(int(r))
 		if c.db != 0 {
@@ -160,6 +163,16 @@ func Open(name string, flags int, vfs string) (*Conn, error) {
 	}
 	return c, nil
 }
+
+// classifyWord is where goClassify writes the kind of the statement being
+// prepared.
+func (c *Conn) classifyWord() uintptr { return c.st.base + classifyOffset }
+
+// The bits goClassify writes (engine/os.c).
+const (
+	writesMain = 1
+	private    = 2
+)
 
 // err is the error of result code r, with the connection's message.
 func (c *Conn) err(r int) error {
@@ -212,7 +225,10 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	} else {
 		z = a.bytes([]byte(sql))
 	}
+	w := (*int32)(at(c.classifyWord()))
+	*w = 0
 	r := int32(sqlite3_prepare_v2(a.top, c.db, z, uintptr(len(sql)), pStmt, pTail))
+	kind := *w
 	if r != OK {
 		return nil, "", c.err(int(r))
 	}
@@ -223,7 +239,7 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	if p == 0 {
 		return nil, tail, nil
 	}
-	return &Stmt{c: c, p: p}, tail, nil
+	return &Stmt{c: c, p: p, kind: kind}, tail, nil
 }
 
 // Changes is the number of rows the last statement changed.
@@ -242,9 +258,15 @@ func (c *Conn) BusyTimeout(ms int) error {
 
 // Stmt is a prepared statement.
 type Stmt struct {
-	c *Conn
-	p uintptr
+	c    *Conn
+	p    uintptr
+	kind int32 // what goClassify saw as it was prepared
 }
+
+// Mergeable says the statement changes tables of the main database and
+// touches nothing only its connection has: run on another connection of
+// the same file, it does the same.
+func (s *Stmt) Mergeable() bool { return s.kind == writesMain }
 
 func (s *Stmt) err(r uintptr) error { return s.c.err(int(int32(r))) }
 

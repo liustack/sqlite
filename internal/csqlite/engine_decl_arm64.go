@@ -256,6 +256,7 @@ func getSafetyLevel(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func getWhitespace(a0 uintptr, a1 uintptr) uintptr
 func goAccess(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func goCheckReservedLock(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func goClassify_block(a0 uintptr, a1 uintptr) uintptr
 func goClose(a0 uintptr, a1 uintptr) uintptr
 func goCurrentTime(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goCurrentTimeInt64(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -286,6 +287,7 @@ func goSync(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goTruncate(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goUnlock(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func go_classify(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func go_init(a0 uintptr) uintptr
 func goasm_chunked_memcpy(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func goasm_chunked_memmove(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1789,6 +1791,21 @@ func generateOutputSubroutine(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4
 	*(*uintptr)(packedSlot(a0 + 48)) = a7
 	*(*uintptr)(packedSlot(a0 + 56)) = a8
 	return generateOutputSubroutine_block(a0+64, a0)
+}
+
+// goClassify stores its arguments in a block at the shadow pointer for
+// goClassify_block (gen.PackedGo).
+func goClassify(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of goClassify ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return goClassify_block(a0+48, a0)
 }
 
 // insertCell stores its arguments in a block at the shadow pointer for

@@ -256,6 +256,7 @@ func getSafetyLevel(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func getWhitespace(a0 uintptr, a1 uintptr) uintptr
 func goAccess(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func goCheckReservedLock(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func goClassify(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr
 func goClose(a0 uintptr, a1 uintptr) uintptr
 func goCurrentTime(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goCurrentTimeInt64(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -286,6 +287,7 @@ func goSync(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goTruncate(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goUnlock(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func go_classify(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func go_init(a0 uintptr) uintptr
 func goasm_chunked_memcpy(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func goasm_chunked_memmove(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)

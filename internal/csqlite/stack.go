@@ -25,6 +25,9 @@ const (
 	// stackHeader is the start of the region the host keeps: the poll
 	// counter is inside it. The C stack starts after it.
 	stackHeader = 4096
+	// classifyOffset is the word of the header goClassify (engine/os.c)
+	// writes the kind of a statement to as it is prepared.
+	classifyOffset = 64
 	// pollInterval is how many ticks of the code run between two calls of
 	// host_poll.
 	pollInterval = 10000
@@ -33,6 +36,9 @@ const (
 func init() {
 	if pollCounterOffset+8 > stackHeader {
 		panic("csqlite: the poll counter is outside the host's header")
+	}
+	if classifyOffset+8 > pollCounterOffset {
+		panic("csqlite: the word of goClassify meets the poll counter")
 	}
 }
 

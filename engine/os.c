@@ -32,6 +32,53 @@ int go_init(void) {
   return sqlite3_initialize();
 }
 
+/* ---- statements for group commit ---- */
+
+/* goClassify is the authorizer the host installs on every connection. As a
+   statement is prepared, it sorts it into *flags: GO_WRITES_MAIN when it
+   changes a table of the main database, GO_PRIVATE when it is not plain DML
+   or touches something only its own connection has (another schema such as
+   temp, a write of a trigger, which may be a temporary one, or a function
+   that reads the connection's state). The driver merges a statement into another
+   connection's transaction only with GO_WRITES_MAIN and no GO_PRIVATE. */
+#define GO_WRITES_MAIN 1
+#define GO_PRIVATE 2
+
+static int isMain(const char *db) { return db && strcmp(db, "main") == 0; }
+
+static int goClassify(void *p, int op, const char *a, const char *b, const char *db, const char *trigger) {
+  int *flags = (int *)p;
+  (void)a;
+  switch (op) {
+  case SQLITE_INSERT:
+  case SQLITE_UPDATE:
+  case SQLITE_DELETE:
+    /* trigger names the trigger a write comes from, which may be a
+       temporary one. For a read it names a view or a common table
+       expression. */
+    *flags |= isMain(db) && !trigger ? GO_WRITES_MAIN : GO_PRIVATE;
+    break;
+  case SQLITE_READ:
+    /* A read of a common table expression or a subquery has no schema. */
+    if (db && !isMain(db)) *flags |= GO_PRIVATE;
+    break;
+  case SQLITE_SELECT:
+  case SQLITE_RECURSIVE:
+    break;
+  case SQLITE_FUNCTION:
+    if (sqlite3_stricmp(b, "last_insert_rowid") == 0 || sqlite3_stricmp(b, "changes") == 0 ||
+        sqlite3_stricmp(b, "total_changes") == 0)
+      *flags |= GO_PRIVATE;
+    break;
+  default:
+    *flags |= GO_PRIVATE;
+  }
+  return SQLITE_OK;
+}
+
+/* go_classify installs goClassify on db with the word it writes to. */
+int go_classify(sqlite3 *db, int *flags) { return sqlite3_set_authorizer(db, goClassify, flags); }
+
 /* ---- files ---- */
 
 typedef struct GoFile {
