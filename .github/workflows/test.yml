@@ -30,3 +30,7 @@ jobs:
           go-version-file: go.mod
       - run: go vet -asmdecl=false ./...
       - run: go test -count=1 ./...
+      # The race detector needs cgo on linux. It tests the driver, not the build.
+      - run: go test -race -count=1 . ./internal/vfs ./internal/csqlite
+        env:
+          CGO_ENABLED: "1"
