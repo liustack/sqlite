@@ -33,6 +33,31 @@ type stmt struct {
 	once bool
 	// busy says rows of the statement are open.
 	busy bool
+	// cols, decl and isTime describe the columns of its rows, read once
+	// (columns change only when SQLite prepares it again after a change of
+	// the schema, which columns checks for).
+	cols   []string
+	decl   []string
+	isTime []bool
+}
+
+// columns reads the names and declared types of the columns once.
+func (s *stmt) columns() {
+	n := s.s.ColumnCount()
+	if s.cols != nil && len(s.cols) == n {
+		return
+	}
+	s.cols = make([]string, n)
+	s.decl = make([]string, n)
+	s.isTime = make([]bool, n)
+	for i := range n {
+		s.cols[i] = s.s.ColumnName(i)
+		s.decl[i] = strings.ToUpper(s.s.ColumnDeclType(i))
+		switch s.decl[i] {
+		case "DATE", "DATETIME", "TIMESTAMP":
+			s.isTime[i] = true
+		}
+	}
 }
 
 var (
@@ -118,6 +143,7 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, erro
 		return nil, err
 	}
 	s.busy = true
+	s.columns()
 	return &rows{s: s, ctx: ctx, stop: s.c.watch(ctx)}, nil
 }
 
@@ -208,8 +234,6 @@ type rows struct {
 	s     *stmt
 	ctx   context.Context
 	stop  func()
-	cols  []string
-	decl  []string
 	done  bool
 	close bool
 }
@@ -219,29 +243,9 @@ var (
 	_ driver.RowsColumnTypeDatabaseTypeName = (*rows)(nil)
 )
 
-func (r *rows) Columns() []string {
-	if r.cols == nil {
-		n := r.s.s.ColumnCount()
-		r.cols = make([]string, n)
-		for i := range r.cols {
-			r.cols[i] = r.s.s.ColumnName(i)
-		}
-	}
-	return r.cols
-}
+func (r *rows) Columns() []string { return r.s.cols }
 
-func (r *rows) declTypes() []string {
-	if r.decl == nil {
-		n := r.s.s.ColumnCount()
-		r.decl = make([]string, n)
-		for i := range r.decl {
-			r.decl[i] = strings.ToUpper(r.s.s.ColumnDeclType(i))
-		}
-	}
-	return r.decl
-}
-
-func (r *rows) ColumnTypeDatabaseTypeName(i int) string { return r.declTypes()[i] }
+func (r *rows) ColumnTypeDatabaseTypeName(i int) string { return r.s.decl[i] }
 
 func (r *rows) Close() error {
 	if r.close {
@@ -310,10 +314,4 @@ func (r *rows) Next(dest []driver.Value) error {
 	return nil
 }
 
-func (r *rows) isTime(i int) bool {
-	switch r.declTypes()[i] {
-	case "DATE", "DATETIME", "TIMESTAMP":
-		return true
-	}
-	return false
-}
+func (r *rows) isTime(i int) bool { return r.s.isTime[i] }
