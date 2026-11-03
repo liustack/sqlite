@@ -14,12 +14,16 @@
 
 ## Current state of the repository
 
-Early. There is no driver yet.
+The driver runs on linux and darwin, amd64 and arm64. Group commit is not written yet.
 
-- `engine/`: the C tree. `sqlite3.c` and `sqlite3.h` (SQLite 3.54.1), `sqlite.c` (the compile options), `flags.sh` (the clang flags, which the generator reads), `vendor.sh`. It has no Go file.
+- `engine/`: the C tree. `sqlite3.c` and `sqlite3.h` (SQLite 3.54.1), `sqlite.c` (the compile options), `os.c` and `host.h` (the VFS and mutexes that call the Go host), `flags.sh` (the clang flags, which the generator reads), `vendor.sh`. It has no Go file.
 - `engine/libc/`: the small libc SQLite is compiled against: headers, and musl's string functions (`vendor.sh` copies and checks them). No stdio, no math functions: SQLite is built without them.
-- `internal/goasm/gen/`: the generator, from github.com/liustack/slowjs. It compiles C to IR, moves address-taken locals to a shadow stack (`pass/`, an LLVM plugin), runs llc and rewrites each function as Go assembly. Its README and parts of its code still describe the QuickJS tree it was written for, and are being changed for SQLite (see [docs/architecture.md](docs/architecture.md#still-to-do)).
-- `scripts/`: `gen-engine.sh` (`make gen`, `make pass`), `docs-list.sh`, `llvm-bin.sh`.
+- `internal/goasm/gen/`: the generator, from github.com/liustack/slowjs. It compiles C to IR, moves address-taken locals to a shadow stack (`pass/`, an LLVM plugin), runs llc and rewrites each function as Go assembly. Its README and parts of its code still describe the QuickJS tree it was written for.
+- `internal/csqlite/`: the generated engine (`*_amd64.s`, `*_arm64.s`, `engine_*_<arch>.go`, never edited by hand) and the Go host beside it (`stack.go`, `malloc.go`, `mutex.go`, `hostvfs.go`) with the C API the driver calls (`api.go`).
+- `internal/vfs/`: files, locks and shared memory for SQLite, pure Go.
+- The root package: the `database/sql` driver.
+- `bench/`: benchmarks against other drivers, a module of its own (see `bench/README.md`).
+- `scripts/`: `gen-engine.sh` (`make gen`, `make pass`), `check-gen.sh` (`make check-gen`), `docs-list.sh`, `llvm-bin.sh`.
 
 ## Docs (`docs/`)
 

@@ -1,0 +1,159 @@
+// Copyright (c) 2026 The liustack/sqlite Authors.
+// SPDX-License-Identifier: MIT
+// Use of this source code is governed by the MIT license in LICENSE at the
+// root of this repository.
+
+//go:build (linux || darwin) && (amd64 || arm64)
+
+// Package sqlite is a SQLite driver for database/sql that needs no cgo.
+//
+// It registers itself as "sqlite":
+//
+//	db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+//
+// modernc.org/sqlite and github.com/glebarez/go-sqlite register the same
+// name, so a program that imports one of them as well panics at start. Use
+// sql.OpenDB(sqlite.NewConnector(dsn)) to open a database without the
+// registered name.
+//
+// # The data source name
+//
+// A file name, ":memory:", or a URI ("file:app.db?mode=ro"), which SQLite
+// reads itself (https://sqlite.org/uri.html). These parameters are the
+// driver's and SQLite does not see them:
+//
+//   - _pragma=name(value): a PRAGMA run on every new connection, in order.
+//     It may be given more than once.
+//   - _txlock=deferred, immediate or exclusive: how BEGIN starts a
+//     transaction (deferred by default). A read-only transaction always
+//     starts deferred.
+//   - _time_format=sqlite: how a time.Time is written. The only format, and
+//     the default, is "2006-01-02 15:04:05.999999999-07:00".
+//
+// A connection waits 5 seconds for a lock unless a _pragma sets busy_timeout.
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"database/sql/driver"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/liustack/sqlite/internal/csqlite"
+)
+
+func init() {
+	sql.Register("sqlite", &Driver{})
+}
+
+// Driver is the database/sql driver.
+type Driver struct{}
+
+// Open opens a connection to the database named by dsn.
+func (d *Driver) Open(dsn string) (driver.Conn, error) {
+	c, err := d.OpenConnector(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return c.Connect(context.Background())
+}
+
+// OpenConnector parses dsn once for every connection of a pool.
+func (d *Driver) OpenConnector(dsn string) (driver.Connector, error) {
+	return NewConnector(dsn)
+}
+
+// Connector opens connections to one database.
+type Connector struct {
+	name    string // what SQLite opens
+	pragmas []string
+	begin   string
+}
+
+// NewConnector parses dsn, for sql.OpenDB.
+func NewConnector(dsn string) (*Connector, error) {
+	c := &Connector{begin: "BEGIN"}
+	name, query, _ := strings.Cut(dsn, "?")
+	q, err := url.ParseQuery(query)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: data source name %q: %w", dsn, err)
+	}
+	for _, p := range q["_pragma"] {
+		c.pragmas = append(c.pragmas, "PRAGMA "+p)
+	}
+	switch l := q.Get("_txlock"); l {
+	case "", "deferred":
+	case "immediate", "exclusive":
+		c.begin = "BEGIN " + strings.ToUpper(l)
+	default:
+		return nil, fmt.Errorf("sqlite: _txlock=%s: want deferred, immediate or exclusive", l)
+	}
+	switch f := q.Get("_time_format"); f {
+	case "", "sqlite":
+	default:
+		return nil, fmt.Errorf("sqlite: _time_format=%s: the only format is sqlite", f)
+	}
+	for k := range q {
+		if strings.HasPrefix(k, "_") {
+			q.Del(k)
+		}
+	}
+	if strings.HasPrefix(name, "file:") {
+		if len(q) > 0 {
+			name += "?" + q.Encode()
+		}
+	} else if len(q) > 0 {
+		return nil, fmt.Errorf("sqlite: data source name %q: SQLite reads parameters only from a file: URI", dsn)
+	}
+	c.name = name
+	return c, nil
+}
+
+// Connect opens a connection.
+func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
+	cc, err := csqlite.Open(c.name, csqlite.OpenReadWrite|csqlite.OpenCreate|csqlite.OpenURI|csqlite.OpenNoMutex, "")
+	if err != nil {
+		return nil, err
+	}
+	conn := &conn{c: cc, begin: c.begin}
+	if err := cc.BusyTimeout(5000); err != nil {
+		cc.Close()
+		return nil, err
+	}
+	for _, p := range c.pragmas {
+		if err := cc.Exec(p); err != nil {
+			cc.Close()
+			return nil, fmt.Errorf("sqlite: %s: %w", p, err)
+		}
+	}
+	ms, err := pragmaInt(cc, "busy_timeout")
+	if err != nil {
+		cc.Close()
+		return nil, err
+	}
+	conn.busyTimeout = time.Duration(ms) * time.Millisecond
+	if conn.path = cc.Filename("main"); conn.path != "" {
+		conn.wl = openWriteLock(conn.path)
+	}
+	return conn, nil
+}
+
+// pragmaInt reads the value of a PRAGMA that is a number.
+func pragmaInt(c *csqlite.Conn, name string) (int64, error) {
+	s, _, err := c.Prepare("PRAGMA " + name)
+	if err != nil {
+		return 0, err
+	}
+	defer s.Finalize()
+	row, err := s.Step()
+	if err != nil || !row {
+		return 0, err
+	}
+	return s.ColumnInt64(0), nil
+}
+
+// Driver is the driver of the connector.
+func (c *Connector) Driver() driver.Driver { return &Driver{} }
