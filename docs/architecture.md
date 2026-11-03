@@ -43,6 +43,18 @@ A survey of SQLite 3.50.4 on arm64 with these worked around lowered 1391 of its 
 
 Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver will take the autocommit DML of many callers, run it as one transaction and commit once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
 
+A prototype of it in application code, on mattn/go-sqlite3 (WAL, one writer goroutine taking whatever callers are waiting, up to 256), measured on an Apple M4:
+
+| Writers | synchronous | One commit per write | Group commit | Gain |
+| --- | --- | --- | --- | --- |
+| 1 | NORMAL | 133k writes/s | 88k writes/s | 0.7x |
+| 16 | NORMAL | 88k | 197k | 2.2x |
+| 256 | NORMAL | 94k | 359k | 3.8x |
+| 16 | FULL, fullfsync | 213 | 2.0k | 9.5x |
+| 256 | FULL, fullfsync | 150 | 34.8k | 232x |
+
+So it pays from about 16 concurrent writers up, most where a commit waits for the disk, and costs with one writer, where the queue only adds a hop: the driver must write directly when no one else is waiting. One commit per write is also unfair: some goroutines waited seconds and some got `SQLITE_BUSY`. The SAVEPOINT per statement halves the peak (it adds two calls per statement in the prototype). A failed constraint in SQLite already undoes only its own statement, so where the SAVEPOINT is really needed has yet to be shown. Each run took 3 seconds once, and runs of the same setup differed by up to 90%, so read gains under 1.5x as noise.
+
 ## Routes left out
 
 - **cgo** (mattn/go-sqlite3): needs a C compiler for every build and every target, and cross-compiling is hard. Not having to do this is the reason for the project.
