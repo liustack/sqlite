@@ -95,7 +95,7 @@ func TestLowerARM64EngineRejects(t *testing.T) {
 		"page of data":           {replace("adr x8, data+12", "adrp x8, data+12", "add x8, x8, :lo12:data+12"), "tiny code model"},
 		"page offset alone":      {replace("ldr d0, .LCPI0_0", "ldr d0, [x10, :lo12:.LCPI0_0]"), "tiny code model"},
 		"unplaced data":          {replace("adr x8, data+12", "adr x8, other"), "unplaced data"},
-		"GOT":                    {replace("ldr d0, .LCPI0_0", "ldr x0, :got:data"), "unreviewed relocation form"},
+		"GOT page":               {replace("ldr d0, .LCPI0_0", "ldr x0, [x8, :got_lo12:data]"), "unreviewed relocation form"},
 		"stack past the frame":   {replace("mov x20, x21", "ldr x0, [sp, #16]"), "outside the LLVM frame"},
 		"stack pair past it":     {replace("mov x20, x21", "ldp x0, x1, [sp, #8]"), "outside the LLVM frame"},
 		"stack address":          {replace("mov x20, x21", "mov x0, sp"), "stack address escapes"},

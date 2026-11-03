@@ -14,7 +14,7 @@ read_when:
 make check
 ```
 
-It runs, in order: `engine/vendor.sh --verify` and `engine/libc/vendor.sh --verify` (the vendored C is the pinned release), `go build ./...`, `gofmt -l -s .` (prints nothing), `go vet -asmdecl=false ./...`, `scripts/docs-list.sh --check` and `go test -count=1 ./...`. The `-asmdecl=false` leaves out the check of the declarations of generated assembly, which the generator's own checks cover.
+It runs, in order: `engine/vendor.sh --verify` and `engine/libc/vendor.sh --verify` (the vendored C is the pinned release), `go build ./...`, `gofmt -l -s` over the Go files git knows or would add (prints nothing, and leaves out `.build/`), `go vet -asmdecl=false ./...`, `scripts/docs-list.sh --check` and `go test -count=1 ./...`. The `-asmdecl=false` leaves out the check of the declarations of generated assembly, which the generator's own checks cover.
 
 ## The generator
 
