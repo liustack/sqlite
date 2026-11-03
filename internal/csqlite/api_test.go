@@ -1,0 +1,174 @@
+// Copyright (c) 2026 The liustack/sqlite Authors.
+// SPDX-License-Identifier: MIT
+// Use of this source code is governed by the MIT license in LICENSE at the
+// root of this repository.
+
+//go:build (linux || darwin) && (amd64 || arm64)
+
+package csqlite
+
+import (
+	"errors"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+)
+
+func open(t *testing.T, name string) *Conn {
+	t.Helper()
+	c, err := Open(name, OpenReadWrite|OpenCreate|OpenURI, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := c.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return c
+}
+
+func TestSelectOne(t *testing.T) {
+	c := open(t, ":memory:")
+	s, tail, err := c.Prepare("SELECT 1, 'two', 3.5, x'0405', NULL; SELECT 2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Finalize()
+	if tail != " SELECT 2" {
+		t.Errorf("tail %q", tail)
+	}
+	row, err := s.Step()
+	if err != nil || !row {
+		t.Fatalf("step: %v %v", row, err)
+	}
+	if n := s.ColumnCount(); n != 5 {
+		t.Fatalf("%d columns", n)
+	}
+	if v := s.ColumnInt64(0); v != 1 {
+		t.Errorf("column 0: %d", v)
+	}
+	if v := s.ColumnText(1); v != "two" {
+		t.Errorf("column 1: %q", v)
+	}
+	if v := s.ColumnDouble(2); v != 3.5 {
+		t.Errorf("column 2: %v", v)
+	}
+	if v := s.ColumnBlob(3); string(v) != "\x04\x05" {
+		t.Errorf("column 3: %x", v)
+	}
+	if v := s.ColumnType(4); v != TypeNull {
+		t.Errorf("column 4 type %d", v)
+	}
+	if row, err := s.Step(); row || err != nil {
+		t.Fatalf("second step: %v %v", row, err)
+	}
+}
+
+func TestVersion(t *testing.T) {
+	v, err := LibVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != "3.54.1" {
+		t.Errorf("version %q", v)
+	}
+}
+
+func TestBindAndError(t *testing.T) {
+	c := open(t, ":memory:")
+	if err := c.Exec("CREATE TABLE t(id INTEGER PRIMARY KEY, s TEXT NOT NULL, b BLOB, f REAL)"); err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := c.Prepare("INSERT INTO t(s, b, f) VALUES (?, ?, ?)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Finalize()
+	long := strings.Repeat("x", 3<<20) // past the shadow-stack staging
+	for i, v := range []string{"a", "", long} {
+		s.BindText(1, v)
+		s.BindBlob(2, []byte(v))
+		s.BindDouble(3, float64(i)+0.5)
+		if _, err := s.Step(); err != nil {
+			t.Fatal(err)
+		}
+		if id := c.LastInsertRowID(); id != int64(i+1) {
+			t.Errorf("rowid %d", id)
+		}
+		s.Reset()
+	}
+	s.BindNull(1)
+	_, err = s.Step()
+	var e *Error
+	if !errors.As(err, &e) || e.Primary() != 19 || !strings.Contains(e.Msg, "NOT NULL") {
+		t.Fatalf("NULL into NOT NULL: %v", err)
+	}
+	s.Reset()
+	q, _, err := c.Prepare("SELECT length(s), length(b), f FROM t ORDER BY id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer q.Finalize()
+	for i, want := range []int64{1, 0, 3 << 20} {
+		if row, err := q.Step(); !row || err != nil {
+			t.Fatal(row, err)
+		}
+		if q.ColumnInt64(0) != want || q.ColumnInt64(1) != want || q.ColumnDouble(2) != float64(i)+0.5 {
+			t.Errorf("row %d: %d %d %v", i, q.ColumnInt64(0), q.ColumnInt64(1), q.ColumnDouble(2))
+		}
+	}
+	if _, _, err := c.Prepare("SELEC 1"); err == nil || !strings.Contains(err.Error(), "syntax error") {
+		t.Errorf("syntax error: %v", err)
+	}
+}
+
+// A file database in WAL mode, written by one connection and read by
+// others on other goroutines at the same time.
+func TestFileWALConcurrent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "t.db")
+	w := open(t, path)
+	for _, q := range []string{"PRAGMA journal_mode=WAL", "PRAGMA synchronous=NORMAL",
+		"CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT)"} {
+		if err := w.Exec(q); err != nil {
+			t.Fatal(q, err)
+		}
+	}
+	if err := w.Exec("BEGIN; WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 10000) INSERT INTO t SELECT i, 'v' || i FROM n; COMMIT"); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		r := open(t, path)
+		if err := r.BusyTimeout(5000); err != nil {
+			t.Fatal(err)
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for k := 0; k < 50; k++ {
+				s, _, err := r.Prepare("SELECT count(*), sum(length(v)) FROM t")
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if row, err := s.Step(); !row || err != nil {
+					t.Error(row, err)
+				} else if n := s.ColumnInt64(0); n < 10000 {
+					t.Errorf("count %d", n)
+				}
+				s.Finalize()
+			}
+		}()
+	}
+	if err := w.BusyTimeout(5000); err != nil {
+		t.Fatal(err)
+	}
+	for k := 0; k < 100; k++ {
+		if err := w.Exec("INSERT INTO t(v) VALUES ('more')"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wg.Wait()
+}

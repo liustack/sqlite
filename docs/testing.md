@@ -1,8 +1,8 @@
 ---
-summary: 'The checks every commit passes, the tests of the generator that run LLVM, and the ones that only run on linux/amd64'
+summary: 'The checks every commit passes, the check of the generated engine, the tests of the generator that run LLVM, and the ones that only run on linux/amd64'
 read_when:
   - Getting ready to commit
-  - Changing the generator, its LLVM pass or engine/flags.sh
+  - Changing the generator, its LLVM pass, engine/ or engine/flags.sh
   - A test of internal/goasm/gen fails
 ---
 
@@ -15,6 +15,16 @@ make check
 ```
 
 It runs, in order: `engine/vendor.sh --verify` and `engine/libc/vendor.sh --verify` (the vendored C is the pinned release), `go build ./...`, `gofmt -l -s` over the Go files git knows or would add (prints nothing, and leaves out `.build/`), `go vet -asmdecl=false ./...`, `scripts/docs-list.sh --check` and `go test -count=1 ./...`. The `-asmdecl=false` leaves out the check of the declarations of generated assembly, which the generator's own checks cover.
+
+## The generated engine
+
+`internal/csqlite` holds the engine generated from `engine/`. After a change to `engine/`, the generator or `scripts/gen-engine.sh`, run `make gen ARCH=amd64` and `make gen ARCH=arm64` and commit the files they write with the change. Then:
+
+```sh
+make check-gen
+```
+
+generates both again, fails if `internal/csqlite` differs from what is checked in, and runs the post-link check on a linux binary of the package for each target: every generated function and `engine_rodata` held to llc's object.
 
 ## The generator
 
