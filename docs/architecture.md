@@ -29,17 +29,16 @@ From the bottom up:
 4. llc writes the machine code. The generator rewrites each function as Go assembly: Go's prologue with its stack check, the arguments from Go's stack, each call made the way Go calls.
 5. A check reads the linked binary and holds each function to what llc wrote.
 
-SQLite needs no edit for this. On arm64, SQLite 3.54.1 lowers whole: 1458 functions, no stub, 10 MB of assembly in about 45 seconds, and the post-link check passes on a linux/arm64 binary.
+SQLite needs no edit for this. SQLite 3.54.1 lowers whole on both targets: about 1460 functions, no stub, 10 MB of assembly in under a minute, and the post-link check passes on a linux/arm64 and a linux/amd64 binary.
 
 ### Writable data
 
 SQLite keeps 31 writable globals: its configuration, the state of its allocator and page cache, the tables of built-in functions it links together at start. They are shared by the whole process, as a Go global is, so they go into the one Go data symbol with the read-only data, which is then written without RODATA. The read-only data of SQLite becomes writable memory with it. SQLite never writes it.
 
-The lowering can only rewrite a reference to data that takes an address: a direct load would have to become a copy in the body of the function, which is wrong for data that changes. So the generator makes every writable global external and preemptible in the IR before llc runs (`ExposeWritableData`). Position-independent code then reaches each one only through a load of its address from the GOT, and the lowering turns that load into the address in the data symbol. A direct reference to writable data stops the build. `SQLITE_OMIT_WSD` was tried and does not fit: it leaves 21 of 33 globals writable (3.50.4), and makes each read of the configuration look it up.
+The lowering can only rewrite a reference to data that takes an address: a direct load would have to become a copy in the body of the function, which is wrong for data that changes. So the generator makes every writable global external and preemptible in the IR before llc runs (`ExposeWritableData`). Position-independent code then reaches each one only through a load of its address from the GOT, and the lowering turns that load into the address in the data symbol. x86 sometimes folds the load into a compare, an add or a subtract (`cmpq sym@GOTPCREL(%rip), %rdi`). For those globals the data symbol ends in an 8-byte slot holding the global's address, and the instruction reads the slot. A direct reference to writable data stops the build. `SQLITE_OMIT_WSD` was tried and does not fit: it leaves 21 of 33 globals writable (3.50.4), and makes each read of the configuration look it up.
 
 ### Still to do
 
-- **amd64.** The lowering and the post-link check of amd64 do not take a GOT load (`movq sym@GOTPCREL(%rip)`) yet.
 - **The host.** `sqlite3_os_init` (the VFS) and `malloc`, `realloc` and `free` come from the Go host, which is not written. The generator's list of host callbacks is still the one of QuickJS.
 
 ## Group commit

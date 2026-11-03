@@ -1666,8 +1666,11 @@ func (m *matcher) dataRef(x insn, r *relAt, mem x86asm.Mem) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
-		if ref.Add < 0 || ref.Add+int64(x.in.MemBytes) > int64(n) {
-			return 0, fmt.Errorf("reads %d bytes at %s%+d, outside its %d bytes", x.in.MemBytes, ref.Label, ref.Add, n)
+		// Past the object's end the copy has its zero padding (DataPlan.Pad),
+		// which bodyData checks.
+		pad := k.c.Plan.Pad[m.r.Name][label]
+		if ref.Add < 0 || ref.Add+int64(x.in.MemBytes) > int64(n+pad) {
+			return 0, fmt.Errorf("reads %d bytes at %s%+d, outside its %d bytes and %d of padding", x.in.MemBytes, ref.Label, ref.Add, n, pad)
 		}
 	}
 	return uint64(int64(m.body) + int64(ls.Value-m.lowSym.Value) + ref.Add), nil
@@ -2011,11 +2014,24 @@ func (m *matcher) bodyData() error {
 		if err != nil {
 			return err
 		}
-		// The data sits after the code, inside the function's symbol.
-		if ls.Value < m.lowSym.Value+codeLen || ls.Value+uint64(n) > m.lowSym.Value+m.lowSym.Size {
+		pad := k.c.Plan.Pad[m.r.Name][label]
+		// The data and its padding sit after the code, inside the function's
+		// symbol.
+		if ls.Value < m.lowSym.Value+codeLen || ls.Value+uint64(n+pad) > m.lowSym.Value+m.lowSym.Size {
 			return fmt.Errorf("body data %s lies outside the function's data area", o.Label)
 		}
 		at := m.body + (ls.Value - m.lowSym.Value)
+		if pad > 0 {
+			zeros, err := k.bin.read(at+uint64(n), pad)
+			if err != nil {
+				return err
+			}
+			for i, b := range zeros {
+				if b != 0 {
+					return fmt.Errorf("body data %s: padding byte %d is %#02x, not zero", o.Label, i, b)
+				}
+			}
+		}
 		// The code reads the object as llc aligned it: an SSE instruction with a
 		// memory operand faults on a constant pool that is not on its 16 bytes.
 		// So the alignment has to hold where the object sits in the binary, and
