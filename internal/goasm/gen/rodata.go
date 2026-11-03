@@ -45,6 +45,9 @@ type BlobReloc struct {
 	// addend), for the post-link check to resolve in llc's object.
 	Label    string
 	LabelAdd int64
+	// GOT marks the slot of a writable global (DataPlan.GOTSlot): a pointer
+	// to Label in engine_rodata that no object of llc's holds.
+	GOT bool
 }
 
 // BlobDiff is a value inside engine_rodata that PlanData resolved from a
@@ -76,6 +79,11 @@ type DataPlan struct {
 	// Writable says engine_rodata holds writable globals: it is written
 	// without RODATA.
 	Writable bool
+	// GOTSlot is, for each writable global whose GOT load x86 folded into a
+	// compare or an add, the offset of an 8-byte slot at the end of
+	// engine_rodata that holds its address: the lowering reads the slot
+	// where llc read the GOT entry (writable.go).
+	GOTSlot map[string]int
 	// arch is the target the text is for: amd64 or arm64.
 	arch string
 }
@@ -92,8 +100,9 @@ type textRef struct {
 	fn, sym string
 	lea     bool
 	// got is a load of the address of sym from the GOT, which the lowering
-	// turns into the address itself.
-	got bool
+	// turns into the address itself. fold is a GOT load x86 folded into
+	// another instruction, which reads the global's slot.
+	got, fold bool
 }
 
 func isTextLabel(s string) bool {
@@ -111,7 +120,7 @@ func PlanDataARM64(u *AsmUnit, funcs map[string]bool) *DataPlan { return planDat
 
 func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 	p := &DataPlan{BlobOff: map[string]int{}, InBody: map[string][]*DataObj{}, Rename: map[string]map[string]string{},
-		Errors: map[string][]error{}, arch: arch}
+		Errors: map[string][]error{}, GOTSlot: map[string]int{}, arch: arch}
 	fail := func(fn string, f string, a ...any) { p.Errors[fn] = append(p.Errors[fn], fmt.Errorf(f, a...)) }
 	p.Objects = len(u.DataOrder)
 	for _, o := range u.DataOrder {
@@ -155,6 +164,7 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 		}
 	}
 	nonLEA := map[*DataObj][]string{} // object -> functions reading it without LEA
+	folded := map[string]bool{}       // globals whose GOT load x86 folded
 	usedBy := map[*DataObj]map[string]bool{}
 	for _, r := range refs {
 		if funcs[r.sym] {
@@ -179,6 +189,9 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 		private := strings.HasPrefix(o.Label, ".LCPI") || strings.HasPrefix(o.Label, ".LJTI") || owner[o] != ""
 		if private {
 			continue
+		}
+		if r.fold {
+			folded[r.sym] = true
 		}
 		if r.lea || r.got {
 			addBlob(o)
@@ -336,6 +349,17 @@ func planData(u *AsmUnit, funcs map[string]bool, arch string) *DataPlan {
 			p.Blob[f.off+k] = byte(v >> (8 * k))
 		}
 	}
+	// The slots of the globals whose GOT load x86 folded, after the objects.
+	for _, sym := range SortedKeys(folded) {
+		off, ok := p.BlobOff[sym]
+		if !ok {
+			continue
+		}
+		slot := alignUp(len(p.Blob), 8)
+		p.Blob = append(p.Blob, make([]byte, slot+8-len(p.Blob))...)
+		p.GOTSlot[sym] = slot
+		p.Relocs = append(p.Relocs, BlobReloc{Off: slot, Add: int64(off), Label: sym, GOT: true})
+	}
 	sort.Slice(p.Relocs, func(i, j int) bool { return p.Relocs[i].Off < p.Relocs[j].Off })
 	return p
 }
@@ -351,6 +375,14 @@ func amd64TextRefs(u *AsmUnit, fail func(fn, f string, a ...any)) []textRef {
 				continue
 			}
 			mn := strings.Fields(l)[0]
+			if op, sym, _, ok, err := amd64GOTRef(l); ok {
+				if err != nil {
+					fail(name, "%v", err)
+				} else {
+					refs = append(refs, textRef{fn: name, sym: sym, got: true, fold: op != "movq"})
+				}
+				continue
+			}
 			for _, m := range reRIP.FindAllStringSubmatch(l, -1) {
 				refs = append(refs, textRef{fn: name, sym: m[1], lea: strings.HasPrefix(mn, "lea")})
 			}

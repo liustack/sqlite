@@ -61,4 +61,10 @@ type RefRecord struct {
 	Label      string
 	Add        int64
 	Func, Blob bool
+	// GOT is a load of the address of a writable global from the GOT that
+	// the lowering made a LEA of it in engine_rodata (writable.go). With
+	// Slot, x86 had folded the load into a compare or an add, and the
+	// lowering reads the global's slot in engine_rodata instead
+	// (DataPlan.GOTSlot).
+	GOT, Slot bool
 }

@@ -187,6 +187,23 @@ func emitFunc(b *strings.Builder, o *object, lo, hi int, names NameMap) error {
 			// writes the same 7-byte RIP-relative LEA with a relocation.
 			reg, isReg := inst.Args[0].(x86asm.Reg)
 			mem, isMem := inst.Args[1].(x86asm.Mem)
+			if op, ok := slotOps[inst.Op]; ok && isReg && isMem && mem.Base == x86asm.RIP && mem.Index == 0 &&
+				inst.DataSize == 64 && r.sym == RodataSym {
+				// A compare, add or subtract of the slot of a writable
+				// global in engine_rodata (writable.go), in Go's order of
+				// operands: CMPQ reg, mem and ADDQ mem, reg.
+				off := r.add + int64(i+inst.Len) - int64(at)
+				flush()
+				m := fmt.Sprintf("·%s+%d(SB)", RodataGo, off)
+				g := goReg(strings.ToLower(reg.String()))
+				if inst.Op == x86asm.CMP {
+					fmt.Fprintf(b, "\t%s %s, %s\n", op, g, m)
+				} else {
+					fmt.Fprintf(b, "\t%s %s, %s\n", op, m, g)
+				}
+				i += inst.Len
+				continue
+			}
 			if inst.Op != x86asm.LEA || !isReg || !isMem || mem.Base != x86asm.RIP || inst.DataSize != 64 {
 				return fmt.Errorf("PC-relative reference to %s in an instruction emit cannot write: %v at %#x", r.sym, inst, i)
 			}
@@ -272,3 +289,8 @@ func (o *object) sortedCallOffsets() []int {
 	sort.Ints(offs)
 	return offs
 }
+
+// slotOps are the instructions that read the slot of a writable global in
+// engine_rodata, where x86 folded the load of its GOT entry (writable.go),
+// with their Go names.
+var slotOps = map[x86asm.Op]string{x86asm.CMP: "CMPQ", x86asm.ADD: "ADDQ", x86asm.SUB: "SUBQ"}

@@ -157,3 +157,90 @@ func TestEmitRodataWritable(t *testing.T) {
 		t.Errorf("not writable:\n%s", out)
 	}
 }
+
+// TestPlanDataAMD64Writable: on amd64 the code reaches a writable global
+// through movq sym@GOTPCREL(%rip), which puts it into the data symbol. A
+// direct RIP-relative reference to it, or any other use of its GOT entry,
+// stops the plan.
+func TestPlanDataAMD64Writable(t *testing.T) {
+	plan := func(l string) *DataPlan {
+		asm := ".text\n.globl f\nf:\n\t" + l + "\n\tretq\n.Lfunc_end0:\n" +
+			"\t.bss\n\t.globl\tcounter\n\t.p2align\t2, 0x0\ncounter:\n\t.zero\t4\n"
+		u, err := SplitAsm(asm, "#")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return PlanData(u, map[string]bool{"f": true})
+	}
+	p := plan("movq\tcounter@GOTPCREL(%rip), %rax")
+	if len(p.Errors) != 0 {
+		t.Fatalf("errors: %v", p.Errors)
+	}
+	if _, ok := p.BlobOff["counter"]; !ok || !p.Writable {
+		t.Errorf("counter: %v, writable %v", p.BlobOff, p.Writable)
+	}
+	if _, ok := p.GOTSlot["counter"]; ok {
+		t.Errorf("a slot for counter, which only a movq loads: %v", p.GOTSlot)
+	}
+	// x86 folds the load of a GOT entry into a compare or an add of the
+	// address: the global gets a slot of its own in the data symbol that
+	// holds its address, with a pointer to it.
+	for _, op := range []string{"cmpq", "addq", "subq"} {
+		p := plan(op + "\tcounter@GOTPCREL(%rip), %rdi")
+		if len(p.Errors) != 0 {
+			t.Fatalf("%s: errors: %v", op, p.Errors)
+		}
+		slot, ok := p.GOTSlot["counter"]
+		if !ok || slot%8 != 0 || slot+8 > len(p.Blob) {
+			t.Fatalf("%s: slot %d of %d bytes", op, slot, len(p.Blob))
+		}
+		want := BlobReloc{Off: slot, Add: int64(p.BlobOff["counter"]), Label: "counter", GOT: true}
+		if len(p.Relocs) != 1 || p.Relocs[0] != want {
+			t.Errorf("%s: relocations %+v, want %+v", op, p.Relocs, want)
+		}
+	}
+	for l, want := range map[string]string{
+		"movl\tcounter(%rip), %eax":            "writable data counter",
+		"leaq\tcounter(%rip), %rax":            "writable data counter",
+		"andq\tcounter@GOTPCREL(%rip), %rax":   "unreviewed GOT reference",
+		"movl\tcounter@GOTPCREL(%rip), %eax":   "unreviewed GOT reference",
+		"movq\tcounter@GOTPCREL+8(%rip), %rax": "unreviewed GOT reference",
+		"cmpq\t%rdi, counter@GOTPCREL(%rip)":   "unreviewed GOT reference",
+	} {
+		if p := plan(l); !strings.Contains(fmt.Sprint(p.Errors), want) {
+			t.Errorf("%q: %v, want %q", l, p.Errors, want)
+		}
+	}
+}
+
+// TestLowerAMD64GOT: the load of a GOT entry becomes a LEA of the global in
+// the data symbol, recorded as a GOT reference for the post-link check.
+func TestLowerAMD64GOT(t *testing.T) {
+	p := &DataPlan{BlobOff: map[string]int{"counter": 24}}
+	env := &LowerEnv{Plan: p, Funcs: map[string]bool{"f": true}}
+	var recs []RefRecord
+	got, err := env.dataRefs("f", "movq\tcounter@GOTPCREL(%rip), %rax", &recs)
+	if err != nil || got != "leaq\t__goasm_rodata+24(%rip), %rax" {
+		t.Fatalf("%q %v", got, err)
+	}
+	if len(recs) != 1 || recs[0] != (RefRecord{Label: "counter", Blob: true, GOT: true}) {
+		t.Errorf("records: %+v", recs)
+	}
+	if _, err := env.dataRefs("f", "movq\tnowhere@GOTPCREL(%rip), %rax", nil); err == nil {
+		t.Error("a GOT load of unplaced data was taken")
+	}
+	// A folded load reads the slot of the global instead.
+	p.GOTSlot = map[string]int{"counter": 64}
+	recs = nil
+	got, err = env.dataRefs("f", "cmpq\tcounter@GOTPCREL(%rip), %rdi", &recs)
+	if err != nil || got != "cmpq\t__goasm_rodata+64(%rip), %rdi" {
+		t.Fatalf("folded: %q %v", got, err)
+	}
+	if len(recs) != 1 || recs[0] != (RefRecord{Label: "counter", Blob: true, GOT: true, Slot: true}) {
+		t.Errorf("folded records: %+v", recs)
+	}
+	delete(p.GOTSlot, "counter")
+	if _, err := env.dataRefs("f", "cmpq\tcounter@GOTPCREL(%rip), %rdi", nil); err == nil {
+		t.Error("a folded GOT load without a slot was taken")
+	}
+}

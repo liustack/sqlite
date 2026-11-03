@@ -870,6 +870,12 @@ func constantPool(asm string, body []string) (string, error) {
 // dataRefs also appends to rec (when not nil) what each reference now points
 // to, for the post-link check.
 func (env *LowerEnv) dataRefs(fn, l string, rec *[]RefRecord) (string, error) {
+	if op, sym, reg, ok, err := amd64GOTRef(clean(l)); ok {
+		if err != nil {
+			return "", err
+		}
+		return env.lowerAMD64GOT(op, sym, reg, rec)
+	}
 	n := norm(l)
 	lea := strings.HasPrefix(n, "lea")
 	var rerr error
