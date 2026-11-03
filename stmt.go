@@ -203,7 +203,8 @@ func (s *stmt) paramIndex(name string) int {
 }
 
 // watch interrupts the statement of the connection when ctx is done, until
-// stop is called.
+// stop is called. stop waits for an interrupt that has started, so that it
+// never reaches a connection that is closed or runs another statement.
 func (c *conn) watch(ctx context.Context) func() {
 	if ctx.Done() == nil {
 		return func() {}
@@ -212,8 +213,16 @@ func (c *conn) watch(ctx context.Context) func() {
 		c.c.Interrupt()
 		return func() {}
 	}
-	stop := context.AfterFunc(ctx, func() { c.c.Interrupt() })
-	return func() { stop() }
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		c.c.Interrupt()
+		close(done)
+	})
+	return func() {
+		if !stop() {
+			<-done
+		}
+	}
 }
 
 // ctxErr is the error of the context when it ended the statement.
