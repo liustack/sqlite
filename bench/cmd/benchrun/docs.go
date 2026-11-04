@@ -62,6 +62,7 @@ var readme = map[string][]readmeRow{
 		{"linux-amd64-1thread", "Scan", "Read 100k rows", "读 10 万行"},
 		{"linux-amd64-1thread", "Aggregate", "Join and group", "连表加分组"},
 		{"linux-amd64-1thread", "Real/query", "Find a user with 400 comments", "查一个用户和他的 400 条评论"},
+		{"linux-amd64-1thread", "Large/size=200k", "Read 100 rows of 200 KB text", "读 100 行 200 KB 的文本"},
 		{"linux-amd64-8threads", "PointParallel", "Read by key, 8 threads", "按主键读，8 线程"},
 		{"linux-amd64-8threads", "InsertParallel/g=8", "Insert, 8 goroutines at once", "8 个 goroutine 同时插入"},
 		{"linux-amd64-8threads", "InsertParallel/g=64", "Insert, 64 goroutines at once", "64 个 goroutine 同时插入"},
@@ -74,6 +75,7 @@ var readme = map[string][]readmeRow{
 		{"darwin-arm64", "Scan", "Read 100k rows", "读 10 万行"},
 		{"darwin-arm64", "Aggregate", "Join and group", "连表加分组"},
 		{"darwin-arm64", "Real/query", "Find a user with 400 comments", "查一个用户和他的 400 条评论"},
+		{"darwin-arm64", "Large/size=200k", "Read 100 rows of 200 KB text", "读 100 行 200 KB 的文本"},
 		{"darwin-arm64", "PointParallel", "Read by key, 10 threads", "按主键读，10 线程"},
 		{"darwin-arm64", "InsertParallel/g=8", "Insert, 8 goroutines at once", "8 个 goroutine 同时插入"},
 		{"darwin-arm64", "InsertParallel/g=64", "Insert, 64 goroutines at once", "64 个 goroutine 同时插入"},
@@ -197,7 +199,7 @@ func renderSet(s *Set, l *lang) string {
 			b.WriteString("| " + r.Bench)
 			best := bestOf(r, s.Drivers)
 			for _, d := range s.Drivers {
-				b.WriteString(" | " + cell(r, d, d == best, spread))
+				b.WriteString(" | " + cell(r, d, ties(r, d, best), spread))
 			}
 			b.WriteString(" |\n")
 		}
@@ -271,7 +273,7 @@ func renderReadme(name string, rows []readmeRow, sets map[string]*Set, l *lang) 
 		b.WriteString("| " + label)
 		best := bestOf(*r, drivers)
 		for _, d := range drivers {
-			b.WriteString(" | " + cell(*r, d, d == best, false))
+			b.WriteString(" | " + cell(*r, d, ties(*r, d, best), false))
 		}
 		b.WriteString(" |\n")
 	}
@@ -329,6 +331,9 @@ func metaLine(m Meta, l *lang) string {
 		note = m.Get("note_zh")
 	}
 	if note != "" {
+		if !l.zh {
+			note = strings.ToUpper(note[:1]) + note[1:]
+		}
 		line += note + end
 	}
 	return strings.TrimSpace(line)
@@ -349,6 +354,13 @@ func bestOf(r Row, ds []string) string {
 		}
 	}
 	return best
+}
+
+// ties says d shows the same value as best, so that drivers that tie are
+// all in bold.
+func ties(r Row, d, best string) bool {
+	c, b := r.Cells[d], r.Cells[best]
+	return c != nil && b != nil && value(c.Median, r.Unit) == value(b.Median, r.Unit)
 }
 
 func cell(r Row, d string, best, spread bool) string {
