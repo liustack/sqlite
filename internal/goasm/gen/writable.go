@@ -58,21 +58,82 @@ func ExposeWritableData(ll string) (string, []string, error) {
 		if len(words) > 0 && words[0] == "external" {
 			continue
 		}
-		var keep []string
-		for _, w := range words {
-			switch {
-			case exposeDrop[w]:
-			case exposeKeep[w]:
-				keep = append(keep, w)
-			default:
-				return "", nil, fmt.Errorf("writable global %s is %s, which the generator does not take: %q", m[1], w, l)
-			}
+		e, err := expose(l, m, "writable global")
+		if err != nil {
+			return "", nil, err
 		}
-		prefix := m[1] + " = "
-		if len(keep) > 0 {
-			prefix += strings.Join(keep, " ") + " "
+		lines[i] = e
+		names = append(names, strings.TrimPrefix(m[1], "@"))
+	}
+	return strings.Join(lines, "\n"), names, nil
+}
+
+// expose rewrites the definition l (m its reGlobalDef match) without the
+// words that let llc reach it directly. what names it in an error.
+func expose(l string, m []string, what string) (string, error) {
+	var keep []string
+	for _, w := range strings.Fields(m[2]) {
+		switch {
+		case exposeDrop[w]:
+		case exposeKeep[w]:
+			keep = append(keep, w)
+		default:
+			return "", fmt.Errorf("%s %s is %s, which the generator does not take: %q", what, m[1], w, l)
 		}
-		lines[i] = prefix + "global " + l[len(m[0]):]
+	}
+	prefix := m[1] + " = "
+	if len(keep) > 0 {
+		prefix += strings.Join(keep, " ") + " "
+	}
+	return prefix + m[3] + " " + l[len(m[0]):], nil
+}
+
+// reMemCopy is a call of LLVM's memcpy or memmove, and reGlobalUse a global
+// a line names.
+var (
+	reMemCopy   = regexp.MustCompile(`\bcall void @llvm\.mem(?:cpy|move)\.`)
+	reGlobalUse = regexp.MustCompile(`@(?:"[^"]*"|[-\w.$]+)`)
+)
+
+// ExposeCopiedPointerTables does for constants what ExposeWritableData does
+// for writable globals, for the constants that hold pointers and that a
+// memcpy or memmove copies. Such a copy is how C initializes a local array or
+// struct (FTS5's table of built-in tokenizers), and llc expands it into
+// direct loads of the constant (an arm64 ldr q of a label, an amd64 movups
+// sym(%rip)). The lowering cannot copy the constant into the body, as its
+// pointers need relocations. Reached through the GOT, it is read through a
+// register that holds its address in engine_rodata. Every other constant is
+// left alone. It returns the new module and the names it changed.
+func ExposeCopiedPointerTables(ll string) (string, []string, error) {
+	lines := strings.Split(ll, "\n")
+	copied := map[string]bool{}
+	for _, l := range lines {
+		if !reMemCopy.MatchString(l) {
+			continue
+		}
+		for _, g := range reGlobalUse.FindAllString(l, -1) {
+			copied[g] = true
+		}
+	}
+	var names []string
+	for i, l := range lines {
+		m := reGlobalDef.FindStringSubmatch(l)
+		if m == nil || m[3] != "constant" || !copied[m[1]] || strings.HasPrefix(m[1], "@llvm.") {
+			continue
+		}
+		words := strings.Fields(m[2])
+		if len(words) > 0 && words[0] == "external" {
+			continue
+		}
+		// The initializer names another global or a function: a pointer.
+		if !reGlobalUse.MatchString(l[len(m[0]):]) {
+			continue
+		}
+		e, err := expose(l, m, "copied constant")
+		if err != nil {
+			return "", nil, err
+		}
+		lines[i] = e
 		names = append(names, strings.TrimPrefix(m[1], "@"))
 	}
 	return strings.Join(lines, "\n"), names, nil

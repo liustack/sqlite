@@ -218,9 +218,14 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	// So are the constants that hold pointers and that a memcpy copies.
+	exposed, copiedNames, err := gen.ExposeCopiedPointerTables(exposed)
+	if err != nil {
+		die(err)
+	}
 	linked = filepath.Join(*work, "engine.exposed.ll")
 	writeFile(linked, exposed)
-	fmt.Fprintf(os.Stderr, "writable globals: %d\n", len(exposedNames))
+	fmt.Fprintf(os.Stderr, "writable globals: %d, copied constants with pointers: %d\n", len(exposedNames), len(copiedNames))
 	tCompile := time.Since(t0)
 
 	// 2. Rules the C breaks, as the IR shows them.

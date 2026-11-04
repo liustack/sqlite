@@ -59,6 +59,8 @@ SQLite keeps 31 writable globals: its configuration, the state of its allocator 
 
 The lowering can only rewrite a reference to data that takes an address: a direct load would have to become a copy in the body of the function, which is wrong for data that changes. So the generator makes every writable global external and preemptible in the IR before llc runs (`ExposeWritableData`). Position-independent code then reaches each one only through a load of its address from the GOT, and the lowering turns that load into the address in the data symbol. x86 sometimes folds the load into a compare, an add or a subtract (`cmpq sym@GOTPCREL(%rip), %rdi`). For those globals the data symbol ends in an 8-byte slot holding the global's address, and the instruction reads the slot. A direct reference to writable data stops the build. `SQLITE_OMIT_WSD` was tried and does not fit: it leaves 21 of 33 globals writable (3.50.4), and makes each read of the configuration look it up.
 
+A constant that holds pointers has the same problem when C copies it: a local array or struct with an initializer (FTS5's table of built-in tokenizers) is a memcpy from a constant, which llc turns into direct loads of it. The lowering cannot copy such a constant into the body, as its pointers need relocations, so the generator sends the constants that hold pointers and that a memcpy or memmove copies through the GOT as well (`ExposeCopiedPointerTables`). Every other constant is left alone.
+
 ## The Go host
 
 A C function `host_x` declared in `engine/host.h` becomes a call of the Go function `host_x` of `internal/csqlite`, with the shadow pointer first. The generator knows them by the prefix.

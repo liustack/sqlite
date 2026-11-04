@@ -67,6 +67,52 @@ func TestExposeWritableDataRejects(t *testing.T) {
 	}
 }
 
+// TestExposeCopiedPointerTables: a constant that holds pointers and that a
+// memcpy or memmove copies goes through the GOT, and no other constant does:
+// one without pointers is copied into the body, one only read by address
+// stays a LEA.
+func TestExposeCopiedPointerTables(t *testing.T) {
+	in := strings.Join([]string{
+		`@.str = private unnamed_addr constant [2 x i8] c"x\00", align 1`,
+		`@__const.f.tbl = private unnamed_addr constant [2 x ptr] [ptr @.str, ptr @g], align 8`,
+		`@__const.f.ops = internal constant { ptr, i32 } { ptr @g, i32 1 }, align 8`,
+		`@__const.f.nums = private unnamed_addr constant [4 x i32] [i32 1, i32 2, i32 3, i32 4], align 4`,
+		`@names = internal unnamed_addr constant [1 x ptr] [ptr @.str], align 8`,
+		`define void @g() {`,
+		`  ret void`,
+		`}`,
+		`define void @f(ptr %d) {`,
+		`  call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 8 dereferenceable(16) %d, ptr noundef nonnull align 8 dereferenceable(16) @__const.f.tbl, i64 16, i1 false)`,
+		`  call void @llvm.memmove.p0.p0.i64(ptr align 8 %d, ptr align 8 getelementptr inbounds (i8, ptr @__const.f.ops, i64 0), i64 16, i1 false)`,
+		`  call void @llvm.memcpy.p0.p0.i64(ptr align 4 %d, ptr align 4 @__const.f.nums, i64 16, i1 false)`,
+		`  %p = getelementptr [1 x ptr], ptr @names, i64 0, i64 0`,
+		`  ret void`,
+		`}`,
+	}, "\n")
+	out, names, err := ExposeCopiedPointerTables(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`@.str = private unnamed_addr constant [2 x i8] c"x\00", align 1`,
+		`@__const.f.tbl = unnamed_addr constant [2 x ptr] [ptr @.str, ptr @g], align 8`,
+		`@__const.f.ops = constant { ptr, i32 } { ptr @g, i32 1 }, align 8`,
+		`@__const.f.nums = private unnamed_addr constant [4 x i32] [i32 1, i32 2, i32 3, i32 4], align 4`,
+		`@names = internal unnamed_addr constant [1 x ptr] [ptr @.str], align 8`,
+	} {
+		if !strings.Contains(out, want+"\n") {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if got := fmt.Sprint(names); got != `[__const.f.tbl __const.f.ops]` {
+		t.Errorf("exposed %s", got)
+	}
+	if _, _, err := ExposeCopiedPointerTables(`@t = hidden constant [1 x ptr] [ptr @t], align 8` + "\n" +
+		`  call void @llvm.memcpy.p0.p0.i64(ptr %d, ptr @t, i64 8, i1 false)`); err == nil {
+		t.Error("a hidden constant accepted")
+	}
+}
+
 // TestPlanDataARM64Writable: a writable global that the code reaches through
 // the GOT goes into the data symbol, which then becomes writable. A direct
 // reference to a writable global would be a copy or a fixed address, and
