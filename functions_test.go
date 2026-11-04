@@ -209,27 +209,31 @@ func TestMergeWithFunction(t *testing.T) {
 		err error
 	}
 	results := make(chan result, n)
-	err = behind(t, other, func() error {
-		for i := range n {
-			go func() {
-				r, err := db.Exec(`INSERT INTO t(s) VALUES (tag(?))`, i)
-				var id int64
-				if err == nil {
-					id, err = r.LastInsertId()
-				}
-				results <- result{i, id, err}
-			}()
-		}
-		deadline := time.Now().Add(5 * time.Second)
-		for waiting() < n {
-			if time.Now().After(deadline) {
-				return fmt.Errorf("%d of %d inserts wait", waiting(), n)
-			}
-			time.Sleep(time.Millisecond)
-		}
-		return nil
-	})
+	// The holder keeps the lock until every insert waits in the queue, so
+	// they run as one batch.
+	tx, err := other.Begin()
 	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, tx, `INSERT INTO h VALUES (1)`)
+	for i := range n {
+		go func() {
+			r, err := db.Exec(`INSERT INTO t(s) VALUES (tag(?))`, i)
+			var id int64
+			if err == nil {
+				id, err = r.LastInsertId()
+			}
+			results <- result{i, id, err}
+		}()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for waiting() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d of %d inserts wait", waiting(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	ids := map[int]int64{}
@@ -346,5 +350,112 @@ func TestOptionsRefused(t *testing.T) {
 		if _, err := NewConnector(":memory:", opt); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+// intValuer is a driver.Valuer whose Value is a plain int, which a bound
+// argument accepts.
+type intValuer int
+
+func (v intValuer) Value() (driver.Value, error) { return int(v), nil }
+
+// panicError is an error whose Error method panics.
+type panicError struct{}
+
+func (panicError) Error() string { panic("no message") }
+
+func TestFunctionResultsAndErrors(t *testing.T) {
+	db := fOpen(t, ":memory:",
+		WithFunction("valuer", 0, func([]driver.Value) (driver.Value, error) { return intValuer(7), nil }),
+		WithFunction("badErr", 0, func([]driver.Value) (driver.Value, error) { return nil, panicError{} }))
+	db.SetMaxOpenConns(1)
+	if got := fString(t, db, `SELECT valuer()`); got != "7" {
+		t.Fatalf("valuer() = %s", got)
+	}
+	var v any
+	if err := db.QueryRow(`SELECT badErr()`).Scan(&v); err == nil || !strings.Contains(err.Error(), "no message") {
+		t.Fatalf("badErr(): %v", err)
+	}
+	if got := fString(t, db, `SELECT valuer()`); got != "7" {
+		t.Fatalf("after badErr(): %s", got)
+	}
+	for name, opt := range map[string]Option{
+		"function":  WithFunction("f\x00g", 0, add1),
+		"collation": WithCollation("c\x00d", strings.Compare),
+	} {
+		if _, err := NewConnector(":memory:", opt); err == nil {
+			t.Errorf("a NUL in the name of a %s accepted", name)
+		}
+	}
+}
+
+// A collation that panics in one statement of a merged batch fails that
+// statement, and the others commit.
+func TestMergeWithCollationPanic(t *testing.T) {
+	p := mPath(t)
+	pc := WithCollation("pc", func(a, b string) int {
+		if a == "zz" || b == "zz" {
+			panic("cannot compare zz")
+		}
+		return strings.Compare(a, b)
+	})
+	db := fOpen(t, "file:"+p, pc)
+	db.SetMaxOpenConns(8)
+	mExec(t, db, `CREATE TABLE h(x); CREATE TABLE t(x TEXT); CREATE INDEX tx ON t(x COLLATE pc); INSERT INTO t VALUES ('m')`)
+	other := mOpen(t, "file:"+p)
+	sc, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wl *writeLock
+	sc.Raw(func(dc any) error { wl = dc.(*conn).wl; return nil })
+	sc.Close()
+	merged0 := wl.stats.merged.Load()
+
+	words := []string{"a", "b", "zz", "c", "d"}
+	errs := make(chan error, len(words))
+	// The holder keeps the lock until every insert waits in the queue, so
+	// they run as one batch.
+	tx, err := other.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, tx, `INSERT INTO h VALUES (1)`)
+	for _, w := range words {
+		go func() {
+			_, err := db.Exec(`INSERT INTO t VALUES (?)`, w)
+			if w == "zz" {
+				if err == nil || !strings.Contains(err.Error(), "cannot compare zz") {
+					err = fmt.Errorf("zz: %v, want the panic", err)
+				} else {
+					err = nil
+				}
+			}
+			errs <- err
+		}()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for waiting() < len(words) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d of %d inserts wait", waiting(), len(words))
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for range words {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+	if m := wl.stats.merged.Load() - merged0; m < 2 {
+		t.Errorf("%d statements merged", m)
+	}
+	if got := fString(t, db, `SELECT group_concat(x, ',') FROM (SELECT x FROM t ORDER BY x)`); got != "a,b,c,d,m" {
+		t.Fatalf("rows: %s", got)
+	}
+	if got := fString(t, db, `PRAGMA integrity_check`); got != "ok" {
+		t.Fatalf("integrity_check: %s", got)
 	}
 }

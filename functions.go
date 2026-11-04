@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,7 +31,10 @@ import (
 //
 // It may run on any connection of its connector, and from several
 // goroutines at once. It must not use the database: it runs in the middle
-// of a statement.
+// of a statement. It may also run more than once for the same row: SQLite
+// does not promise how often it calls a function, and group commit runs a
+// batch again when a failure of one statement ended its transaction. Keep
+// side effects out of it, or make them safe to repeat.
 type Func func(args []driver.Value) (driver.Value, error)
 
 // FuncFlag tells SQLite how a function behaves.
@@ -149,6 +153,8 @@ func newFunction(name string, nArg int, isNil bool, flags []FuncFlag) (function,
 	switch {
 	case name == "":
 		return function{}, errors.New("sqlite: a function without a name")
+	case strings.ContainsRune(name, 0):
+		return function{}, fmt.Errorf("sqlite: function %q: a NUL in the name", name)
 	case len(name) > maxFuncName:
 		return function{}, fmt.Errorf("sqlite: function %.20q...: the name is longer than %d bytes", name, maxFuncName)
 	case isNil:
@@ -171,14 +177,17 @@ func newFunction(name string, nArg int, isNil bool, flags []FuncFlag) (function,
 // WithCollation makes cmp the collation name, for COLLATE name in queries
 // and in the schema. cmp returns a negative number, 0 or a positive number
 // as a sorts before, with or after b, and must be a total order. SQLite has
-// no way to fail a comparison, so a panic in cmp breaks the connection it
-// ran on: the statement returns the error, and database/sql drops the
-// connection.
+// no way to fail a comparison, so after a panic in cmp the statement goes on
+// with comparisons that say equal. None of what it does then is kept: it
+// fails with the panic, the transaction it ran in is rolled back, and no
+// commit happens before that. The connection stays good.
 func WithCollation(name string, cmp func(a, b string) int) Option {
 	return Option{func(o *options) error {
 		switch {
 		case name == "":
 			return errors.New("sqlite: a collation without a name")
+		case strings.ContainsRune(name, 0):
+			return fmt.Errorf("sqlite: collation %q: a NUL in the name", name)
 		case cmp == nil:
 			return fmt.Errorf("sqlite: collation %s is nil", name)
 		}
@@ -190,7 +199,7 @@ func WithCollation(name string, cmp func(a, b string) int) Option {
 // resultValue turns what a function returned into a value the engine sets:
 // the same conversions as a bound argument.
 func resultValue(v driver.Value) (driver.Value, error) {
-	v, err := driver.DefaultParameterConverter.ConvertValue(v)
+	v, err := convert(v)
 	if err != nil {
 		return nil, err
 	}
