@@ -8,8 +8,9 @@
 # generated assembly depends on details inside Go (stack layout, the
 # runtime's use of registers, linker names), and a new Go release can change
 # them. A failure of the job engine is a warning for us to read, not a check
-# for merging. A Go newer than the one the engine was checked with stops the
-# build (internal/goversion), so that job builds with sqlite_anygo.
+# for merging, and it only sees the breaks the tests see. A Go newer than
+# the one the engine was checked with stops the build (internal/goversion),
+# so that job builds with sqlite_anygo.
 name: go-latest
 
 on:
