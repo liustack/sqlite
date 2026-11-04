@@ -11,7 +11,8 @@
 // Then var_samp(x), var_pop(x), stddev_samp(x) and stddev_pop(x), with
 // stddev and variance as other names of the sample ones, as in PostgreSQL.
 // NULLs are skipped. The sample ones give NULL for fewer than 2 values, the
-// population ones for none. A text or a blob is an error.
+// population ones for none. A text or a blob is an error, and so are values
+// whose variance does not fit a float64.
 package stats
 
 import (
@@ -79,6 +80,9 @@ func (m *moments) Final() (driver.Value, error) {
 	v := m.m2 / div
 	if m.root {
 		v = math.Sqrt(v)
+	}
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return nil, fmt.Errorf("%s: the values overflow a float64", m.name)
 	}
 	return v, nil
 }

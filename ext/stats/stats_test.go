@@ -38,6 +38,8 @@ func TestStats(t *testing.T) {
 		`SELECT group_concat(v, ',') FROM (SELECT g, var_pop(x) AS v FROM t GROUP BY g ORDER BY g)`: "4.0,22.5,0.0",
 	})
 	sqltest.Fails(t, db, map[string]string{
-		`SELECT var_pop(x) FROM (SELECT 'a' AS x)`: "var_pop: a string, want a number",
+		`SELECT var_pop(x) FROM (SELECT 'a' AS x)`:                 "var_pop: a string, want a number",
+		`SELECT var_samp(column1) FROM (VALUES (1e308), (-1e308))`: "var_samp: the values overflow a float64",
+		`SELECT var_pop(column1) FROM (VALUES (9e999), (1))`:       "var_pop: the values overflow a float64",
 	})
 }
