@@ -74,11 +74,18 @@ type blockHeader struct {
 
 func headerOf(p uintptr) *blockHeader { return (*blockHeader)(at(p - header)) }
 
+// A bad block (heap damage) fails the call: free leaks it, realloc says out of
+// memory, and the connection is marked broken. The heap is shared, but the
+// block that failed is the only one lost.
 func malloc(sp, n uintptr) uintptr { return alloc(n) }
 
-func free(sp, p uintptr) { release(p) }
+func free(sp, p uintptr) {
+	defer failQuiet(sp)
+	release(p)
+}
 
-func realloc(sp, p, n uintptr) uintptr {
+func realloc(sp, p, n uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, 0)
 	if p == 0 {
 		return alloc(n)
 	}
@@ -161,7 +168,7 @@ func (c *sizeClass) cut(ci int) uintptr {
 }
 
 func allocLarge(t uintptr) uintptr {
-	t = (t + pageSize - 1) &^ (pageSize - 1)
+	t = roundUp(t, pageSize)
 	m, err := mmap(t, 0)
 	if err != nil {
 		return 0

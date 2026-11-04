@@ -9,6 +9,9 @@ package csqlite
 
 import (
 	"fmt"
+	"os"
+	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -21,7 +24,6 @@ import (
 // collector neither scans nor moves.
 const (
 	stackSize = 1 << shadowSizeLog2
-	pageSize  = 1 << 14 // a page on every target (16 KiB on darwin/arm64)
 	// stackHeader is the start of the region the host keeps: the poll
 	// counter is inside it. The C stack starts after it.
 	stackHeader = 4096
@@ -33,7 +35,15 @@ const (
 	pollInterval = 10000
 )
 
+// pageSize is the page of the operating system: 4 KiB on most machines, 16 KiB
+// on darwin/arm64, and 4, 16 or 64 KiB on linux/arm64. Every mapping, trim and
+// guard page is a whole number of them.
+var pageSize = uintptr(os.Getpagesize())
+
 func init() {
+	if pageSize == 0 || pageSize&(pageSize-1) != 0 || stackSize%pageSize != 0 {
+		panic("csqlite: the page size does not divide the shadow stack")
+	}
 	if pollCounterOffset+8 > stackHeader {
 		panic("csqlite: the poll counter is outside the host's header")
 	}
@@ -46,7 +56,36 @@ func init() {
 // time runs C on it. A guard page follows the region.
 type stack struct {
 	base uintptr
+	// broken is set when a panic in a host callback left the C half way. Its
+	// frames are gone and SQLite may hold locks, so no C runs on it again.
+	broken atomic.Bool
+	cause  atomic.Value // the first panic value, as a string
 }
+
+// stacks finds the stack of a shadow pointer, for a callback that must mark
+// it. It is read only on the failure path.
+var stacks sync.Map // base -> *stack
+
+// poison marks the stack of sp as broken after a panic in a host callback.
+func poison(sp uintptr, cause any) {
+	if v, ok := stacks.Load(stackBase(sp)); ok {
+		s := v.(*stack)
+		s.cause.CompareAndSwap(nil, fmt.Sprint(cause))
+		s.broken.Store(true)
+	}
+}
+
+// stackLayout is where the shadow stack goes in a mapping of 2*stackSize+page
+// bytes at start (a multiple of page): base is the aligned region, and the
+// guard page follows it, so end is the end of what is kept. start, base and end
+// are all multiples of page, so each trim is whole pages.
+func stackLayout(start, page uintptr) (base, end uintptr) {
+	base = (start + stackSize - 1) &^ (stackSize - 1)
+	return base, base + stackSize + page
+}
+
+// roundUp rounds n up to a multiple of page (a power of two).
+func roundUp(n, page uintptr) uintptr { return (n + page - 1) &^ (page - 1) }
 
 func newStack() (*stack, error) {
 	// Map twice the size, keep an aligned region and a guard page after it,
@@ -57,19 +96,19 @@ func newStack() (*stack, error) {
 		return nil, fmt.Errorf("csqlite: map a shadow stack: %w", err)
 	}
 	start := uintptr(p)
-	base := (start + stackSize - 1) &^ (stackSize - 1)
-	end := base + stackSize + pageSize
+	base, end := stackLayout(start, pageSize)
 	if base > start {
 		munmap(start, base-start)
 	}
 	if start+n > end {
 		munmap(end, start+n-end)
 	}
-	if err := unix.Mprotect(bytesAt(base+stackSize, pageSize), unix.PROT_NONE); err != nil {
+	if err := unix.Mprotect(bytesAt(base+stackSize, int(pageSize)), unix.PROT_NONE); err != nil {
 		munmap(base, stackSize+pageSize)
 		return nil, err
 	}
 	s := &stack{base: base}
+	stacks.Store(base, s)
 	*s.pollCounter() = pollInterval
 	return s, nil
 }
@@ -93,6 +132,7 @@ func (s *stack) sp() uintptr { return s.base + stackHeader }
 func (s *stack) pollCounter() *int64 { return (*int64)(at(s.base + pollCounterOffset)) }
 
 func (s *stack) free() error {
+	stacks.Delete(s.base)
 	munmap(s.base, stackSize+pageSize)
 	s.base = 0
 	return nil
@@ -119,6 +159,7 @@ func resetPoll(sp uintptr) {
 // host_trap stands for a trap instruction of the C: a check that failed, or
 // the shadow stack run out.
 func host_trap(sp uintptr) {
+	poison(sp, "the C trapped")
 	panic("csqlite: the C trapped")
 }
 

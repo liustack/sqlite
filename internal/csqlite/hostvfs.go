@@ -26,7 +26,8 @@ func rc(r int) uintptr { return uintptr(int32(r)) }
 
 func putInt(p uintptr, v int) { *(*int32)(at(p)) = int32(v) }
 
-func host_open(sp, name, flags, outFlags, handle uintptr) uintptr {
+func host_open(sp, name, flags, outFlags, handle uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	f, out, r := vfs.Open(cstring(name), i32(flags))
 	if r != sqliteOK {
 		return rc(r)
@@ -36,11 +37,13 @@ func host_open(sp, name, flags, outFlags, handle uintptr) uintptr {
 	return sqliteOK
 }
 
-func host_delete(sp, name, syncDir uintptr) uintptr {
+func host_delete(sp, name, syncDir uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(vfs.Delete(cstring(name), i32(syncDir) != 0))
 }
 
-func host_access(sp, name, flags, res uintptr) uintptr {
+func host_access(sp, name, flags, res uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	ok, r := vfs.Access(cstring(name), i32(flags))
 	v := 0
 	if ok {
@@ -50,7 +53,8 @@ func host_access(sp, name, flags, res uintptr) uintptr {
 	return rc(r)
 }
 
-func host_full_pathname(sp, name, n, out uintptr) uintptr {
+func host_full_pathname(sp, name, n, out uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	p, r := vfs.FullPathname(cstring(name))
 	if r != vfs.OK && r != vfs.OKSymlink {
 		return rc(r)
@@ -65,10 +69,12 @@ func host_full_pathname(sp, name, n, out uintptr) uintptr {
 }
 
 func host_randomness(sp, out, n uintptr) {
+	defer failQuiet(sp)
 	rand.Read(bytesAt(out, i32(n)))
 }
 
 func host_sleep(sp, us uintptr) {
+	defer failQuiet(sp)
 	time.Sleep(time.Duration(i32(us)) * time.Microsecond)
 }
 
@@ -76,43 +82,52 @@ func host_now_ms(sp uintptr) uintptr {
 	return uintptr(time.Now().UnixMilli())
 }
 
-func host_close(sp, f uintptr) uintptr {
+func host_close(sp, f uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	r := files.get(f).Close()
 	files.remove(f)
 	return rc(r)
 }
 
-func host_read(sp, f, buf, n, off uintptr) uintptr {
+func host_read(sp, f, buf, n, off uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).ReadAt(bytesAt(buf, i32(n)), int64(off)))
 }
 
-func host_write(sp, f, buf, n, off uintptr) uintptr {
+func host_write(sp, f, buf, n, off uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).WriteAt(bytesAt(buf, i32(n)), int64(off)))
 }
 
-func host_truncate(sp, f, size uintptr) uintptr {
+func host_truncate(sp, f, size uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).Truncate(int64(size)))
 }
 
-func host_sync(sp, f, flags uintptr) uintptr {
+func host_sync(sp, f, flags uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).Sync(i32(flags)))
 }
 
-func host_file_size(sp, f, size uintptr) uintptr {
+func host_file_size(sp, f, size uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	s, r := files.get(f).Size()
 	*(*int64)(at(size)) = s
 	return rc(r)
 }
 
-func host_lock(sp, f, level uintptr) uintptr {
+func host_lock(sp, f, level uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).Lock(i32(level)))
 }
 
-func host_unlock(sp, f, level uintptr) uintptr {
+func host_unlock(sp, f, level uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).Unlock(i32(level)))
 }
 
-func host_check_reserved_lock(sp, f, res uintptr) uintptr {
+func host_check_reserved_lock(sp, f, res uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	ok, r := files.get(f).CheckReservedLock()
 	v := 0
 	if ok {
@@ -122,38 +137,48 @@ func host_check_reserved_lock(sp, f, res uintptr) uintptr {
 	return rc(r)
 }
 
-func host_lock_state(sp, f uintptr) uintptr {
+func host_lock_state(sp, f uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, 0)
 	return rc(files.get(f).LockState())
 }
 
-func host_size_hint(sp, f, size uintptr) uintptr {
+func host_size_hint(sp, f, size uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).SizeHint(int64(size)))
 }
 
 func host_chunk_size(sp, f, n uintptr) {
+	defer failQuiet(sp)
 	files.get(f).SetChunkSize(i32(n))
 }
 
-func host_has_moved(sp, f uintptr) uintptr {
+func host_has_moved(sp, f uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, 0)
 	if files.get(f).HasMoved() {
 		return 1
 	}
 	return 0
 }
 
-func host_shm_map(sp, f, region, size, extend, p uintptr) uintptr {
+func host_shm_map(sp, f, region, size, extend, p uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	a, r := files.get(f).ShmMap(i32(region), i32(size), i32(extend) != 0)
 	*(*uintptr)(at(p)) = a
 	return rc(r)
 }
 
-func host_shm_lock(sp, f, offset, n, flags uintptr) uintptr {
+func host_shm_lock(sp, f, offset, n, flags uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).ShmLock(i32(offset), i32(n), i32(flags)))
 }
 
-func host_shm_barrier(sp uintptr) { vfs.ShmBarrier() }
+func host_shm_barrier(sp uintptr) {
+	defer failQuiet(sp)
+	vfs.ShmBarrier()
+}
 
-func host_shm_unmap(sp, f, del uintptr) uintptr {
+func host_shm_unmap(sp, f, del uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteIOErr)
 	return rc(files.get(f).ShmUnmap(i32(del) != 0))
 }
 
