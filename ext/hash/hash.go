@@ -10,7 +10,8 @@
 // Then md5(x), sha1(x), sha256(x), sha512(x) and crc32(x). Each hashes the
 // bytes of a text or a blob (an integer as its decimal text) and gives the
 // hash as a blob, crc32 as an integer. Use hex() for text:
-// hex(sha256('abc')). NULL gives NULL. md5 and sha1 are broken for
+// hex(sha256('abc')). NULL gives NULL. A REAL is an error: write
+// CAST(x AS TEXT). md5 and sha1 are broken for
 // security: use them to find copies, not to check what someone sent.
 package hash
 
