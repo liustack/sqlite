@@ -335,10 +335,7 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 			continue
 		}
 		if err := c.execCached("COMMIT"); err != nil {
-			if !c.c.AutoCommit() {
-				c.execCached("ROLLBACK")
-			}
-			answer(ok, err)
+			answer(ok, c.abandon(err))
 			return back
 		}
 		answer(ok, nil)
