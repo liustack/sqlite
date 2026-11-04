@@ -23506,7 +23506,7 @@ TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $120-40
 	WORD $0x710032ff
 	WORD $0x54fffea3
 	WORD $0x14000007
-	MOVD $·engine_rodata+64968(SB), R10
+	MOVD $·engine_rodata+65008(SB), R10
 	WORD $0x8b090949
 	WORD $0xb85d0129
 	WORD $0x710032ff

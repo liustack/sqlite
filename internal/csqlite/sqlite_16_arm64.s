@@ -7175,7 +7175,7 @@ TEXT ·sqlite3_os_init(SB), $72-16
 	MOVD $·engine_rodata+3600(SB), R10
 	MOVD $·engine_rodata+168(SB), R12
 	WORD $0xf940018e
-	MOVD $·engine_rodata+64640(SB), R13
+	MOVD $·engine_rodata+64680(SB), R13
 	WORD $0xeb0d01df
 	WORD $0x54000540
 	WORD $0xb400054e
@@ -7204,7 +7204,7 @@ TEXT ·sqlite3_os_init(SB), $72-16
 	BL ·host_poll(SB)
 	WORD $0xa9423be9
 	WORD $0x52800328
-	MOVD $·engine_rodata+64640(SB), R13
+	MOVD $·engine_rodata+64680(SB), R13
 	MOVD $·engine_rodata+168(SB), R12
 	WORD $0xb94037eb
 	WORD $0xf9401ff5

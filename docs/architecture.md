@@ -77,7 +77,7 @@ Inside the driver, a connection takes its file's write lock before a statement t
 
 Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver takes the autocommit DML of many callers, runs it as one transaction and commits once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
 
-How it works (`writer.go`): a statement that comes to the file's write lock while another connection holds it joins the file's queue instead of waiting. The connection that gives the lock back runs the queue on itself, up to 256 statements: `BEGIN IMMEDIATE`, then each statement between `SAVEPOINT` and `RELEASE` (`ROLLBACK TO` when it fails, and its caller gets the error), then `COMMIT`, and only then does each caller get its result. When a failure ends the whole transaction, the statements that had run are run again in a new one. With no other writer a statement runs directly, so one writer pays nothing.
+How it works (`writer.go`): a statement that comes to the file's write lock while another connection holds it joins the file's queue instead of waiting. The connection that gives the lock back runs the queue on itself, up to 256 statements: `BEGIN IMMEDIATE`, then each statement between `SAVEPOINT` and `RELEASE`, then `COMMIT`, and only then does each caller get its result. A statement that fails keeps what SQLite kept of it, as it would alone (nothing, or the rows before the failure for `OR FAIL`), and its caller gets the error. A statement that leaves a deferred foreign key unresolved is undone with `ROLLBACK TO`, and its caller gets the error its own `COMMIT` would have given. When a failure ends the whole transaction, the statements that had run are run again in a new one. A caller whose context is done before its turn gets the context's error and its statement never runs. After the batch the lock goes to the next connection that waits for it, or else to the first statement of the queue, which then runs on its own connection: no one waits behind the queue for long. With no other writer a statement runs directly, so one writer pays nothing.
 
 ```mermaid
 sequenceDiagram
@@ -97,6 +97,10 @@ sequenceDiagram
 ```
 
 Which statements may join: the driver installs an authorizer in C (`goClassify` in `engine/os.c`) that sees each statement as it is prepared. A statement joins only when it writes tables of the main database and touches nothing only its own connection has: no other schema (temp, attached), no write from a trigger (it may be a temporary trigger), no `last_insert_rowid()`, `changes()` or `total_changes()`, and nothing that is not DML. Only `Exec` merges. A statement in a transaction never does.
+
+Which connections may run each other's statements: only connections of one connector (the same DSN, so the same `_pragma` settings), and only while neither has changed itself since it opened. A connection changes itself with a PRAGMA that sets something, `ATTACH`, `DETACH` or a temporary table, view, index or trigger, and the authorizer marks it as the statement is prepared. A connection opened read-only, and one in a read-only transaction, never merge either. From then on the connection writes only on its own, with the file's write lock as before.
+
+One thing differs from running alone: a merged statement runs on another connection, so `changes()` and `total_changes()` on the caller's connection do not count it, and the connection that ran it counts it instead. `LastInsertId` and `RowsAffected` are right, and so is `last_insert_rowid()` on the caller's connection.
 
 On an Apple M4 (WAL, `synchronous=NORMAL`, one autocommit `INSERT` per call, `bench/`), the time per insert:
 

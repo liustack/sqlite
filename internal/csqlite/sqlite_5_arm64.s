@@ -15357,7 +15357,7 @@ TEXT ·sqlite3SelectWrongNumTermsError(SB), NOSPLIT, $56-24
 	WORD $0x7100093f
 	WORD $0x54000128
 	WORD $0x92401d08
-	MOVD $·engine_rodata+65016(SB), R9
+	MOVD $·engine_rodata+65056(SB), R9
 	WORD $0xf8687928
 	WORD $0x14000006
 	MOVD $·engine_rodata+36055(SB), R22

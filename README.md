@@ -92,6 +92,9 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 
 - No release tag yet. `go get` takes the newest commit of `main`.
 - Left out of the build for now: FTS5, R*Tree, the math functions, `localtime`, loadable extensions.
+- No shared cache: `cache=shared` gives an error. For a memory database that all connections of a pool see, use `file:/name?vfs=memdb`.
+- Double-quoted strings are identifiers only (`SQLITE_DQS=0`, as SQLite advises): write string literals in single quotes.
+- Memory SQLite has used is kept for reuse and not given back to the system while the process runs.
 - windows and other targets do not build.
 
 ## Documentation

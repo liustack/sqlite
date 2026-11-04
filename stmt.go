@@ -30,24 +30,31 @@ type stmt struct {
 	mergeable bool
 	// readOnly says the statement writes nothing (sqlite3_stmt_readonly).
 	readOnly bool
+	// changesConn says the statement changes its connection (a PRAGMA that
+	// sets something, ATTACH, a temporary object).
+	changesConn bool
 	// once is a statement of conn.QueryContext: its rows finalize it.
 	once bool
 	// busy says rows of the statement are open.
 	busy bool
-	// cols, decl and isTime describe the columns of its rows, read once
-	// (columns change only when SQLite prepares it again after a change of
-	// the schema, which columns checks for).
-	cols   []string
-	decl   []string
-	isTime []bool
+	// cols, decl and isTime describe the columns of its rows. They are read
+	// again when SQLite has prepared the statement again after a change of
+	// the schema (prepared counts those).
+	cols     []string
+	decl     []string
+	isTime   []bool
+	prepared int
 }
 
-// columns reads the names and declared types of the columns once.
+// columns reads the names and declared types of the columns, once for each
+// time SQLite prepared the statement.
 func (s *stmt) columns() {
-	n := s.s.ColumnCount()
-	if s.cols != nil && len(s.cols) == n {
+	p := s.s.Reprepares()
+	if s.cols != nil && p == s.prepared {
 		return
 	}
+	s.prepared = p
+	n := s.s.ColumnCount()
 	s.cols = make([]string, n)
 	s.decl = make([]string, n)
 	s.isTime = make([]bool, n)
@@ -100,7 +107,10 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 
 func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, error) {
 	c := s.c
-	if s.mergeable && c.wl != nil && !c.writing && c.c.AutoCommit() {
+	if c.c.Broken() {
+		return nil, driver.ErrBadConn
+	}
+	if s.mergeable && c.wl != nil && !c.writing && !c.private && c.c.AutoCommit() {
 		return c.wl.submit(ctx, c, s, args)
 	}
 	if err := c.beginWrite(ctx, s.readOnly); err != nil {
@@ -108,12 +118,27 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	}
 	r, err := s.run(ctx, args)
 	c.endWrite()
+	if s.changesConn {
+		c.readBusyTimeout()
+	}
 	return r, err
 }
 
+// readBusyTimeout reads busy_timeout again after a statement that may have
+// set it: the file's write lock waits as long as SQLite would.
+func (c *conn) readBusyTimeout() {
+	if ms, err := pragmaInt(c.c, "busy_timeout"); err == nil {
+		c.busyTimeout = time.Duration(ms) * time.Millisecond
+	}
+}
+
 // run binds args and steps the statement once, with the write lock held if
-// it writes.
+// it writes. A context done before the step stops it: SQLite forgets an
+// interrupt that comes before a statement starts.
 func (s *stmt) run(ctx context.Context, args []driver.NamedValue) (*result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := s.bind(args); err != nil {
 		return nil, err
 	}
@@ -133,24 +158,57 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	return s.query(ctx, args)
 }
 
+// query runs the statement to its first row, so that its columns are the
+// ones of the schema it runs on (SQLite prepares it again at its first step
+// after a change of the schema), and a context done before then stops it.
 func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, error) {
+	c := s.c
+	if c.c.Broken() {
+		return nil, driver.ErrBadConn
+	}
 	if s.busy {
 		return nil, errors.New("sqlite: the rows of the statement are still open")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if err := s.bind(args); err != nil {
 		return nil, err
 	}
-	if err := s.c.beginWrite(ctx, s.readOnly); err != nil {
+	if err := c.beginWrite(ctx, s.readOnly); err != nil {
 		return nil, err
+	}
+	stop := c.watch(ctx)
+	row, err := s.s.Step()
+	if err != nil {
+		stop()
+		s.s.Reset()
+		c.endWrite()
+		return nil, ctxErr(ctx, err)
+	}
+	if s.changesConn {
+		c.readBusyTimeout()
 	}
 	s.busy = true
 	s.columns()
-	return &rows{s: s, ctx: ctx, stop: s.c.watch(ctx)}, nil
+	r := &rows{s: s, ctx: ctx, stop: stop, first: true, done: !row}
+	if !row {
+		r.end()
+	}
+	return r, nil
 }
 
 func (s *stmt) bind(args []driver.NamedValue) error {
 	if err := s.s.ClearBindings(); err != nil {
 		return err
+	}
+	named := false
+	for _, a := range args {
+		named = named || a.Name != ""
+	}
+	if !named && len(args) < s.nparams {
+		// SQLite would read the parameters left over as NULL.
+		return fmt.Errorf("sqlite: %d arguments for %d parameters", len(args), s.nparams)
 	}
 	for _, a := range args {
 		i := a.Ordinal
@@ -177,7 +235,11 @@ func (s *stmt) bind(args []driver.NamedValue) error {
 			}
 			err = s.s.BindInt64(i, n)
 		case []byte:
-			err = s.s.BindBlob(i, v)
+			if v == nil {
+				err = s.s.BindNull(i) // as mattn/go-sqlite3 does
+			} else {
+				err = s.s.BindBlob(i, v)
+			}
 		case string:
 			err = s.s.BindText(i, v)
 		case time.Time:
@@ -241,11 +303,22 @@ func (r *result) LastInsertId() (int64, error) { return r.id, nil }
 func (r *result) RowsAffected() (int64, error) { return r.n, nil }
 
 type rows struct {
-	s     *stmt
-	ctx   context.Context
-	stop  func()
+	s    *stmt
+	ctx  context.Context
+	stop func()
+	// first says query stepped to the first row and NextRow has not yet
+	// given it.
+	first bool
 	done  bool
 	close bool
+}
+
+// end stops watching the context once the statement has ended, so that no
+// interrupt reaches a later statement of the connection.
+func (r *rows) end() {
+	r.done = true
+	r.stop()
+	r.stop = func() {}
 }
 
 var (
@@ -280,16 +353,23 @@ func (r *rows) Close() error {
 
 // NextRow steps to the next row.
 func (r *rows) NextRow() error {
+	if r.first {
+		r.first = false
+		if r.done {
+			return io.EOF
+		}
+		return nil
+	}
 	if r.done {
 		return io.EOF
 	}
 	row, err := r.s.s.Step()
 	if err != nil {
-		r.done = true
+		r.end()
 		return ctxErr(r.ctx, err)
 	}
 	if !row {
-		r.done = true
+		r.end()
 		return io.EOF
 	}
 	return nil

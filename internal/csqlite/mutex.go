@@ -83,7 +83,9 @@ var (
 	staticMutexO sync.Once
 )
 
-func host_mutex_alloc(sp, typ uintptr) uintptr {
+func host_mutex_alloc(sp, typ uintptr) (ret uintptr) {
+	// A NULL mutex is what SQLite reads as out of memory.
+	defer failWith(sp, &ret, 0)
 	typ = uintptr(int32(typ))
 	switch {
 	case typ == mutexFast:
@@ -102,6 +104,7 @@ func host_mutex_alloc(sp, typ uintptr) uintptr {
 }
 
 func host_mutex_free(sp, m uintptr) {
+	defer failQuiet(sp)
 	for _, s := range staticMutex {
 		if m&0xffffffff == s {
 			return
@@ -111,6 +114,7 @@ func host_mutex_free(sp, m uintptr) {
 }
 
 func host_mutex_enter(sp, m uintptr) {
+	defer failAndGoOn(sp)
 	x := mutexes.get(m)
 	if !x.recursive {
 		x.mu.Lock()
@@ -126,7 +130,8 @@ func host_mutex_enter(sp, m uintptr) {
 	x.depth = 1
 }
 
-func host_mutex_try(sp, m uintptr) uintptr {
+func host_mutex_try(sp, m uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteBusy)
 	x := mutexes.get(m)
 	if !x.recursive {
 		if x.mu.TryLock() {
@@ -148,6 +153,7 @@ func host_mutex_try(sp, m uintptr) uintptr {
 }
 
 func host_mutex_leave(sp, m uintptr) {
+	defer failAndGoOn(sp)
 	x := mutexes.get(m)
 	if x.recursive {
 		x.depth--

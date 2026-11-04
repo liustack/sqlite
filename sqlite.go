@@ -37,6 +37,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -71,6 +72,9 @@ type Connector struct {
 	name    string // what SQLite opens
 	pragmas []string
 	begin   string
+	// key is the same for connectors that open a file the same way: group
+	// commit merges statements only between connections of one key.
+	key string
 }
 
 // NewConnector parses dsn, for sql.OpenDB.
@@ -96,9 +100,17 @@ func NewConnector(dsn string) (*Connector, error) {
 	default:
 		return nil, fmt.Errorf("sqlite: _time_format=%s: the only format is sqlite", f)
 	}
+	if q.Get("cache") == "shared" {
+		// SQLite is built without shared cache (engine/sqlite.c), and would
+		// open each connection its own database without a word.
+		return nil, errors.New("sqlite: cache=shared is not built in: use file:/name?vfs=memdb for a memory database that connections share")
+	}
 	for k := range q {
-		if strings.HasPrefix(k, "_") {
+		switch {
+		case k == "_pragma", k == "_txlock", k == "_time_format":
 			q.Del(k)
+		case strings.HasPrefix(k, "_"):
+			return nil, fmt.Errorf("sqlite: unknown parameter %s: the driver takes _pragma, _txlock and _time_format (for example _pragma=foreign_keys(1))", k)
 		}
 	}
 	if strings.HasPrefix(name, "file:") {
@@ -109,6 +121,7 @@ func NewConnector(dsn string) (*Connector, error) {
 		return nil, fmt.Errorf("sqlite: data source name %q: SQLite reads parameters only from a file: URI", dsn)
 	}
 	c.name = name
+	c.key = name + "\x00" + strings.Join(c.pragmas, "\x00")
 	return c, nil
 }
 
@@ -118,7 +131,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn := &conn{c: cc, begin: c.begin}
+	conn := &conn{c: cc, begin: c.begin, key: c.key}
 	if err := cc.BusyTimeout(5000); err != nil {
 		cc.Close()
 		return nil, err
@@ -135,6 +148,9 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 	conn.busyTimeout = time.Duration(ms) * time.Millisecond
+	// A connection SQLite opened read-only, as when the file is, runs
+	// differently from the others of its key.
+	conn.private = cc.ReadOnly()
 	if conn.path = cc.Filename("main"); conn.path != "" {
 		conn.wl = openWriteLock(conn.path)
 	}

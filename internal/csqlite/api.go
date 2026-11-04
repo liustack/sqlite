@@ -131,8 +131,20 @@ func (a *args) word() uintptr {
 // is passed from malloc'd memory.
 const big = 1 << 20
 
-// Open opens a connection.
+// maxName is the longest file name, VFS name or schema name passed on the
+// shadow stack. Real paths are a few KiB at most.
+const maxName = 1 << 16
+
+// Open opens a connection. It does not take OpenFullMutex: a connection has
+// one shadow stack, so two goroutines cannot run on it at once, and a mutex
+// of SQLite could not tell them apart.
 func Open(name string, flags int, vfs string) (*Conn, error) {
+	if flags&OpenFullMutex != 0 {
+		return nil, &Error{Code: 21, Msg: "OpenFullMutex is not supported: a connection is used by one goroutine at a time"}
+	}
+	if len(name) > maxName || len(vfs) > maxName {
+		return nil, &Error{Code: 18, Msg: "file name too long"}
+	}
 	if err := start(); err != nil {
 		return nil, err
 	}
@@ -156,7 +168,7 @@ func Open(name string, flags int, vfs string) (*Conn, error) {
 	if r != OK {
 		err := c.err(int(r))
 		if c.db != 0 {
-			sqlite3_close_v2(c.sp, c.db)
+			sqlite3_close(c.sp, c.db)
 		}
 		st.free()
 		return nil, err
@@ -170,8 +182,9 @@ func (c *Conn) classifyWord() uintptr { return c.st.base + classifyOffset }
 
 // The bits goClassify writes (engine/os.c).
 const (
-	writesMain = 1
-	private    = 2
+	writesMain  = 1
+	private     = 2
+	changesConn = 4
 )
 
 // err is the error of result code r, with the connection's message.
@@ -185,12 +198,21 @@ func (c *Conn) err(r int) error {
 	return &Error{Code: r, Msg: cstring(sqlite3_errmsg(c.sp, c.db))}
 }
 
-// Close closes the connection. Its statements must be finalized.
+// Close closes the connection. Its statements must be finalized first: with
+// one open, Close returns SQLITE_BUSY and the connection stays open and usable,
+// since SQLite would otherwise keep a half-closed connection that runs on a
+// shadow stack already given back. A broken connection runs no C: Close frees
+// its stack and returns the error that says so.
 func (c *Conn) Close() error {
 	if c.db == 0 {
 		return errors.New("sqlite: connection already closed")
 	}
-	if r := int32(sqlite3_close_v2(c.sp, c.db)); r != OK {
+	if err := c.brokenErr(); err != nil {
+		c.db = 0
+		c.st.free()
+		return err
+	}
+	if r := int32(sqlite3_close(c.sp, c.db)); r != OK {
 		return c.err(int(r))
 	}
 	c.db = 0
@@ -199,8 +221,14 @@ func (c *Conn) Close() error {
 
 // Exec runs one or more statements that return no rows.
 func (c *Conn) Exec(sql string) error {
+	if err := c.brokenErr(); err != nil {
+		return err
+	}
 	if len(sql) > big {
-		p := alloc(uintptr(len(sql) + 1))
+		p := stageAlloc(uintptr(len(sql) + 1))
+		if p == 0 {
+			return errNoMem()
+		}
 		defer release(p)
 		copy(bytesAt(p, len(sql)), sql)
 		*(*byte)(at(p + uintptr(len(sql)))) = 0
@@ -214,12 +242,18 @@ func (c *Conn) Exec(sql string) error {
 // Prepare compiles the first statement of sql. tail is the rest of sql. A
 // nil statement with no error is sql with no statement in it.
 func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
+	if err := c.brokenErr(); err != nil {
+		return nil, "", err
+	}
 	a := c.args()
 	pStmt := a.word()
 	pTail := a.word()
 	var z uintptr
 	if len(sql) > big {
-		z = alloc(uintptr(len(sql) + 1))
+		z = stageAlloc(uintptr(len(sql) + 1))
+		if z == 0 {
+			return nil, "", errNoMem()
+		}
 		defer release(z)
 		copy(bytesAt(z, len(sql)), sql)
 	} else {
@@ -248,11 +282,32 @@ func (c *Conn) Changes() int64 { return int64(sqlite3_changes64(c.sp, c.db)) }
 // LastInsertRowID is the rowid of the last row inserted.
 func (c *Conn) LastInsertRowID() int64 { return int64(sqlite3_last_insert_rowid(c.sp, c.db)) }
 
+// SetLastInsertRowID sets what LastInsertRowID and last_insert_rowid() give.
+func (c *Conn) SetLastInsertRowID(id int64) { sqlite3_set_last_insert_rowid(c.sp, c.db, uintptr(id)) }
+
+// DeferredFKs says foreign key constraints of the transaction are not
+// resolved yet (SQLITE_DBSTATUS_DEFERRED_FKS).
+func (c *Conn) DeferredFKs() bool {
+	a := c.args()
+	cur, hi := a.word(), a.word()
+	sqlite3_db_status(c.sp, c.db, 10, cur, hi, 0) // SQLITE_DBSTATUS_DEFERRED_FKS
+	return *(*int32)(at(cur)) != 0
+}
+
+// ReadOnly says the main database is open read-only.
+func (c *Conn) ReadOnly() bool {
+	a := c.args()
+	return int32(sqlite3_db_readonly(c.sp, c.db, a.str("main"))) == 1
+}
+
 // AutoCommit says whether no transaction is open.
 func (c *Conn) AutoCommit() bool { return int32(sqlite3_get_autocommit(c.sp, c.db)) != 0 }
 
 // BusyTimeout sets how long a statement waits for a lock.
 func (c *Conn) BusyTimeout(ms int) error {
+	if err := c.brokenErr(); err != nil {
+		return err
+	}
 	return c.err(int(int32(sqlite3_busy_timeout(c.sp, c.db, uintptr(ms)))))
 }
 
@@ -268,23 +323,49 @@ type Stmt struct {
 // the same file, it does the same.
 func (s *Stmt) Mergeable() bool { return s.kind == writesMain }
 
+// ChangesConn says the statement changes the connection itself: a PRAGMA
+// that sets something, ATTACH, DETACH, or a temporary table, index, view or
+// trigger.
+func (s *Stmt) ChangesConn() bool { return s.kind&changesConn != 0 }
+
+// Reprepares is how many times SQLite prepared the statement again, after a
+// change of the schema.
+func (s *Stmt) Reprepares() int { return int(int32(sqlite3_stmt_status(s.c.sp, s.p, 5, 0))) } // SQLITE_STMTSTATUS_REPREPARE
+
 func (s *Stmt) err(r uintptr) error { return s.c.err(int(int32(r))) }
 
 // Finalize frees the statement.
 func (s *Stmt) Finalize() error {
+	if err := s.c.brokenErr(); err != nil {
+		s.p = 0
+		return err
+	}
 	r := sqlite3_finalize(s.c.sp, s.p)
 	s.p = 0
 	return s.err(r)
 }
 
 // Reset makes the statement ready to run again. Bindings stay.
-func (s *Stmt) Reset() error { return s.err(sqlite3_reset(s.c.sp, s.p)) }
+func (s *Stmt) Reset() error {
+	if err := s.c.brokenErr(); err != nil {
+		return err
+	}
+	return s.err(sqlite3_reset(s.c.sp, s.p))
+}
 
 // ClearBindings sets every parameter to NULL.
-func (s *Stmt) ClearBindings() error { return s.err(sqlite3_clear_bindings(s.c.sp, s.p)) }
+func (s *Stmt) ClearBindings() error {
+	if err := s.c.brokenErr(); err != nil {
+		return err
+	}
+	return s.err(sqlite3_clear_bindings(s.c.sp, s.p))
+}
 
 // Step runs the statement to its next row: true when there is one.
 func (s *Stmt) Step() (bool, error) {
+	if err := s.c.brokenErr(); err != nil {
+		return false, err
+	}
 	switch r := int32(sqlite3_step(s.c.sp, s.p)); r {
 	case Row:
 		return true, nil
@@ -306,13 +387,24 @@ func (s *Stmt) ParamName(i int) string {
 	return cstring(sqlite3_bind_parameter_name(s.c.sp, s.p, uintptr(i)))
 }
 
-func (s *Stmt) BindNull(i int) error { return s.err(sqlite3_bind_null(s.c.sp, s.p, uintptr(i))) }
+func (s *Stmt) BindNull(i int) error {
+	if err := s.c.brokenErr(); err != nil {
+		return err
+	}
+	return s.err(sqlite3_bind_null(s.c.sp, s.p, uintptr(i)))
+}
 
 func (s *Stmt) BindInt64(i int, v int64) error {
+	if err := s.c.brokenErr(); err != nil {
+		return err
+	}
 	return s.err(sqlite3_bind_int64(s.c.sp, s.p, uintptr(i), uintptr(v)))
 }
 
 func (s *Stmt) BindDouble(i int, v float64) error {
+	if err := s.c.brokenErr(); err != nil {
+		return err
+	}
 	return s.err(sqlite3_bind_double(s.c.sp, s.p, uintptr(i), v))
 }
 
@@ -320,38 +412,59 @@ func (s *Stmt) BindDouble(i int, v float64) error {
 const transient = ^uintptr(0)
 
 func (s *Stmt) BindText(i int, v string) error {
+	if err := s.c.brokenErr(); err != nil {
+		return err
+	}
 	if len(v) > math.MaxInt32 {
 		return &Error{Code: 18, Msg: "string or blob too big"}
 	}
-	z, done := s.c.stage(unsafe.StringData(v), len(v))
+	z, done, err := s.c.stage(unsafe.StringData(v), len(v))
+	if err != nil {
+		return err
+	}
 	defer done()
 	return s.err(sqlite3_bind_text(s.c.sp+stageRoom(len(v)), s.p, uintptr(i), z, uintptr(len(v)), transient))
 }
 
 func (s *Stmt) BindBlob(i int, v []byte) error {
+	if err := s.c.brokenErr(); err != nil {
+		return err
+	}
 	if len(v) > math.MaxInt32 {
 		return &Error{Code: 18, Msg: "string or blob too big"}
 	}
 	if v == nil {
 		v = []byte{}
 	}
-	z, done := s.c.stage(unsafe.SliceData(v), len(v))
+	z, done, err := s.c.stage(unsafe.SliceData(v), len(v))
+	if err != nil {
+		return err
+	}
 	defer done()
 	return s.err(sqlite3_bind_blob(s.c.sp+stageRoom(len(v)), s.p, uintptr(i), z, uintptr(len(v)), transient))
 }
 
 // stage copies n bytes from Go memory to where the C can read them: the
 // bottom of the shadow stack when they fit, malloc'd memory when not.
-func (c *Conn) stage(b *byte, n int) (uintptr, func()) {
+func (c *Conn) stage(b *byte, n int) (uintptr, func(), error) {
 	src := unsafe.Slice(b, n)
 	if n <= big {
 		copy(bytesAt(c.sp, n), src)
-		return c.sp, func() {}
+		return c.sp, func() {}, nil
 	}
-	p := alloc(uintptr(n))
+	p := stageAlloc(uintptr(n))
+	if p == 0 {
+		return 0, nil, errNoMem()
+	}
 	copy(bytesAt(p, n), src)
-	return p, func() { release(p) }
+	return p, func() { release(p) }, nil
 }
+
+// stageAlloc is where the Go side gets memory for an argument too big for the
+// shadow stack. It is a variable so that a test can make it fail.
+var stageAlloc = alloc
+
+func errNoMem() error { return &Error{Code: sqliteNoMem, Msg: "out of memory"} }
 
 // stageRoom is the shadow stack stage takes for n bytes.
 func stageRoom(n int) uintptr {
@@ -441,6 +554,9 @@ func (c *Conn) Interrupt() error {
 // Filename is the absolute name of the file of database schema ("main"), or
 // "" for a memory or temporary database.
 func (c *Conn) Filename(schema string) string {
+	if len(schema) > maxName || c.brokenErr() != nil {
+		return ""
+	}
 	a := c.args()
 	z := a.str(schema)
 	return cstring(sqlite3_db_filename(a.top, c.db, z))

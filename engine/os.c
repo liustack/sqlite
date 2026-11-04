@@ -40,11 +40,28 @@ int go_init(void) {
    or touches something only its own connection has (another schema such as
    temp, a write of a trigger, which may be a temporary one, or a function
    that reads the connection's state). The driver merges a statement into another
-   connection's transaction only with GO_WRITES_MAIN and no GO_PRIVATE. */
+   connection's transaction only with GO_WRITES_MAIN and no GO_PRIVATE.
+   GO_STATE marks a statement that changes the connection itself (a PRAGMA
+   that sets something, ATTACH, DETACH, a temporary table, index, view or
+   trigger): after one, the connection no longer runs as every other
+   connection of its pool does, so the driver stops merging with it. */
 #define GO_WRITES_MAIN 1
 #define GO_PRIVATE 2
+#define GO_STATE 4
 
 static int isMain(const char *db) { return db && strcmp(db, "main") == 0; }
+static int isTemp(const char *db) { return db && strcmp(db, "temp") == 0; }
+
+/* infoPragma says a PRAGMA with an argument only reads: the ones that take
+   the name of a table or an index. */
+static int infoPragma(const char *name) {
+  static const char *const names[] = {"table_info",       "table_xinfo",     "index_info",
+                                      "index_xinfo",      "index_list",      "foreign_key_list",
+                                      "foreign_key_check", "integrity_check", "quick_check"};
+  for (unsigned i = 0; i < sizeof names / sizeof names[0]; i++)
+    if (sqlite3_stricmp(name, names[i]) == 0) return 1;
+  return 0;
+}
 
 static int goClassify(void *p, int op, const char *a, const char *b, const char *db, const char *trigger) {
   int *flags = (int *)p;
@@ -69,6 +86,29 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     if (sqlite3_stricmp(b, "last_insert_rowid") == 0 || sqlite3_stricmp(b, "changes") == 0 ||
         sqlite3_stricmp(b, "total_changes") == 0)
       *flags |= GO_PRIVATE;
+    break;
+  case SQLITE_PRAGMA:
+    /* a is the name of the pragma, b its argument. Without an argument a
+       pragma reads its setting. */
+    *flags |= GO_PRIVATE;
+    if (b && !infoPragma(a)) *flags |= GO_STATE;
+    break;
+  case SQLITE_ATTACH:
+  case SQLITE_DETACH:
+  case SQLITE_CREATE_TEMP_INDEX:
+  case SQLITE_CREATE_TEMP_TABLE:
+  case SQLITE_CREATE_TEMP_TRIGGER:
+  case SQLITE_CREATE_TEMP_VIEW:
+  case SQLITE_DROP_TEMP_INDEX:
+  case SQLITE_DROP_TEMP_TABLE:
+  case SQLITE_DROP_TEMP_TRIGGER:
+  case SQLITE_DROP_TEMP_VIEW:
+    *flags |= GO_PRIVATE | GO_STATE;
+    break;
+  case SQLITE_CREATE_VTABLE:
+  case SQLITE_DROP_VTABLE:
+    *flags |= GO_PRIVATE;
+    if (isTemp(db)) *flags |= GO_STATE;
     break;
   default:
     *flags |= GO_PRIVATE;

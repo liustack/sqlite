@@ -8,6 +8,7 @@
 package vfs
 
 import (
+	"math/bits"
 	"os"
 	"sync"
 	"time"
@@ -37,6 +38,7 @@ type shmNode struct {
 	unlocked bool          // read-only and no one had it open: the DMS lock is not held
 	lock     [ShmNLock]int // per slot: shared holders in the process, or -1 for exclusive
 	idle     uint16        // read slots the process keeps read locked with no holder
+	others   bool          // another process had the -shm open when last looked: no idle slots
 	regions  []uintptr     // address of each region mapped
 	maps     []mapping     // what to unmap
 	fl       unix.Flock_t  // space for the fcntl argument
@@ -224,6 +226,7 @@ func (node *shmNode) lockDMS() int {
 	if err != nil {
 		return IOErrLock
 	}
+	node.others = typ != unix.F_UNLCK
 	switch typ {
 	case unix.F_WRLCK:
 		return Busy
@@ -315,11 +318,11 @@ func (f *File) ShmLock(offset, n, flags int) int {
 
 // unlock releases the slots of mask, n from offset, that s holds. A shared
 // slot stays locked in the kernel while other connections of the process
-// hold it, and a read slot stays locked a little longer (see releaseIdle).
-// node.mu is held.
+// hold it, and a read slot stays locked a little longer while no other
+// process has the -shm open (see shmReadSlots). node.mu is held.
 func (s *shm) unlock(offset, n int, mask uint16) int {
 	node := s.node
-	idle := false
+	arm := false
 	for i := offset; i < offset+n; i++ {
 		bit := uint16(1) << i
 		switch {
@@ -329,61 +332,65 @@ func (s *shm) unlock(offset, n int, mask uint16) int {
 			s.shared &^= bit
 			mask &^= bit
 		case s.shared&bit != 0 && bit&shmReadSlots != 0:
-			// The last reader of the process leaves a read slot.
-			node.lock[i] = 0
-			node.idle |= bit
-			s.shared &^= bit
-			mask &^= bit
-			idle = true
+			// The last reader of the process leaves a read slot. Alone,
+			// the process keeps it. Either way the timer looks again for
+			// other processes.
+			arm = true
+			if !node.others {
+				node.lock[i] = 0
+				node.idle |= bit
+				s.shared &^= bit
+				mask &^= bit
+			}
 		case s.shared&bit == 0:
 			mask &^= bit
 		}
 	}
-	if idle {
+	if arm {
 		node.armIdle()
 	}
 	if mask == 0 {
 		return OK
 	}
-	if err := node.unlockSlots(mask); err != nil {
-		return lockError(err, IOErrShmLock)
-	}
+	// A slot whose unlock failed is still locked in the kernel, and stays
+	// held by s.
+	done, err := node.unlockSlots(mask)
 	for i := offset; i < offset+n; i++ {
-		if mask&(1<<i) != 0 {
+		if done&(1<<i) != 0 {
 			node.lock[i] = 0
 		}
 	}
-	s.shared &^= mask
-	s.excl &^= mask
+	s.shared &^= done
+	s.excl &^= done
+	if err != nil {
+		return lockError(err, IOErrShmLock)
+	}
 	return OK
 }
 
-// unlockSlots unlocks the slots of mask in the kernel: in one call when
-// they are one run, which they are for everything SQLite asks. node.mu is
-// held.
-func (node *shmNode) unlockSlots(mask uint16) error {
-	lo, hi := 0, ShmNLock
-	for lo < hi && mask&(1<<lo) == 0 {
-		lo++
-	}
-	for hi > lo && mask&(1<<(hi-1)) == 0 {
-		hi--
-	}
-	if uint16(1<<hi-1<<lo) == mask {
-		return setLock(node.fd, &node.fl, unix.F_UNLCK, int64(shmBase+lo), int64(hi-lo))
-	}
-	for i := lo; i < hi; i++ {
-		if mask&(1<<i) == 0 {
+// unlockSlots unlocks the slots of mask in the kernel, one call for each run
+// of slots next to each other. Everything SQLite asks is one run. done is
+// the slots unlocked: a call that fails leaves its slots locked, and err is
+// the first failure. node.mu is held.
+func (node *shmNode) unlockSlots(mask uint16) (done uint16, err error) {
+	for rest := mask; rest != 0; {
+		lo := bits.TrailingZeros16(rest)
+		hi := lo + bits.TrailingZeros16(^(rest >> lo))
+		run := uint16(1<<hi - 1<<lo)
+		rest &^= run
+		if e := setLock(node.fd, &node.fl, unix.F_UNLCK, int64(shmBase+lo), int64(hi-lo)); e != nil {
+			if err == nil {
+				err = e
+			}
 			continue
 		}
-		if err := setLock(node.fd, &node.fl, unix.F_UNLCK, int64(shmBase+i), 1); err != nil {
-			return err
-		}
+		done |= run
 	}
-	return nil
+	return done, err
 }
 
-// The read slots, WAL_READ_LOCK(0) to WAL_READ_LOCK(4), are released late.
+// The read slots, WAL_READ_LOCK(0) to WAL_READ_LOCK(4), are released late
+// while no other process has the -shm open.
 //
 // A read transaction takes one of them shared and gives it back. When the
 // process's last reader gives it back, the kernel lock is kept and the slot
@@ -391,15 +398,28 @@ func (node *shmNode) unlockSlots(mask uint16) error {
 // no system call. A timer releases the idle slots shmIdleDelay later, and
 // runs at most once per delay, however many transactions there are.
 //
-// So another process may see a read slot locked for up to shmIdleDelay
-// after the last reader here. That is what it would see of a reader still
-// in its transaction: its checkpoint, its log restart or its move of the
-// read mark waits or skips, as SQLite does for any reader. It never reads
-// wrong data. Keeping the lock only stops aReadMark of the slot from
-// changing, the guarantee a live reader holds, so the check
-// walTryBeginRead makes after taking the lock stays valid. Connections of
+// Keeping the lock only stops aReadMark of the slot from changing, the
+// guarantee a live reader holds, so the check walTryBeginRead makes after
+// taking the lock stays valid, and no one reads wrong data. Connections of
 // this process are not slowed at all: an exclusive lock of the process on
 // an idle slot turns the kept read lock into a write lock.
+//
+// Another process is slowed. With readers here less than shmIdleDelay
+// apart, a slot would be locked nearly all the time: the checkpoints of
+// the other process would rarely be complete and its WAL would grow
+// without bound. So the slots are kept only while no other process has the
+// -shm open. Every process that has it open, this package or os_unix,
+// holds a read lock on the DMS byte, and a test of that byte on the node's
+// descriptor sees the locks of every other owner, OFD or POSIX, but not
+// its own. The test is made when the -shm is opened and at every tick of
+// the timer, which also runs after the last reader of a slot leaves while
+// other processes are there. With another process, read slots are released
+// at once, as os_unix does.
+//
+// A process that opens the -shm just after a test sees an idle slot of
+// this process locked until the next tick at the latest: shmIdleDelay
+// after the slot went idle, and later only by how late the Go runtime runs
+// the timer. From that tick on, this process releases read slots at once.
 //
 // WRITE, CKPT and RECOVER (slots 0 to 2) are always released at once.
 const shmReadSlots = uint16(1<<ShmNLock - 1<<3)
@@ -421,19 +441,29 @@ func (node *shmNode) armIdle() {
 	}
 }
 
-// releaseIdle unlocks in the kernel the read slots no connection of the
-// process holds. The timer runs it.
+// releaseIdle looks whether other processes have the -shm open, and unlocks
+// in the kernel the read slots no connection of the process holds. The
+// timer runs it.
 func (node *shmNode) releaseIdle() {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	node.armed = false
-	if node.closed || node.idle == 0 {
+	if node.closed {
+		return
+	}
+	// When the test fails, act as if another process were there.
+	typ, err := testLock(node.fd, &node.fl, shmDMS, 1)
+	node.others = err != nil || typ != unix.F_UNLCK
+	if node.idle == 0 {
 		return
 	}
 	// An idle slot has no holder: taking it shared or exclusive clears
-	// its idle mark.
-	if node.unlockSlots(node.idle) == nil {
-		node.idle = 0
+	// its idle mark. A slot whose unlock failed keeps its kernel lock and
+	// its mark, and the next tick tries again.
+	done, _ := node.unlockSlots(node.idle)
+	node.idle &^= done
+	if node.idle != 0 {
+		node.armIdle()
 	}
 }
 
