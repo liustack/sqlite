@@ -8491,7 +8491,7 @@ TEXT ·whereLoopAddBtree(SB), $248-32
 	WORD $0xf9407ff4
 	WORD $0x17ffffe4
 	WORD $0x92400988
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080168
 	WORD $0x5100ad08

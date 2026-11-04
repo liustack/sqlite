@@ -28,6 +28,10 @@ int host_full_pathname(const char *name, int n, char *out);
 void host_randomness(char *out, int n);
 void host_sleep(int us);
 long long host_now_ms(void); /* Unix time in milliseconds */
+/* The local time of Unix time t, by time.Local: sec, min, hour, day of the
+   month, month (0 to 11), years since 1900, day of the week, day of the year
+   and summer time (0 or 1) into out[0..8]. */
+void host_localtime(long long t, int *out);
 
 int host_close(long f);
 int host_read(long f, void *buf, int n, long long off);

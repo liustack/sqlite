@@ -10665,7 +10665,7 @@ TEXT ·whereLoopAddVirtualOne_block(SB), $216-24
 	WORD $0x54001e40
 	WORD $0x7101901f
 	WORD $0x54001ec1
-	MOVD $·engine_rodata+62855(SB), R8
+	MOVD $·engine_rodata+62895(SB), R8
 	WORD $0x17ffff52
 	WORD $0xb900796d
 	WORD $0xf9405fe8
@@ -10889,9 +10889,9 @@ TEXT ·whereLoopAddVirtualOne_block(SB), $216-24
 	WORD $0xf9001a3f
 	WORD $0xb9003a3f
 	WORD $0x1400030c
-	MOVD $·engine_rodata+62877(SB), R8
+	MOVD $·engine_rodata+62917(SB), R8
 	WORD $0x17fffe63
-	MOVD $·engine_rodata+62833(SB), R8
+	MOVD $·engine_rodata+62873(SB), R8
 	WORD $0x17fffe60
 	WORD $0x12001c08
 	WORD $0x7100711f
@@ -10902,7 +10902,7 @@ TEXT ·whereLoopAddVirtualOne_block(SB), $216-24
 	WORD $0x72a0282a
 	WORD $0xea0a013f
 	WORD $0x54005d60
-	MOVD $·engine_rodata+62819(SB), R8
+	MOVD $·engine_rodata+62859(SB), R8
 	WORD $0x17fffe54
 	WORD $0xd37be928
 	WORD $0xcb0801ad
@@ -11444,7 +11444,7 @@ TEXT ·whereLoopAddVirtualOne_block(SB), $216-24
 	WORD $0xf9406ff0
 	WORD $0x17ffffe8
 	WORD $0x92400968
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080148
 	WORD $0x51002908
@@ -11538,7 +11538,7 @@ TEXT ·whereLoopAddVirtualOne_block(SB), $216-24
 	WORD $0xf9406ff0
 	WORD $0x17ffffe8
 	WORD $0x92400968
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080148
 	WORD $0x51002908
@@ -11623,7 +11623,7 @@ TEXT ·whereLoopAddVirtualOne_block(SB), $216-24
 	WORD $0x121f1908
 	WORD $0x39007128
 	WORD $0x14000013
-	MOVD $·engine_rodata+62112(SB), R9
+	MOVD $·engine_rodata+62152(SB), R9
 	WORD $0xf8685928
 	WORD $0x17fffb69
 	WORD $0xf9401548
@@ -13590,7 +13590,7 @@ TEXT ·createCollation_block(SB), $184-24
 	WORD $0x510011a8
 	WORD $0x3100111f
 	WORD $0x540002c8
-	MOVD $·engine_rodata+63183(SB), R8
+	MOVD $·engine_rodata+63223(SB), R8
 	WORD $0x529d6649
 	MOVD $·engine_rodata+5265(SB), R22
 	WORD $0x72a00049
@@ -13772,7 +13772,7 @@ TEXT ·createCollation_block(SB), $184-24
 	WORD $0xb4002168
 	WORD $0xb940d968
 	WORD $0x340001c8
-	MOVD $·engine_rodata+63115(SB), R23
+	MOVD $·engine_rodata+63155(SB), R23
 	WORD $0x91008314
 	WORD $0xaa0b03f5
 	WORD $0x528000b6

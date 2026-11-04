@@ -13469,7 +13469,7 @@ TEXT ·attachWithToSelect(SB), $112-40
 	QUAD $0x02b60f4100000180
 	QUAD $0xb60f1077023c7804
 	BYTE $0xc0
-	LEAQ ·engine_rodata+65504(SB), CX
+	LEAQ ·engine_rodata+65512(SB), CX
 	BYTE $0x48
 	BYTE $0x8b
 	BYTE $0x04
@@ -13644,7 +13644,7 @@ TEXT ·parserDoubleLinkSelect(SB), NOSPLIT, $96-24
 	BYTE $0x0f
 	BYTE $0xb6
 	BYTE $0xc0
-	LEAQ ·engine_rodata+65504(SB), CX
+	LEAQ ·engine_rodata+65512(SB), CX
 	BYTE $0x48
 	BYTE $0x8b
 	BYTE $0x04

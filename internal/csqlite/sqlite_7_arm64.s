@@ -11663,7 +11663,7 @@ TEXT ·attachWithToSelect(SB), $104-40
 	WORD $0x7100093f
 	WORD $0x540000c8
 	WORD $0x92401d08
-	MOVD $·engine_rodata+65056(SB), R9
+	MOVD $·engine_rodata+65072(SB), R9
 	WORD $0xf8687928
 	WORD $0x14000003
 	MOVD $·engine_rodata+36210(SB), R8
@@ -11829,7 +11829,7 @@ TEXT ·parserDoubleLinkSelect(SB), NOSPLIT, $104-24
 	WORD $0x7100093f
 	WORD $0x540000c8
 	WORD $0x92401d08
-	MOVD $·engine_rodata+65056(SB), R9
+	MOVD $·engine_rodata+65072(SB), R9
 	WORD $0xf8687928
 	WORD $0x14000003
 	MOVD $·engine_rodata+36210(SB), R8

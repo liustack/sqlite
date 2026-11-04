@@ -23653,11 +23653,11 @@ TEXT ·attachFunc(SB), $152-32
 	WORD $0x540000c0
 	WORD $0x7101901f
 	WORD $0x54000141
-	MOVD $·engine_rodata+62855(SB), R22
+	MOVD $·engine_rodata+62895(SB), R22
 	WORD $0x14000012
-	MOVD $·engine_rodata+62877(SB), R22
+	MOVD $·engine_rodata+62917(SB), R22
 	WORD $0x1400000f
-	MOVD $·engine_rodata+62833(SB), R22
+	MOVD $·engine_rodata+62873(SB), R22
 	WORD $0x1400000c
 	WORD $0x12001c08
 	WORD $0x7100711f
@@ -23668,7 +23668,7 @@ TEXT ·attachFunc(SB), $152-32
 	WORD $0x72a0282a
 	WORD $0xea0a013f
 	WORD $0x540012e0
-	MOVD $·engine_rodata+62819(SB), R22
+	MOVD $·engine_rodata+62859(SB), R22
 	WORD $0xf94047f5
 	WORD $0x9101c294
 	WORD $0x12800017
@@ -23813,7 +23813,7 @@ TEXT ·attachFunc(SB), $152-32
 	WORD $0xf9404ff5
 	WORD $0x3607f7cc
 	WORD $0x17ffffc9
-	MOVD $·engine_rodata+62112(SB), R9
+	MOVD $·engine_rodata+62152(SB), R9
 	WORD $0xf8685936
 	WORD $0x17ffff69
 	WORD $0x92679a89

@@ -19590,7 +19590,7 @@ TEXT ·sqlite3Prepare16_block(SB), $152-24
 	WORD $0xf9404ff7
 	WORD $0x52800208
 	WORD $0x17fffff6
-	MOVD $·engine_rodata+63056(SB), R8
+	MOVD $·engine_rodata+63096(SB), R8
 	WORD $0xf9404ff7
 	MOVD $·engine_rodata+17585(SB), R22
 	WORD $0x528002b5
@@ -19602,7 +19602,7 @@ TEXT ·sqlite3Prepare16_block(SB), $152-24
 	WORD $0xf90013f7
 	BL ·sqlite3_log(SB)
 	WORD $0xf9404ff7
-	MOVD $·engine_rodata+63183(SB), R8
+	MOVD $·engine_rodata+63223(SB), R8
 	WORD $0x5288f9e9
 	MOVD $·engine_rodata+5265(SB), R22
 	WORD $0x72a00049
@@ -22567,7 +22567,7 @@ TEXT ·goClassify_block(SB), $72-24
 	WORD $0xb90001a8
 	WORD $0xb400182e
 	WORD $0xaa1f03ee
-	MOVD $·engine_rodata+64636(SB), R15
+	MOVD $·engine_rodata+64652(SB), R15
 	MOVD $·engine_rodata+620(SB), R16
 	WORD $0x92679a88
 	WORD $0xf940c108
@@ -22604,7 +22604,7 @@ TEXT ·goClassify_block(SB), $72-24
 	MOVD $·engine_rodata+620(SB), R16
 	WORD $0x92679a88
 	WORD $0xb94033eb
-	MOVD $·engine_rodata+64636(SB), R15
+	MOVD $·engine_rodata+64652(SB), R15
 	WORD $0xf9401fed
 	WORD $0xf940c108
 	WORD $0x17ffffe8
@@ -22624,7 +22624,7 @@ TEXT ·goClassify_block(SB), $72-24
 	MOVD $·engine_rodata+620(SB), R16
 	WORD $0xb94033eb
 	WORD $0xf94027f4
-	MOVD $·engine_rodata+64636(SB), R15
+	MOVD $·engine_rodata+64652(SB), R15
 	WORD $0xf9401fed
 	WORD $0x17ffffc3
 	WORD $0xb4000fa8

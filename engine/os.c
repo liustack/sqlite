@@ -32,6 +32,25 @@ int go_init(void) {
   return sqlite3_initialize();
 }
 
+/* ---- local time ---- */
+
+/* localtime_r is what the localtime and utc modifiers call
+   (HAVE_LOCALTIME_R). The Go host knows the time zone. */
+struct tm *localtime_r(const time_t *t, struct tm *tm) {
+  int f[9];
+  host_localtime(*t, f);
+  tm->tm_sec = f[0];
+  tm->tm_min = f[1];
+  tm->tm_hour = f[2];
+  tm->tm_mday = f[3];
+  tm->tm_mon = f[4];
+  tm->tm_year = f[5];
+  tm->tm_wday = f[6];
+  tm->tm_yday = f[7];
+  tm->tm_isdst = f[8];
+  return tm;
+}
+
 /* ---- statements for group commit ---- */
 
 /* goClassify is the authorizer the host installs on every connection. As a
