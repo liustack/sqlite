@@ -19,7 +19,7 @@ It is for Go programs that keep their data in SQLite and want to stay plain Go: 
 
 ## Benchmarks
 
-Time per operation, lower is better, the median of 6 runs. The best of each row is in bold. WAL, `synchronous=NORMAL`, the same settings checked on every driver.
+Time per operation, lower is better, the median of 6 runs. The best of a row is in bold when its 95% confidence interval overlaps no other driver's. WAL, `synchronous=NORMAL`, the same settings checked on every driver.
 
 <!-- bench:readme-linux-amd64 -->
 **linux/amd64** (AMD EPYC 7B13, Go 1.27.2, commit `cc1ede5`):
@@ -44,14 +44,14 @@ Time per operation, lower is better, the median of 6 runs. The best of each row 
 
 | Workload | this driver | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| Insert one row | 6.32 µs | **6.21 µs** | 7.96 µs | 7.00 µs |
+| Insert one row | 6.32 µs | 6.21 µs | 7.96 µs | 7.00 µs |
 | Insert 1000 rows in a transaction | **456 µs** | 594 µs | 748 µs | 583 µs |
 | Read one row by key | **1.12 µs** | 1.96 µs | 2.86 µs | 2.07 µs |
 | Read 100k rows | **14.4 ms** | 31.6 ms | 30.1 ms | 20.7 ms |
-| Join and group | 1.56 ms | **1.19 ms** | 2.65 ms | 1.90 ms |
+| Join and group | 1.56 ms | 1.19 ms | 2.65 ms | 1.90 ms |
 | Find a user with 400 comments | **236 µs** | 396 µs | 594 µs | 345 µs |
-| Read 100 rows of 200 KB text | 4.87 ms | **3.58 ms** | 3.99 ms | 3.64 ms |
-| Read by key, 10 threads | **1.29 µs** | 1.69 µs | 1.79 µs | 2.49 µs |
+| Read 100 rows of 200 KB text | 4.87 ms | 3.58 ms | 3.99 ms | 3.64 ms |
+| Read by key, 10 threads | 1.29 µs | 1.69 µs | 1.79 µs | 2.49 µs |
 | Insert, 8 goroutines at once | **3.30 µs** | 6.94 µs | 8.12 µs | 43.5 µs |
 | Insert, 64 goroutines at once | **1.37 µs** | 9.53 µs | 8.28 ms | 83.3 µs |
 <!-- /bench:readme-darwin-arm64 -->

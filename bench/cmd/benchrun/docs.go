@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -40,13 +41,14 @@ var (
 
 // The files whose tables benchrun writes, from bench/, and their language.
 var docFiles = []struct {
-	path string
-	l    *lang
+	path   string
+	l      *lang
+	readme bool // it has the README tables, not the sets
 }{
-	{"../docs/benchmarks.md", en},
-	{"../docs/benchmarks.zh-CN.md", zh},
-	{"../README.md", en},
-	{"../README.zh-CN.md", zh},
+	{"../docs/benchmarks.md", en, false},
+	{"../docs/benchmarks.zh-CN.md", zh, false},
+	{"../README.md", en, true},
+	{"../README.zh-CN.md", zh, true},
 }
 
 // A readmeRow is one line of a README table: a benchmark of a set, in
@@ -106,9 +108,11 @@ func cmdDocs(args []string) error {
 			return err
 		}
 		var ferr error
+		found := map[string]int{}
 		new := marker.ReplaceAllFunc(old, func(m []byte) []byte {
 			sub := marker.FindSubmatch(m)
 			name := string(sub[1])
+			found[name]++
 			if name != string(sub[2]) {
 				ferr = fmt.Errorf("%s: <!-- bench:%s --> ends with <!-- /bench:%s -->", f.path, name, sub[2])
 				return m
@@ -122,6 +126,9 @@ func cmdDocs(args []string) error {
 		})
 		if ferr != nil {
 			return ferr
+		}
+		if err := complete(f.path, old, found, f.readme, sets); err != nil {
+			return err
 		}
 		if bytes.Equal(old, new) {
 			continue
@@ -199,7 +206,7 @@ func renderSet(s *Set, l *lang) string {
 			b.WriteString("| " + r.Bench)
 			best := bestOf(r, s.Drivers)
 			for _, d := range s.Drivers {
-				b.WriteString(" | " + cell(r, d, ties(r, d, best), spread))
+				b.WriteString(" | " + cell(r, d, bold(r, s.Drivers, d, best), spread))
 			}
 			b.WriteString(" |\n")
 		}
@@ -222,6 +229,18 @@ func renderReadme(name string, rows []readmeRow, sets map[string]*Set, l *lang) 
 	first, ok := sets[rows[0].set]
 	if !ok {
 		return "", fmt.Errorf("no bench/published/%s.json", rows[0].set)
+	}
+	// The heading names one commit, Go and CPU for the whole table.
+	for _, rr := range rows {
+		s, ok := sets[rr.set]
+		if !ok {
+			return "", fmt.Errorf("no bench/published/%s.json", rr.set)
+		}
+		for _, k := range []string{"commit", "go", "cpu", "os"} {
+			if s.Meta.Get(k) != first.Meta.Get(k) {
+				return "", fmt.Errorf("the README table %s mixes sets of different %s (%s and %s): publish them from one run of the same build", name, k, rows[0].set, rr.set)
+			}
+		}
 	}
 	var b strings.Builder
 	m := first.Meta
@@ -273,7 +292,7 @@ func renderReadme(name string, rows []readmeRow, sets map[string]*Set, l *lang) 
 		b.WriteString("| " + label)
 		best := bestOf(*r, drivers)
 		for _, d := range drivers {
-			b.WriteString(" | " + cell(*r, d, ties(*r, d, best), false))
+			b.WriteString(" | " + cell(*r, d, bold(*r, drivers, d, best), false))
 		}
 		b.WriteString(" |\n")
 	}
@@ -356,6 +375,26 @@ func bestOf(r Row, ds []string) string {
 	return best
 }
 
+// bold says d is in bold: it shows the best value of the row, and the 95%
+// interval of the best overlaps no other driver's, so the lead is more than
+// noise. Allocation counts have no spread: there the best value is enough.
+func bold(r Row, ds []string, d, best string) bool {
+	if !ties(r, d, best) {
+		return false
+	}
+	b := r.Cells[best]
+	for _, x := range ds {
+		c := r.Cells[x]
+		if c == nil || ties(r, x, best) {
+			continue
+		}
+		if c.Lo <= b.Hi && b.Lo <= c.Hi {
+			return false
+		}
+	}
+	return true
+}
+
 // ties says d shows the same value as best, so that drivers that tie are
 // all in bold.
 func ties(r Row, d, best string) bool {
@@ -434,4 +473,33 @@ func sig3(x float64) string {
 		return strconv.FormatFloat(x, 'f', 1, 64)
 	}
 	return strconv.FormatFloat(math.Round(x), 'f', 0, 64)
+}
+
+// complete checks that a doc has every table it should, once, and no marker
+// without its pair, which would leave a table out of date with no error.
+func complete(path string, doc []byte, found map[string]int, readmeTables bool, sets map[string]*Set) error {
+	n := 0
+	for _, c := range found {
+		n += c
+	}
+	if bytes.Count(doc, []byte("<!-- bench:")) != n || bytes.Count(doc, []byte("<!-- /bench:")) != n {
+		return fmt.Errorf("%s: a <!-- bench:NAME --> or <!-- /bench:NAME --> without its pair", path)
+	}
+	var want []string
+	if readmeTables {
+		for name := range readme {
+			want = append(want, "readme-"+name)
+		}
+	} else {
+		for name := range sets {
+			want = append(want, name)
+		}
+	}
+	slices.Sort(want)
+	for _, name := range want {
+		if found[name] != 1 {
+			return fmt.Errorf("%s: %d tables of %s, want 1", path, found[name], name)
+		}
+	}
+	return nil
 }

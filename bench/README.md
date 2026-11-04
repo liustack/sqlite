@@ -74,4 +74,4 @@ In `InsertParallel`, `Readers` and `ReadWrite`, `ns/op` is wall time divided by 
 
 ## Reading the tables
 
-Time per op and allocations per op are lower is better. `MB/s` and `writes/s` are higher is better. Each cell is the median of the rounds, and `±` is its 95% confidence interval (benchstat's), shown from 6 rounds up. The best of each row is in bold. Use at least 6 rounds on a quiet machine for numbers you publish.
+Time per op and allocations per op are lower is better. `MB/s` and `writes/s` are higher is better. Each cell is the median of the rounds, and `±` is its 95% confidence interval (benchstat's), shown from 6 rounds up. The best of a row is in bold when its interval overlaps no other driver's, and allocation counts, which do not vary, when they are the lowest. Use at least 6 rounds on a quiet machine for numbers you publish.
