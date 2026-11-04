@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build (linux || darwin) && (amd64 || arm64)
+//go:build ((linux || darwin) && (amd64 || arm64)) || (windows && amd64)
 
 package csqlite
 
@@ -13,8 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // The shadow stack holds what the C keeps in memory on its stack: locals
@@ -98,42 +96,14 @@ func stackLayout(start, page uintptr) (base, end uintptr) {
 func roundUp(n, page uintptr) uintptr { return (n + page - 1) &^ (page - 1) }
 
 func newStack() (*stack, error) {
-	// Map twice the size, keep an aligned region and a guard page after it,
-	// and give the rest back.
-	n := uintptr(2*stackSize + pageSize)
-	p, err := mmap(n, unix.MAP_NORESERVE)
+	base, err := mapStack()
 	if err != nil {
 		return nil, fmt.Errorf("csqlite: map a shadow stack: %w", err)
-	}
-	start := uintptr(p)
-	base, end := stackLayout(start, pageSize)
-	if base > start {
-		munmap(start, base-start)
-	}
-	if start+n > end {
-		munmap(end, start+n-end)
-	}
-	if err := unix.Mprotect(bytesAt(base+stackSize, int(pageSize)), unix.PROT_NONE); err != nil {
-		munmap(base, stackSize+pageSize)
-		return nil, err
 	}
 	s := &stack{base: base}
 	stacks.Store(base, s)
 	*s.pollCounter() = pollInterval
 	return s, nil
-}
-
-// mmap maps n bytes of zeroed memory.
-func mmap(n uintptr, flags int) (unsafe.Pointer, error) {
-	return unix.MmapPtr(-1, 0, nil, n, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE|flags)
-}
-
-// munmap gives back n bytes at p. It fails only for an address the host
-// never mapped, which is a bug of the host.
-func munmap(p, n uintptr) {
-	if err := unix.MunmapPtr(at(p), n); err != nil {
-		panic("csqlite: munmap: " + err.Error())
-	}
 }
 
 // sp is the shadow pointer a call into the C starts with.
@@ -143,7 +113,7 @@ func (s *stack) pollCounter() *int64 { return (*int64)(at(s.base + pollCounterOf
 
 func (s *stack) free() error {
 	stacks.Delete(s.base)
-	munmap(s.base, stackSize+pageSize)
+	unmapStack(s.base)
 	s.base = 0
 	return nil
 }

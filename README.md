@@ -64,7 +64,7 @@ Where another driver still wins: work that stays inside SQLite (the join), where
 go get github.com/liustack/sqlite
 ```
 
-Go 1.27 or later. linux and darwin, on amd64 and arm64.
+Go 1.27 or later. linux and darwin on amd64 and arm64, windows on amd64.
 
 ## Use
 
@@ -115,7 +115,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 - **The C is SQLite's, unchanged.** `engine/` holds the 3.54.1 amalgamation as released, checked against its hash (`engine/vendor.sh --verify`). The compile options sit in one file, each with its reason.
 - **The Go assembly is made, never written.** LLVM compiles the C, and a generator turns what LLVM writes into Go assembly. It stops on anything it has no rule for, and checks the linked binary. `make check-gen` fails when the checked-in assembly is not what the generator makes from `engine/` today.
 - **The numbers show where it loses.** The tables above keep the rows where another driver is faster, and [docs/benchmarks.md](docs/benchmarks.md) says how each run was taken and what else ran on the machine.
-- **Every push is tested** on linux/amd64, linux/arm64 and darwin/arm64, with the race detector.
+- **Every push is tested** on linux/amd64, linux/arm64, darwin/arm64 and windows/amd64 (with the race detector, except on windows), with the sqlite3 shell writing the same database at the same time, and with processes killed while they write.
 
 ## Not there yet
 
@@ -123,7 +123,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 - No shared cache: `cache=shared` gives an error. For a memory database that all connections of a pool see, use `file:/name?vfs=memdb`.
 - Double-quoted strings are identifiers only (`SQLITE_DQS=0`, as SQLite advises): write string literals in single quotes.
 - Memory SQLite has used is kept for reuse and not given back to the system while the process runs.
-- windows and other targets do not build.
+- windows/arm64 and other targets do not build.
 
 ## Documentation
 

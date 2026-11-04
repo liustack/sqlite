@@ -19,7 +19,7 @@ flowchart TB
 1. **C 树**（`engine/`）：发布原样的 SQLite amalgamation、编译选项（`engine/sqlite.c`）、调用 Go 的 VFS 和互斥锁（`engine/os.c`、`engine/host.h`），以及一个小 libc（`engine/libc/`）。它按 freestanding 方式编译，不用系统头文件。
 2. **生成器**（`internal/goasm/gen/`）：把 C 树变成 Go 汇编，每个 C 函数对应一个 Go 函数，再加一个声明它们的 Go 文件。由维护者运行（`make gen`），用户不用跑。
 3. **引擎包**（`internal/csqlite`）：生成的 Go 汇编和它的声明，都提交进仓库，旁边是 Go host：影子栈、poll、malloc、互斥锁、VFS 的回调，以及驱动调用的那一小组 C API。
-4. **文件层**（`internal/vfs`）：纯 Go，不含引擎。在 linux 和 darwin 上实现 SQLite 的文件和锁规则，做法和 os_unix 一样：同一进程里连到同一个数据库的各个连接共享一套锁，这些锁在内存里彼此分开，只有进程持有的锁发生变化时才去问内核。内核锁用 OFD 锁（属于打开文件的锁），所以关掉一个连接不会放掉别的连接的锁。`-shm` 文件为 WAL 做了内存映射。
+4. **文件层**（`internal/vfs`）：纯 Go，不含引擎。在 linux 和 darwin 上实现 SQLite 的文件和锁规则，做法和 os_unix 一样：同一进程里连到同一个数据库的各个连接共享一套锁，这些锁在内存里彼此分开，只有进程持有的锁发生变化时才去问内核。内核锁用 OFD 锁（属于打开文件的锁），所以关掉一个连接不会放掉别的连接的锁。`-shm` 文件为 WAL 做了内存映射。在 windows 上，文件和锁的做法和 os_win 一样：每个连接在自己的句柄上用 `LockFileEx` 加锁，Windows 把每个句柄的锁分开算，所以同一进程的连接像不同进程一样互斥。`-shm` 用 `CreateFileMapping` 映射，每个区域一个视图，每个连接在自己的 `-shm` 句柄上锁槽位。锁的字节范围和 os_unix、os_win 一样，所以 C 编译的 SQLite 可以同时用同一个库。
 5. **驱动**（根包）：在这套 API 之上实现 `database/sql/driver`，每个数据库文件一个写入者，并带合并提交。
 
 ## 从 C 到 Go 汇编
@@ -56,7 +56,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 
 `engine/host.h` 里声明的 C 函数 `host_x`，会变成对 `internal/csqlite` 里 Go 函数 `host_x` 的调用，影子指针放在第一个参数。生成器靠前缀认出它们。
 
-- **影子栈。** 每个连接有一块 32 MiB 的区域，按自身大小对齐，后面跟一个保护页，用 mmap 映射，C 用到哪里才碰到哪里。调用 C 时传入指向它的指针。调用的字符串和输出参数也写在这里，所以一次调用不分配任何内存。
+- **影子栈。** 每个连接有一块 32 MiB 的区域，按自身大小对齐，后面跟一个保护页，用 mmap 映射，C 用到哪里才碰到哪里。Windows 没有不预留内存的映射，所以在 windows 上用 `VirtualAlloc` 保留并提交整块：它计入提交上限，但 C 碰到哪里才真正占用内存。调用 C 时传入指向它的指针。调用的字符串和输出参数也写在这里，所以一次调用不分配任何内存。
 - **Poll。** C 的循环每走 10000 个 tick 调用一次 `host_poll`。它的栈检查就是 Go 运行时能中止这个 goroutine 的地方。
 - **内存。** `malloc`、`realloc` 和 `free` 都是 Go 写的：256 KiB 以内的大小分档，从 4 MiB 的 mmap 区域里切，超过的各自单独映射。垃圾回收器看不到 SQLite 的内存。
 - **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
