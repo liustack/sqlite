@@ -260,7 +260,11 @@ func (f *File) Truncate(size int64) int {
 	if f.chunk > 0 {
 		size = (size + f.chunk - 1) / f.chunk * f.chunk
 	}
-	if err := windows.Ftruncate(f.h, size); err != nil {
+	err := windows.Ftruncate(f.h, size)
+	// As os_win: another program (SQLite with mmap_size set) has the file
+	// mapped, and Windows does not shrink a mapped file. It stays longer,
+	// which SQLite reads fine.
+	if err != nil && err != windows.ERROR_USER_MAPPED_FILE {
 		return IOErrTruncate
 	}
 	return OK
