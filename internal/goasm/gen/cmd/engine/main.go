@@ -223,6 +223,10 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	copied := map[string]bool{}
+	for _, n := range copiedNames {
+		copied[n] = true
+	}
 	linked = filepath.Join(*work, "engine.exposed.ll")
 	writeFile(linked, exposed)
 	fmt.Fprintf(os.Stderr, "writable globals: %d, copied constants with pointers: %d\n", len(exposedNames), len(copiedNames))
@@ -663,7 +667,8 @@ func main() {
 		}
 		cr, err := gen.CheckEngine(gen.EngineCheck{LLC: objPath, Lowered: loweredObj, Bin: *verifyBin, Pkg: vpkg,
 			Names: gonames, Unit: unit, Plan: plan, Metas: metas, Stubs: stubs, Sigs: sigs, Leaves: rep.Leaf,
-			PreserveNone: *mode == "pn", Probes: probes, Facts: facts, All: *verifyAll, HostPoll: *pollOn && polls, Align64: align64})
+			PreserveNone: *mode == "pn", Probes: probes, Facts: facts, All: *verifyAll, HostPoll: *pollOn && polls, Align64: align64,
+			Copied: copied})
 		if cr != nil {
 			for _, k := range gen.SortedKeys(cr.Checked) {
 				fmt.Fprintf(os.Stderr, "checked: %d %s\n", cr.Checked[k], k)
