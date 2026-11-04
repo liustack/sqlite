@@ -730,6 +730,7 @@ func TestShmReadOnlyParam(t *testing.T) {
 	if rc != OK {
 		t.Fatalf("Open = %d", rc)
 	}
+	t.Cleanup(func() { f.Close() })
 	if _, rc := f.ShmMap(0, shmRegionSize, false); rc != ReadOnlyCantInit {
 		t.Errorf("ShmMap with no one else = %d, want ReadOnlyCantInit", rc)
 	}
