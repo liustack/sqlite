@@ -320,6 +320,10 @@ func (c *Conn) LastInsertRowID() int64 { return int64(sqlite3_last_insert_rowid(
 // SetLastInsertRowID sets what LastInsertRowID and last_insert_rowid() give.
 func (c *Conn) SetLastInsertRowID(id int64) { sqlite3_set_last_insert_rowid(c.sp, c.db, uintptr(id)) }
 
+// VirtualTablesInTx says virtual tables take part in the open transaction:
+// one was written since it began.
+func (c *Conn) VirtualTablesInTx() bool { return int32(go_vtabs_in_tx(c.sp, c.db)) != 0 }
+
 // DeferredFKs says foreign key constraints of the transaction are not
 // resolved yet (SQLITE_DBSTATUS_DEFERRED_FKS).
 func (c *Conn) DeferredFKs() bool {

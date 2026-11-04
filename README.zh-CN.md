@@ -85,7 +85,7 @@ Go 写的 SQL 函数、聚合函数和排序规则放在 connector 上，这样�
 ```go
 c, err := sqlite.NewConnector("file:app.db",
 	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
-	sqlite.WithAggregate("median", 1, newMedian),
+	sqlite.WithAggregate("mode", 1, newMode),
 	sqlite.WithCollation("fold", fold))
 db := sql.OpenDB(c)
 ```
@@ -97,6 +97,8 @@ db := sql.OpenDB(c)
 ```go
 sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 ```
+
+全文检索（[FTS5](https://sqlite.org/fts5.html)）、空间索引（[R*Tree](https://sqlite.org/rtree.html)）、[数学函数](https://sqlite.org/lang_mathfunc.html)，以及 `median` 和 `percentile`（[percentile](https://sqlite.org/percentile.html)）都已编进来，不用导入什么。数学函数在每个平台上算出的位都一样。
 
 驱动注册的名字是 `sqlite`，和 modernc.org/sqlite、glebarez/go-sqlite 一样，所以同时导入其中一个的程序启动时会 panic。这时用 `sql.OpenDB(sqlite.NewConnector(dsn))` 打开数据库。
 
@@ -118,7 +120,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 ## 还没有的
 
 - 还没打版本标签，`go get` 拿的是 `main` 上最新的提交。
-- 暂时没编进来：FTS5、R*Tree、数学函数、可加载扩展。
+- 没有可加载扩展：SQLite 编译时去掉了 `load_extension`。
 - 没有共享缓存：`cache=shared` 会报错。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
 - 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。
 - SQLite 用过的内存留着复用，进程运行期间不还给系统。

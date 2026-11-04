@@ -24,7 +24,7 @@ flowchart TB
 
 ## 从 C 到 Go 汇编
 
-`make gen` 运行 `scripts/gen-engine.sh`，它让生成器处理 `engine/sqlite.c` 和 `engine/libc/string/*.c`：
+`make gen` 运行 `scripts/gen-engine.sh`，它让生成器处理 `engine/sqlite.c`、`engine/libc/string/*.c`、`engine/libc/math/*.c` 和 `engine/libc/math.c`：
 
 ```mermaid
 flowchart LR
@@ -42,13 +42,15 @@ flowchart LR
 4. llc 生成机器码。生成器把每个函数改写成 Go 汇编：用 Go 的函数序言和它的栈检查，参数从 Go 的栈上取，每次调用都按 Go 的方式发出。
 5. 一道检查会读取链接好的二进制，保证每个函数都和 llc 写出的一致。
 
-这个过程不需要改 SQLite。SQLite 3.54.1 在两个目标平台上都能整个降级成功：大约 1460 个函数，没有桩函数，10 MB 汇编，一分钟内完成，链接后检查在 linux/arm64 和 linux/amd64 的二进制上都通过。
+这个过程不需要改 SQLite。SQLite 3.54.1 在两个目标平台上都能整个降级成功：连同 FTS5、R*Tree 和数学函数大约 1900 个函数，没有桩函数，14 MB 汇编，一分钟内完成，链接后检查在 linux/arm64 和 linux/amd64 的二进制上都通过。
 
 ### 可写数据
 
-SQLite 有 31 个可写的全局变量：它的配置、分配器和页缓存的状态，还有启动时串起来的内置函数表。它们和 Go 的全局变量一样由整个进程共享，所以和只读数据一起放进那一个 Go 数据符号，这个符号不带 RODATA 来写。SQLite 的只读数据也因此变成了可写内存，但 SQLite 从不写它们。
+SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的状态，还有启动时串起来的内置函数表。它们和 Go 的全局变量一样由整个进程共享，所以和只读数据一起放进那一个 Go 数据符号，这个符号不带 RODATA 来写。SQLite 的只读数据也因此变成了可写内存，但 SQLite 从不写它们。
 
 降级只能改写那些取地址的数据引用：直接 load 要变成函数体里的一份拷贝，对会变化的数据来说这是错的。所以生成器在 llc 运行前，先在 IR 里把每个可写全局变量改成 external 和 preemptible（`ExposeWritableData`）。这样位置无关代码只能通过 GOT 加载它的地址来访问每一个，降级再把这次加载换成数据符号里的地址。x86 有时会把这次加载并进比较、加法或减法里（`cmpq sym@GOTPCREL(%rip), %rdi`）。对这些全局变量，数据符号的末尾放一个 8 字节的槽，里面存全局变量的地址，指令读的是这个槽。直接引用可写数据会让构建失败。试过 `SQLITE_OMIT_WSD`，但不合适：它让 33 个全局变量里仍有 21 个可写（3.50.4），而且每次读配置都要查一次。
+
+含指针的常量被 C 拷贝时也有同样的问题：带初值的局部数组或结构体（FTS5 的内置分词器表）是从一个常量 memcpy 过来的，llc 会把它展开成对这个常量的直接 load。降级没法把这样的常量拷进函数体，因为里面的指针要重定位，所以生成器把含指针、又被 memcpy 或 memmove 拷贝的常量也改成走 GOT（`ExposeCopiedPointerTables`）。其他常量不动。
 
 ## Go host
 
@@ -60,7 +62,7 @@ SQLite 有 31 个可写的全局变量：它的配置、分配器和页缓存的
 - **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
 - **文件。** `engine/os.c` 就是 VFS（名字叫 `go`）。它的每个方法都调用 `internal/vfs`。
 - **本地时间。** `localtime` 和 `utc` 修饰符调用 `engine/os.c` 里的 `localtime_r`，它去问 Go：时区就是 `time.Local`（`TZ` 环境变量，或者 `/etc/localtime`）。镜像里没有时区文件时得到 UTC，除非程序 import 了 `time/tzdata`。
-- **Go 代码 panic。** 函数或聚合 panic 时，和返回错误一样，让它所在的语句失败。排序规则没有办法报错，所以 panic 时 `engine/os.c` 调用 `sqlite3OomFault`，这是 SQLite 自己记录内存分配失败的函数：SQLite 以 `SQLITE_NOMEM` 中止语句，回滚这条语句或整个事务，走的是它对每次内存分配都测过的错误路径。这是宿主唯一调用的 SQLite 内部函数。一条写语句正在执行时，如果别的语句出错把它的事务回滚了，它结束时报错，不报成功（用回滚钩子计数）。
+- **Go 代码 panic。** 函数或聚合 panic 时，和返回错误一样，让它所在的语句失败。排序规则没有办法报错，所以 panic 时 `engine/os.c` 调用 `sqlite3OomFault`，这是 SQLite 自己记录内存分配失败的函数：SQLite 以 `SQLITE_NOMEM` 中止语句，回滚这条语句或整个事务，走的是它对每次内存分配都测过的错误路径。宿主另外还读 SQLite 的两处内部实现（见下文），在和 `sqlite3.c` 一起编译的 `engine/os.c` 里：`db->nVTrans`，以及 `Parse` 指向它所属语句的链接。一条写语句正在执行时，如果别的语句出错把它的事务回滚了，它结束时报错，不报成功（用回滚钩子计数）。
 
 ## 每个文件一个写入者
 
@@ -70,7 +72,7 @@ SQLite 有 31 个可写的全局变量：它的配置、分配器和页缓存的
 
 许多 goroutine 各自在 autocommit 模式下写一行，每个都要付一次提交的代价，而 SQLite 同一时刻只有一个写入者，它们还要互相等。驱动把许多调用者的 autocommit DML 收到一起，放进一个事务里执行，只提交一次。规则写在 [AGENTS.md](../AGENTS.md#hard-constraints)：只合并主数据库上的 autocommit DML，每条语句一个 SAVEPOINT，每个调用者拿到自己的结果，调用要等提交之后才返回。
 
-做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间，再 `COMMIT`，这时每个调用者才拿到结果。失败的语句保留 SQLite 替它保留的东西，和它单独执行时一样（什么都不留，或者 `OR FAIL` 时留下失败之前的行），它的调用者拿到错误。留下未解决的延迟外键的语句用 `ROLLBACK TO` 撤销，它的调用者拿到它自己 `COMMIT` 时会得到的错误。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。轮到之前 context 就已结束的调用者拿到 context 的错误，它的语句不会执行。一批跑完，锁交给下一个在等锁的连接，没有的话交给队列里第一条语句，它在自己的连接上执行：谁都不会在队列后面等太久。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
+做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间，再 `COMMIT`，这时每个调用者才拿到结果。失败的语句保留 SQLite 替它保留的东西，和它单独执行时一样（什么都不留，或者 `OR FAIL` 时留下失败之前的行），它的调用者拿到错误。留下未解决的延迟外键的语句用 `ROLLBACK TO` 撤销，它的调用者拿到它自己 `COMMIT` 时会得到的错误。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。FTS5 要到下一个 `SAVEPOINT` 或 `COMMIT` 才把 `INSERT` 的词写进索引，所以一旦有虚表加入事务（`db->nVTrans`），每条语句后面会在它自己的 `SAVEPOINT` 里再跑一对 `SAVEPOINT` 和 `RELEASE`：写索引失败（索引坏了、磁盘满了）就算这条语句的，和它单独执行时一样，不会落到下一条头上，这条语句也被撤销。语句在准备时由一个授权回调分类（`engine/os.c` 的 `goClassify`），它也会看到 SQLite 在这期间准备的其他语句：连接第一次用到 R*Tree 表时，R*Tree 会准备写它影子表的语句。它们做的事不算这条语句的：永远不会把它标成写 main 库。它们仍可以让语句不能合并，这只会慢一些。触发器的语句体也在自己的 `Parse` 里编译，它的 `pToplevel` 指向所属的语句，所以要算进来：一个 `Parse` 顶层那条语句有 `pOuterParse` 时，它才算嵌套。轮到之前 context 就已结束的调用者拿到 context 的错误，它的语句不会执行。一批跑完，锁交给下一个在等锁的连接，没有的话交给队列里第一条语句，它在自己的连接上执行：谁都不会在队列后面等太久。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
 
 ```mermaid
 sequenceDiagram

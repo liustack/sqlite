@@ -445,6 +445,24 @@ func (c *conn) runOne(r *request) error {
 	if err == nil && c.c.DeferredFKs() {
 		err, undo = errForeignKey, true
 	}
+	if c.c.VirtualTablesInTx() {
+		// FTS5 writes the terms of an INSERT to its index only at the next
+		// SAVEPOINT or at COMMIT, so a failure to write them (a broken
+		// index, a full disk) would fall on the next statement of the batch
+		// or on all of them. A SAVEPOINT of its own writes them now, inside
+		// the statement's SAVEPOINT, also after the statement failed, which
+		// may leave terms. When it fails, the statement is undone: alone, its
+		// COMMIT would have failed.
+		if ferr := c.flushVirtualTables(); ferr != nil {
+			if err == nil {
+				err = ferr
+			}
+			if c.c.AutoCommit() {
+				return err // the failure ended the transaction
+			}
+			undo = true
+		}
+	}
 	if undo {
 		if e := c.execCached("ROLLBACK TO merge"); e != nil {
 			return c.abandon(e)
@@ -459,6 +477,15 @@ func (c *conn) runOne(r *request) error {
 	r.res = *res
 	r.inserted = res.id != unset
 	return nil
+}
+
+// flushVirtualTables makes the virtual tables of the transaction write what
+// they hold back: SQLite calls their xSavepoint as a SAVEPOINT begins.
+func (c *conn) flushVirtualTables() error {
+	if err := c.execCached("SAVEPOINT flush"); err != nil {
+		return err
+	}
+	return c.execCached("RELEASE flush")
 }
 
 // abandon rolls the transaction back when a SAVEPOINT of the batch fails, so

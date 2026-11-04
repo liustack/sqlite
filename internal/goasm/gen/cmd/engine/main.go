@@ -1,9 +1,10 @@
 // Copyright (c) 2026 The liustack/sqlite Authors.
 // SPDX-License-Identifier: MIT
 //
-// Whole-engine driver: compile engine/sqlite.c and the string functions of
-// engine/libc freestanding with LLVM 22.1.8, link them into one module, run the
-// shadow-stack pass, llc, the checks and the lowering over every function,
+// Whole-engine driver: compile engine/sqlite.c and the string and math
+// functions of engine/libc freestanding with LLVM 22.1.8, link them into one
+// module, run the shadow-stack pass, llc, the checks and the lowering over
+// every function,
 // and emit Go assembly split by C source file, the read-only data and the Go
 // declarations. With -keep-going it does not stop at the first function it
 // cannot lower: it lists every rejection by class, emits a stub for each
@@ -135,10 +136,13 @@ func main() {
 	type src struct{ path, group string }
 	var srcs []src
 	srcs = append(srcs, src{filepath.Join(*engineDir, "sqlite.c"), "sqlite"})
-	ms, _ := filepath.Glob(filepath.Join(*engineDir, "libc", "string", "*.c"))
-	for _, m := range ms {
-		srcs = append(srcs, src{m, "libc"})
+	for _, dir := range []string{"libc/string", "libc/math"} {
+		ms, _ := filepath.Glob(filepath.Join(*engineDir, dir, "*.c"))
+		for _, m := range ms {
+			srcs = append(srcs, src{m, "libc"})
+		}
 	}
+	srcs = append(srcs, src{filepath.Join(*engineDir, "libc", "math.c"), "libc"})
 	if *srcList != "" {
 		srcs = nil
 		for _, f := range strings.Split(*srcList, ",") {
@@ -218,9 +222,18 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	// So are the constants that hold pointers and that a memcpy copies.
+	exposed, copiedNames, err := gen.ExposeCopiedPointerTables(exposed)
+	if err != nil {
+		die(err)
+	}
+	copied := map[string]bool{}
+	for _, n := range copiedNames {
+		copied[n] = true
+	}
 	linked = filepath.Join(*work, "engine.exposed.ll")
 	writeFile(linked, exposed)
-	fmt.Fprintf(os.Stderr, "writable globals: %d\n", len(exposedNames))
+	fmt.Fprintf(os.Stderr, "writable globals: %d, copied constants with pointers: %d\n", len(exposedNames), len(copiedNames))
 	tCompile := time.Since(t0)
 
 	// 2. Rules the C breaks, as the IR shows them.
@@ -658,7 +671,8 @@ func main() {
 		}
 		cr, err := gen.CheckEngine(gen.EngineCheck{LLC: objPath, Lowered: loweredObj, Bin: *verifyBin, Pkg: vpkg,
 			Names: gonames, Unit: unit, Plan: plan, Metas: metas, Stubs: stubs, Sigs: sigs, Leaves: rep.Leaf,
-			PreserveNone: *mode == "pn", Probes: probes, Facts: facts, All: *verifyAll, HostPoll: *pollOn && polls, Align64: align64})
+			PreserveNone: *mode == "pn", Probes: probes, Facts: facts, All: *verifyAll, HostPoll: *pollOn && polls, Align64: align64,
+			Copied: copied})
 		if cr != nil {
 			for _, k := range gen.SortedKeys(cr.Checked) {
 				fmt.Fprintf(os.Stderr, "checked: %d %s\n", cr.Checked[k], k)

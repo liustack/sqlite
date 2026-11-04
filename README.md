@@ -85,7 +85,7 @@ SQL functions, aggregates and collations written in Go go on the connector, so t
 ```go
 c, err := sqlite.NewConnector("file:app.db",
 	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
-	sqlite.WithAggregate("median", 1, newMedian),
+	sqlite.WithAggregate("mode", 1, newMode),
 	sqlite.WithCollation("fold", fold))
 db := sql.OpenDB(c)
 ```
@@ -97,6 +97,8 @@ Common functions come ready in packages under `ext/`: [`regexp`](https://pkg.go.
 ```go
 sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 ```
+
+Full-text search ([FTS5](https://sqlite.org/fts5.html)), the spatial index ([R*Tree](https://sqlite.org/rtree.html)), the [math functions](https://sqlite.org/lang_mathfunc.html) and `median` and `percentile` ([percentile](https://sqlite.org/percentile.html)) are built in, with nothing to import. The math functions give the same bits on every target.
 
 The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite do, so a program that imports one of them as well panics at start. Open the database with `sql.OpenDB(sqlite.NewConnector(dsn))` then.
 
@@ -118,7 +120,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 ## Not there yet
 
 - No release tag yet. `go get` takes the newest commit of `main`.
-- Left out of the build for now: FTS5, R*Tree, the math functions, loadable extensions.
+- No loadable extensions: SQLite is built without `load_extension`.
 - No shared cache: `cache=shared` gives an error. For a memory database that all connections of a pool see, use `file:/name?vfs=memdb`.
 - Double-quoted strings are identifiers only (`SQLITE_DQS=0`, as SQLite advises): write string literals in single quotes.
 - Memory SQLite has used is kept for reuse and not given back to the system while the process runs.

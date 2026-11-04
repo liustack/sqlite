@@ -27,9 +27,11 @@ const (
 	// stackHeader is the start of the region the host keeps: the poll
 	// counter is inside it. The C stack starts after it.
 	stackHeader = 4096
-	// classifyOffset is the word of the header goClassify (engine/os.c)
-	// writes the kind of a statement to as it is prepared.
+	// classifyOffset is the struct goClassifyWord of the header (engine/os.c):
+	// the int goClassify writes the kind of a statement to as it is
+	// prepared, then the connection.
 	classifyOffset = 64
+	classifySize   = 16
 	// rollbackOffset is the word go_count_rollbacks (engine/os.c) counts
 	// the rolled back transactions of the connection in.
 	rollbackOffset = 128
@@ -50,7 +52,7 @@ func init() {
 	if pollCounterOffset+8 > stackHeader {
 		panic("csqlite: the poll counter is outside the host's header")
 	}
-	if classifyOffset+8 > rollbackOffset || rollbackOffset+8 > pollCounterOffset {
+	if classifyOffset+classifySize > rollbackOffset || rollbackOffset+8 > pollCounterOffset {
 		panic("csqlite: the words of the host's header meet")
 	}
 }

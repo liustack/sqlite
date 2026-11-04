@@ -64,6 +64,9 @@ type EngineCheck struct {
 	Probes, Facts RegFacts
 	// All requires every function to be in the binary and checked.
 	All bool
+	// Copied are the constants ExposeCopiedPointerTables sent through the
+	// GOT: read-only, but reached as writable globals are.
+	Copied map[string]bool
 	// Align64 is EngineEmit.Align64: the body of each of these functions
 	// starts that many bytes past a multiple of 64, after the PCALIGN $64
 	// that replaces the usual PCALIGN $16 and the no-ops that follow it.
@@ -2587,8 +2590,8 @@ var gotReloc = map[elf.R_X86_64]bool{elf.R_X86_64_GOTPCREL: true, elf.R_X86_64_G
 // gotRef resolves llc's load of the GOT entry of a writable global, which
 // the lowering declared as a GOT reference: a 64-bit mov of the entry of
 // that global into a register, the global defined in a writable section of
-// llc's object and placed in engine_rodata. It returns the address of the
-// global in the binary.
+// llc's object (or one of the constants of EngineCheck.Copied) and placed in
+// engine_rodata. It returns the address of the global in the binary.
 func (m *matcher) gotRef(x insn, r *relAt, ref RefRecord) (uint64, error) {
 	k := m.k
 	if !ref.GOT || r == nil || !gotReloc[r.typ] {
@@ -2609,8 +2612,12 @@ func (m *matcher) gotRef(x insn, r *relAt, ref RefRecord) (uint64, error) {
 	if r.sym.Name != ref.Label || ref.Add != 0 || r.add != -4 || r.off != x.in.Len-4 {
 		return 0, fmt.Errorf("the GOT entry of %s%+d is %s%+d at %d in llc's object", ref.Label, ref.Add, r.sym.Name, r.add, r.off)
 	}
-	if int(r.sym.Section) <= 0 || int(r.sym.Section) >= len(k.llc.f.Sections) || !writableSection(k.llc.f.Sections[r.sym.Section].Name) {
-		return 0, fmt.Errorf("%s is not writable data of llc's object", ref.Label)
+	if int(r.sym.Section) <= 0 || int(r.sym.Section) >= len(k.llc.f.Sections) {
+		return 0, fmt.Errorf("%s is not data of llc's object", ref.Label)
+	}
+	if sec := k.llc.f.Sections[r.sym.Section].Name; !writableSection(sec) &&
+		!(k.c.Copied[ref.Label] && strings.HasPrefix(sec, ".data.rel.ro")) {
+		return 0, fmt.Errorf("%s is not writable data of llc's object, nor a copied constant", ref.Label)
 	}
 	off, ok := k.c.Plan.BlobOff[ref.Label]
 	if ref.Slot {

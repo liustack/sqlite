@@ -97,7 +97,13 @@ int go_create_collation(sqlite3 *db, const char *name, long h) {
    GO_STATE marks a statement that changes the connection itself (a PRAGMA
    that sets something, ATTACH, DETACH, a temporary table, index, view or
    trigger): after one, the connection no longer runs as every other
-   connection of its pool does, so the driver stops merging with it. */
+   connection of its pool does, so the driver stops merging with it.
+
+   goClassify also sees the statements SQLite prepares while it prepares the
+   host's: R*Tree prepares writes of its shadow tables when a connection
+   first uses one of its tables. What they do is not the statement's, so
+   they never add GO_WRITES_MAIN. They may still add GO_PRIVATE and GO_STATE,
+   which only stop merging. */
 #define GO_WRITES_MAIN 1
 #define GO_PRIVATE 2
 #define GO_STATE 4
@@ -116,8 +122,26 @@ static int infoPragma(const char *name) {
   return 0;
 }
 
+/* goClassifyWord is the word of the host's header goClassify writes to,
+   with the connection it is installed on. */
+struct goClassifyWord {
+  int flags;
+  sqlite3 *db;
+};
+
+/* goNested says the statement being parsed on db is one SQLite prepares
+   while it prepares another. The body of a trigger is coded in a Parse of
+   its own whose pToplevel is the statement it belongs to. Parse is internal
+   to SQLite, as sqlite3OomFault is. */
+static int goNested(sqlite3 *db) {
+  Parse *p = db->pParse;
+  if (p->pToplevel) p = p->pToplevel;
+  return p->pOuterParse != 0;
+}
+
 static int goClassify(void *p, int op, const char *a, const char *b, const char *db, const char *trigger) {
-  int *flags = (int *)p;
+  struct goClassifyWord *w = (struct goClassifyWord *)p;
+  int f = 0, *flags = &f;
   (void)a;
   switch (op) {
   case SQLITE_INSERT:
@@ -166,11 +190,16 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
   default:
     *flags |= GO_PRIVATE;
   }
+  if (goNested(w->db)) f &= ~GO_WRITES_MAIN;
+  w->flags |= f;
   return SQLITE_OK;
 }
 
 /* go_classify installs goClassify on db with the word it writes to. */
-int go_classify(sqlite3 *db, int *flags) { return sqlite3_set_authorizer(db, goClassify, flags); }
+int go_classify(sqlite3 *db, struct goClassifyWord *w) {
+  w->db = db;
+  return sqlite3_set_authorizer(db, goClassify, w);
+}
 
 /* goRollbackHook counts the transactions SQLite rolls back on db, in the word
    go_count_rollbacks gives it: a statement that writes and was running when
@@ -190,6 +219,11 @@ int go_count_rollbacks(sqlite3 *db, unsigned *n) {
    every allocation (commits, VACUUM and savepoints all take it). sqlite3OomFault
    is internal to SQLite: this file is compiled with sqlite3.c (sqlite.c). */
 void go_collate_failed(sqlite3 *db) { sqlite3OomFault(db); }
+
+/* go_vtabs_in_tx says virtual tables (FTS5, R*Tree) take part in the open
+   transaction of db: one was written since it began. db->nVTrans is internal
+   to SQLite, as sqlite3OomFault is. */
+int go_vtabs_in_tx(sqlite3 *db) { return db->nVTrans > 0; }
 
 /* ---- files ---- */
 

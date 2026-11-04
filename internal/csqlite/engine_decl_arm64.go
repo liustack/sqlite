@@ -21,13 +21,29 @@ const (
 // noSplitList names the functions whose TEXT says NOSPLIT, which have no
 // stack check at their entry (gen.PickNoSplit), for the tests. A constant
 // takes no room in a binary that does not use it.
-const noSplitList = "addAggInfoFunc addOp4IntSlow_block addToSavepointBitvecs aggregateConvertIndexedExprRefToColumn aggregateIdxEprRefToColCallback allocateTempSpace analyzeAggFuncArgs apiHandleError applyAffinity autoIncBegin autoIncStep autoIncrementEnd bcmp blobSeekToRow bothImplyNotNullRow btreeCursor btreeInitPage btreeLast btreeOverwriteCell btreeParseCellAdjustSizeForOverflow btreeParseCellPtrNoPayload bzero cellSizePtr cellSizePtrIdxLeaf cellSizePtrNoPayload cellSizePtrTableLeaf changeTempStorage checkConstraintExprNode checkPtrmap codeApplyAffinity codeCompare_block codeDistinct_block codeInteger codeOffset codeReal codeReturningTrigger columnIsGoodIndexCandidate compoundHasDifferentAffinities computeFloor computeJD computeYMD computeYMD_HMS constInsert copyNodeContent copyPayload corruptSchema countOfViewOptimization createAggContext decodeIntArray disableLookaside disableTerm disableUnusedSubqueryResultColumns dropCell estimateIndexWidth explainAppendTerm_block explainSimpleCount exprColumnFlagUnion exprCommute exprListAppendList exprMightBeIndexed2 exprNodeIsConstantFunction exprNodeIsDeterministic exprProbability exprSelectWalkTableConstant exprTableRegister extendFJMatch filterHash findOrCreateAggInfoColumn fixDistinctOpenEph fkLookupParent_block freeSpace fromClauseTermCanBeCoroutine gatherSelectWindowsSelectCallback generateOutputSubroutine_block generateSortTail getAutoVacuum getDigits getLockingMode getPageError getSafetyLevel getWhitespace goDeviceCharacteristics goGetLastError goMutexEnd goMutexInit goRollbackHook goSectorSize go_collate_failed go_create_aggregate go_create_function go_init goasm_chunked_memcpy goasm_chunked_memmove goasm_chunked_memset growVTrans havingToWhere heightOfSelect identPut incrAggDepth indexInAffinityOk insertCell_block integrityCheckResultRow invalidateIncrblobCursors invalidateTempStorage isAlterableTable isDupColumn isRowidAlias isSelfJoinView isSimpleCount isValidSchemaTableName json5Whitespace jsonAfterEditSizeAdjust jsonAppendCharExpand jsonAppendPathName jsonAppendRawNZ jsonAppendString jsonArgIsJsonb jsonBlobAppendNode jsonBlobChangePayloadSize jsonBlobEdit jsonBlobExpandAndAppendOneByte jsonBlobMakeEditable jsonConvertTextToBlob jsonEachEof jsonEachPathLength jsonEachRowid jsonHexToInt4 jsonIs4Hex jsonIs4HexB jsonLabelCompareEscaped_block jsonPrintf jsonReturnFromBlob jsonReturnParse jsonStringExpandAndAppend jsonbArrayCount jsonbPayloadSizeWide kahanBabuskaNeumaierStepInt64 keywordCode localtime_r memIntValue memchr memcmp memcpy memdbAccess memdbDeviceCharacteristics memdbSync memjrnlFileSize memjrnlSync memmove memset minMaxQuery multiSelectByMergeKeyInfo newDatabase noopMutexAlloc noopMutexEnd noopMutexEnter noopMutexFree noopMutexInit noopMutexLeave noopMutexTry noopStepFunc noopValueFunc notValidImpl optimizeAggregateUseOfIndexedExpr out2PrereleaseWithClear pageFindSlot pageInsertArray_block pagerIsSuperJrnlName pager_reset parseHhMmSs parserAddExprIdListTerm parserDoubleLinkSelect pcache1Pagecount pcache1Shutdown pragmaFunclistLine pragmaVtabEof pragmaVtabRowid putVarint64 readsTable rebuildPage recomputeColumnsNotIndexed recomputeColumnsUsed recomputeColumnsUsedExpr renameColumnElistNames renameColumnIdlistNames renameParseSql renameReloadSchema renameResolveTrigger renameWalkTrigger renameWalkWith renumberCursors renumberCursorsCb resolveAlias resolveCompoundOrderBy resolveOrderGroupBy resolveRemoveWindowsCb returnSingleInt returnSingleText selectRefLeave setAllPagerFlags setDoNotMergeFlagOnCopy setPragmaResultColumnNames setResultStrOrError sqlite3AddCheckConstraint sqlite3AddGenerated sqlite3AddNotNull sqlite3AffinityType sqlite3AtoF sqlite3Atoi64 sqlite3BeginTransaction sqlite3BeginWriteOperation sqlite3BitvecClear sqlite3BlobCompare sqlite3BtreeBeginTrans sqlite3BtreeClearTable sqlite3BtreeClearTableOfCursor sqlite3BtreeCommit sqlite3BtreeCommitPhaseTwo sqlite3BtreeGetMeta sqlite3BtreeOffset sqlite3BtreeRowCountEst sqlite3BtreeSetVersion sqlite3BtreeUpdateMeta sqlite3ChangeCookie sqlite3CheckObjectName sqlite3CodeChangeCount sqlite3CodeVerifyNamedSchema sqlite3CodeVerifySchema sqlite3ColumnDefault sqlite3ColumnExprAuth sqlite3ColumnSetColl sqlite3ColumnType sqlite3CompleteInsertion_block sqlite3ComputeGeneratedColumns sqlite3DbMallocRawNN sqlite3DbStrNDup sqlite3DecOrHexToI64 sqlite3DefaultRowEst sqlite3DequoteNumber sqlite3EndTransaction sqlite3Expr sqlite3ExprAddCollateString sqlite3ExprAddCollateToken sqlite3ExprAddFunctionOrderBy sqlite3ExprAlloc sqlite3ExprAnalyzeAggList sqlite3ExprAnd sqlite3ExprAssignVarNumber sqlite3ExprAttachSubtrees sqlite3ExprCanBeNull sqlite3ExprCodeFactorable sqlite3ExprCodeMove sqlite3ExprCollSeq sqlite3ExprCompareCollSeq sqlite3ExprForVectorField sqlite3ExprFunction sqlite3ExprFunctionUsable sqlite3ExprIdToTrueFalse sqlite3ExprInt32 sqlite3ExprIsInteger sqlite3ExprIsSingleTableConstraint sqlite3ExprListAppend sqlite3ExprListAppendGrow sqlite3ExprListAppendNew sqlite3ExprListSetSpan sqlite3ExprListToValues sqlite3ExprSetHeightAndFlags sqlite3ExprSkipCollateAndLikely sqlite3ExprToRegister sqlite3ExprTruthValue sqlite3ExprUnmapAndDelete sqlite3ExprWalkNoop sqlite3FindIndex sqlite3FindTable sqlite3FinishCoding sqlite3FkClearTriggerCache sqlite3FkOldmask sqlite3FkRequired sqlite3ForceNotReadOnly sqlite3Fp10Convert2 sqlite3GenerateColumnNames sqlite3GenerateRowIndexDelete_block sqlite3GetInt32 sqlite3GetTempRange sqlite3GetToken sqlite3GetVarint32 sqlite3GetVdbe sqlite3HasExplicitNulls sqlite3HashFind sqlite3HexToBlob sqlite3IdListDup sqlite3IsReadOnly sqlite3IsRowid sqlite3JoinType sqlite3JsonVtabRegister sqlite3KeyInfoAlloc sqlite3KeyInfoFromExprList sqlite3LocateCollSeq sqlite3LogEst sqlite3MPrintf sqlite3MemCompare sqlite3MemInit sqlite3MemRoundup sqlite3MemShutdown sqlite3MemSize sqlite3MulInt64 sqlite3MultiValuesEnd sqlite3NameFromToken sqlite3NoopDestructor sqlite3OomFault sqlite3OpenSchemaTable sqlite3OpenTempDatabase sqlite3PExpr sqlite3PExprAddSelect sqlite3PExprIs sqlite3PExprIsNull sqlite3PagerRollback sqlite3PagerWrite sqlite3PcacheDirtyList sqlite3PcacheMakeDirty sqlite3PragmaVtabRegister sqlite3ProcessReturningSubqueries sqlite3PutVarint sqlite3ReadOnlyShadowTables sqlite3RefillIndex sqlite3RegisterLikeFunctions sqlite3ResetOneSchema sqlite3ResolveExprListNames sqlite3ResolveExprNames sqlite3ResolveOrderGroupBy sqlite3ResolveSelfReference sqlite3ResultSetOfSelect sqlite3ReturningSubqueryVarSelect sqlite3RootPageMoved sqlite3RowSetInsert sqlite3RowSetTest sqlite3SelectPrep sqlite3SelectWalkFail sqlite3SelectWalkNoop sqlite3SelectWrongNumTermsError sqlite3SetHasNullFlag sqlite3SetTextEncoding sqlite3SrcListAppend sqlite3SrcListEnlarge sqlite3SrcListFuncArgs sqlite3SrcListIndexedBy sqlite3SrcListShiftJoinType sqlite3SubInt64 sqlite3TableColumnToStorage sqlite3TriggerDeleteStep sqlite3UpsertAnalyzeTarget sqlite3Utf8Read sqlite3Utf8ReadLimited sqlite3Vacuum sqlite3ValueFromExpr sqlite3ValueText sqlite3VdbeAddOp0 sqlite3VdbeAddOp1 sqlite3VdbeAddOp2 sqlite3VdbeAddOp3 sqlite3VdbeAddOp4Int_block sqlite3VdbeAddOp4_block sqlite3VdbeAddOpList sqlite3VdbeAppendP4 sqlite3VdbeBooleanValue sqlite3VdbeChangeP4 sqlite3VdbeChangeToNoop sqlite3VdbeCreate sqlite3VdbeEndCoroutine sqlite3VdbeFinishMoveto sqlite3VdbeFrameMemDel sqlite3VdbeGoto sqlite3VdbeIdxRowid sqlite3VdbeIntValue sqlite3VdbeLoadString sqlite3VdbeLogAbort sqlite3VdbeMakeReady sqlite3VdbeMemClearAndResize sqlite3VdbeMemExpandBlob sqlite3VdbeMemFromBtree sqlite3VdbeMemFromBtreeZeroOffset sqlite3VdbeMemIntegerify sqlite3VdbeMemMakeWriteable sqlite3VdbeMemRealify sqlite3VdbeMemSetZeroBlob sqlite3VdbeMemShallowCopy sqlite3VdbeMemStringify sqlite3VdbeMultiLoad sqlite3VdbeRecordUnpack sqlite3VdbeResolveLabel sqlite3VdbeSerialGet sqlite3VtabArgInit sqlite3VtabCallCreate sqlite3VtabEponymousTableClearAll sqlite3VtabMakeWritable sqlite3WalkExprList sqlite3WalkWinDefnDummyCallback sqlite3WalkerDepthDecrease sqlite3WalkerDepthIncrease sqlite3WhereExplainOneScan sqlite3WhereMinMaxOptEarlyOut sqlite3WindowAssemble sqlite3WindowAttach sqlite3WindowExtraAggFuncDepth sqlite3WindowLink sqlite3WindowOffsetExpr sqlite3WindowUpdate sqlite3WithPush sqlite3_aggregate_context sqlite3_backup_pagecount sqlite3_backup_remaining sqlite3_bind_int sqlite3_bind_parameter_count sqlite3_bind_parameter_index sqlite3_bind_parameter_name sqlite3_bind_text64_block sqlite3_blob_bytes sqlite3_close sqlite3_close_v2 sqlite3_column_count sqlite3_compileoption_get sqlite3_compileoption_used sqlite3_complete sqlite3_context_db_handle sqlite3_create_function_v2_block sqlite3_create_window_function_block sqlite3_data_count sqlite3_database_file_object sqlite3_db_filename sqlite3_db_handle sqlite3_db_mutex sqlite3_db_readonly sqlite3_db_status sqlite3_errstr sqlite3_filename_database sqlite3_filename_journal sqlite3_filename_wal sqlite3_get_auxdata sqlite3_incomplete sqlite3_initialize sqlite3_interrupt sqlite3_is_interrupted sqlite3_keyword_check sqlite3_keyword_count sqlite3_keyword_name sqlite3_libversion sqlite3_libversion_number sqlite3_mprintf sqlite3_open sqlite3_open_v2 sqlite3_os_end sqlite3_prepare sqlite3_prepare16 sqlite3_prepare16_v2 sqlite3_prepare16_v3_block sqlite3_prepare_v2 sqlite3_prepare_v3_block sqlite3_realloc sqlite3_realloc64 sqlite3_release_memory sqlite3_result_blob sqlite3_result_double sqlite3_result_error sqlite3_result_error16 sqlite3_result_error_code sqlite3_result_error_nomem sqlite3_result_error_toobig sqlite3_result_int sqlite3_result_int64 sqlite3_result_null sqlite3_result_pointer sqlite3_result_subtype sqlite3_result_text sqlite3_result_text16 sqlite3_result_text16be sqlite3_result_text16le sqlite3_result_value sqlite3_result_zeroblob sqlite3_result_zeroblob64 sqlite3_setlk_timeout sqlite3_snprintf sqlite3_sourceid sqlite3_sql sqlite3_stmt_busy sqlite3_stmt_isexplain sqlite3_stmt_readonly sqlite3_str_append sqlite3_str_appendall sqlite3_str_appendchar sqlite3_str_errcode sqlite3_str_length sqlite3_str_truncate sqlite3_str_value sqlite3_strglob sqlite3_stricmp sqlite3_strlike sqlite3_strnicmp sqlite3_threadsafe sqlite3_uri_boolean sqlite3_uri_int64 sqlite3_uri_key sqlite3_uri_parameter sqlite3_user_data sqlite3_value_blob sqlite3_value_bytes sqlite3_value_bytes16 sqlite3_value_double sqlite3_value_encoding sqlite3_value_frombind sqlite3_value_int sqlite3_value_int64 sqlite3_value_nochange sqlite3_value_pointer sqlite3_value_subtype sqlite3_value_text sqlite3_value_text16 sqlite3_value_text16be sqlite3_value_text16le sqlite3_value_type sqlite3_vmprintf sqlite3_vsnprintf sqlite3_vtab_collation sqlite3_vtab_distinct sqlite3_vtab_in sqlite3_vtab_in_first sqlite3_vtab_in_next sqlite3_vtab_nochange sqlite3_vtab_on_conflict sqlite3_vtab_rhs_value sqlite3_wal_checkpoint strchr strcmp strcspn strlen strncmp strrchr strspn termCanDriveIndex termIsEquivalence triggersReallyExist updateFromSelect_block updateRangeAffinityStr updateVirtualTable_block valueBytes valueFromValueList vdbeCloseStatement vdbeFkError vdbeIndexKeyCompare vdbePmaReadVarint vdbeReleaseAndSetInt64 vdbeSorterCompareRealInt_block walChecksumBytes walCleanupHash walDecodeFrame walEncodeFrame walFindFrame walIndexAppend whereAddLimitExpr whereCheckIfBloomFilterIsUseful whereClauseInsert whereExprIsReady whereInterstageHeuristic whereIsCoveringIndex whereLoopIsNoBetter whereLoopIsOneRow whereOmitNoopJoin wherePathMatchSubqueryOB_block whereReverseScanOrder whereScanInitIndexExpr whereScanNext windowCheckValue windowCodeRangeTest_block xferCheckRowid xferCompatibleCheck xferCompatibleIndex zeroPage"
+const noSplitList = "AdjustTree ChooseLeaf __cos __expo2 __math_divzero __math_invalid __math_oflow __math_uflow __math_xflow __rem_pio2 __rem_pio2_large __sin __tan acos addAggInfoFunc addOp4IntSlow_block addToSavepointBitvecs aggregateConvertIndexedExprRefToColumn aggregateIdxEprRefToColCallback allocateTempSpace analyzeAggFuncArgs apiHandleError applyAffinity asin atan atan2 atanh autoIncBegin autoIncStep autoIncrementEnd bcmp blobSeekToRow bothImplyNotNullRow btreeCursor btreeInitPage btreeLast btreeOverwriteCell btreeParseCellAdjustSizeForOverflow btreeParseCellPtrNoPayload bzero ceil cellSizePtr cellSizePtrIdxLeaf cellSizePtrNoPayload cellSizePtrTableLeaf changeTempStorage checkConstraintExprNode checkPtrmap codeApplyAffinity codeCompare_block codeDistinct_block codeInteger codeOffset codeReal codeReturningTrigger columnIsGoodIndexCandidate compoundHasDifferentAffinities computeFloor computeJD computeYMD computeYMD_HMS constInsert copyNodeContent copyPayload corruptSchema countOfViewOptimization createAggContext decodeIntArray degToRad disableLookaside disableTerm disableUnusedSubqueryResultColumns dropCell estimateIndexWidth explainAppendTerm_block explainSimpleCount expm1 exprColumnFlagUnion exprCommute exprListAppendList exprMightBeIndexed2 exprNodeIsConstantFunction exprNodeIsDeterministic exprProbability exprSelectWalkTableConstant exprTableRegister extendFJMatch filterHash findOrCreateAggInfoColumn fixDistinctOpenEph fkLookupParent_block floor freeSpace fromClauseTermCanBeCoroutine fts5ApiColumnCount fts5ApiPhraseCount fts5ApiPhraseSize fts5ApiQueryToken fts5ApiUserData fts5ColumnSizeCb_block fts5CommitMethod fts5ConfigSetEnum fts5ConfigSkipLiteral fts5CountCb fts5DlidxLvlNext fts5DoclistIterNext fts5EofMethod fts5HashAddPoslistSize fts5IndexMerge fts5IndexTombstoneAddToPage fts5IterSetOutputsTokendata fts5IterSetOutputs_None fts5IterSetOutputs_Noop fts5IterSetOutputs_ZeroColset fts5MultiIterIsDeleted fts5Porter_MEq1 fts5Porter_MGt0 fts5Porter_MGt1 fts5PutVarint64 fts5SegIterInit fts5SegIterLoadNPos fts5SegIterLoadTerm fts5SegIterReverseInitPage fts5SegiterPoslist fts5SpecialDelete fts5StructurePromote fts5UnicodeAddExceptions fts5ValueClampedInt fts5VocabEofMethod fts5VocabInstanceNewTerm fts5VocabRowidMethod fts5WriteAppendTerm fts5WriteDlidxAppend fts5WriteFlushLeaf gatherSelectWindowsSelectCallback generateOutputSubroutine_block generateSortTail getAutoVacuum getDigits getLockingMode getPageError getSafetyLevel getWhitespace goDeviceCharacteristics goGetLastError goMutexEnd goMutexInit goRollbackHook goSectorSize go_collate_failed go_create_aggregate go_create_function go_init go_vtabs_in_tx goasm_chunked_memcpy goasm_chunked_memmove goasm_chunked_memset growVTrans havingToWhere heightOfSelect identPut incrAggDepth indexInAffinityOk insertCell_block integrityCheckResultRow invalidateIncrblobCursors invalidateTempStorage isAlterableTable isDupColumn isRowidAlias isSelfJoinView isSimpleCount isValidSchemaTableName json5Whitespace jsonAfterEditSizeAdjust jsonAppendCharExpand jsonAppendPathName jsonAppendRawNZ jsonAppendString jsonArgIsJsonb jsonBlobAppendNode jsonBlobChangePayloadSize jsonBlobEdit jsonBlobExpandAndAppendOneByte jsonBlobMakeEditable jsonConvertTextToBlob jsonEachEof jsonEachPathLength jsonEachRowid jsonHexToInt4 jsonIs4Hex jsonIs4HexB jsonLabelCompareEscaped_block jsonPrintf jsonReturnFromBlob jsonReturnParse jsonStringExpandAndAppend jsonbArrayCount jsonbPayloadSizeWide kahanBabuskaNeumaierStepInt64 keywordCode localtime_r log log10 log1p log2 memIntValue memchr memcmp memcpy memdbAccess memdbDeviceCharacteristics memdbSync memjrnlFileSize memjrnlSync memmove memset minMaxQuery multiSelectByMergeKeyInfo newDatabase nodeGetRowid nodeOverwriteCell nodeParentIndex noopMutexAlloc noopMutexEnd noopMutexEnter noopMutexFree noopMutexInit noopMutexLeave noopMutexTry noopStepFunc noopValueFunc notValidImpl optimizeAggregateUseOfIndexedExpr out2PrereleaseWithClear pageFindSlot pageInsertArray_block pagerIsSuperJrnlName pager_reset parseHhMmSs parserAddExprIdListTerm parserDoubleLinkSelect pcache1Pagecount pcache1Shutdown pragmaFunclistLine pragmaVtabEof pragmaVtabRowid putVarint64 radToDeg readsTable rebuildPage recomputeColumnsNotIndexed recomputeColumnsUsed recomputeColumnsUsedExpr renameColumnElistNames renameColumnIdlistNames renameParseSql renameReloadSchema renameResolveTrigger renameWalkTrigger renameWalkWith renumberCursors renumberCursorsCb resolveAlias resolveCompoundOrderBy resolveOrderGroupBy resolveRemoveWindowsCb returnSingleInt returnSingleText rtreeBeginTransaction rtreeCheckAppendMsg rtreeEof rtreeSearchPointNew rtreeSearchPointPop scalbn selectRefLeave setAllPagerFlags setDoNotMergeFlagOnCopy setPragmaResultColumnNames setResultStrOrError specialcase specialcase_75 sqlite3AddCheckConstraint sqlite3AddGenerated sqlite3AddNotNull sqlite3AffinityType sqlite3AtoF sqlite3Atoi64 sqlite3BeginTransaction sqlite3BeginWriteOperation sqlite3BitvecClear sqlite3BlobCompare sqlite3BtreeBeginTrans sqlite3BtreeClearTable sqlite3BtreeClearTableOfCursor sqlite3BtreeCommit sqlite3BtreeCommitPhaseTwo sqlite3BtreeGetMeta sqlite3BtreeOffset sqlite3BtreePayloadChecked sqlite3BtreeRowCountEst sqlite3BtreeSetVersion sqlite3BtreeUpdateMeta sqlite3ChangeCookie sqlite3CheckObjectName sqlite3CodeChangeCount sqlite3CodeVerifyNamedSchema sqlite3CodeVerifySchema sqlite3ColumnDefault sqlite3ColumnExprAuth sqlite3ColumnSetColl sqlite3ColumnType sqlite3CompleteInsertion_block sqlite3ComputeGeneratedColumns sqlite3DbMallocRawNN sqlite3DbStrNDup sqlite3DecOrHexToI64 sqlite3DefaultRowEst sqlite3DequoteNumber sqlite3EndTransaction sqlite3Expr sqlite3ExprAddCollateString sqlite3ExprAddCollateToken sqlite3ExprAddFunctionOrderBy sqlite3ExprAlloc sqlite3ExprAnalyzeAggList sqlite3ExprAnd sqlite3ExprAssignVarNumber sqlite3ExprAttachSubtrees sqlite3ExprCanBeNull sqlite3ExprCodeFactorable sqlite3ExprCodeMove sqlite3ExprCollSeq sqlite3ExprCompareCollSeq sqlite3ExprForVectorField sqlite3ExprFunction sqlite3ExprFunctionUsable sqlite3ExprIdToTrueFalse sqlite3ExprInt32 sqlite3ExprIsInteger sqlite3ExprIsSingleTableConstraint sqlite3ExprListAppend sqlite3ExprListAppendGrow sqlite3ExprListAppendNew sqlite3ExprListSetSpan sqlite3ExprListToValues sqlite3ExprSetHeightAndFlags sqlite3ExprSkipCollateAndLikely sqlite3ExprToRegister sqlite3ExprTruthValue sqlite3ExprUnmapAndDelete sqlite3ExprWalkNoop sqlite3FindIndex sqlite3FindTable sqlite3FinishCoding sqlite3FkClearTriggerCache sqlite3FkOldmask sqlite3FkRequired sqlite3ForceNotReadOnly sqlite3Fp10Convert2 sqlite3Fts5GetVarint sqlite3Fts5GetVarint32 sqlite3Fts5IsLocaleValue sqlite3Fts5Mprintf sqlite3Fts5ParseError sqlite3Fts5PoslistNext64 sqlite3Fts5PoslistSafeAppend sqlite3Fts5PutVarint sqlite3Fts5StorageDeleteAll sqlite3GenerateColumnNames sqlite3GenerateRowIndexDelete_block sqlite3GetInt32 sqlite3GetTempRange sqlite3GetToken sqlite3GetVarint32 sqlite3GetVdbe sqlite3HasExplicitNulls sqlite3HashFind sqlite3HexToBlob sqlite3IdListDup sqlite3IsReadOnly sqlite3IsRowid sqlite3JoinType sqlite3JsonVtabRegister sqlite3KeyInfoAlloc sqlite3KeyInfoFromExprList sqlite3LocateCollSeq sqlite3LogEst sqlite3MPrintf sqlite3MemCompare sqlite3MemInit sqlite3MemRoundup sqlite3MemShutdown sqlite3MemSize sqlite3MulInt64 sqlite3MultiValuesEnd sqlite3NameFromToken sqlite3NoopDestructor sqlite3OomFault sqlite3OpenSchemaTable sqlite3OpenTempDatabase sqlite3PExpr sqlite3PExprAddSelect sqlite3PExprIs sqlite3PExprIsNull sqlite3PagerRollback sqlite3PagerWrite sqlite3PcacheDirtyList sqlite3PcacheMakeDirty sqlite3PragmaVtabRegister sqlite3ProcessReturningSubqueries sqlite3PutVarint sqlite3ReadOnlyShadowTables sqlite3RefillIndex sqlite3RegisterLikeFunctions sqlite3ResetOneSchema sqlite3ResolveExprListNames sqlite3ResolveExprNames sqlite3ResolveOrderGroupBy sqlite3ResolveSelfReference sqlite3ResultSetOfSelect sqlite3ReturningSubqueryVarSelect sqlite3RootPageMoved sqlite3RowSetInsert sqlite3RowSetTest sqlite3SelectPrep sqlite3SelectWalkFail sqlite3SelectWalkNoop sqlite3SelectWrongNumTermsError sqlite3SetHasNullFlag sqlite3SetTextEncoding sqlite3SrcListAppend sqlite3SrcListEnlarge sqlite3SrcListFuncArgs sqlite3SrcListIndexedBy sqlite3SrcListShiftJoinType sqlite3SubInt64 sqlite3TableColumnToStorage sqlite3TriggerDeleteStep sqlite3UpsertAnalyzeTarget sqlite3Utf8Read sqlite3Utf8ReadLimited sqlite3Vacuum sqlite3ValueFromExpr sqlite3ValueText sqlite3VdbeAddOp0 sqlite3VdbeAddOp1 sqlite3VdbeAddOp2 sqlite3VdbeAddOp3 sqlite3VdbeAddOp4Int_block sqlite3VdbeAddOp4_block sqlite3VdbeAddOpList sqlite3VdbeAppendP4 sqlite3VdbeBooleanValue sqlite3VdbeChangeP4 sqlite3VdbeChangeToNoop sqlite3VdbeCreate sqlite3VdbeEndCoroutine sqlite3VdbeFinishMoveto sqlite3VdbeFrameMemDel sqlite3VdbeGoto sqlite3VdbeIdxRowid sqlite3VdbeIntValue sqlite3VdbeLoadString sqlite3VdbeLogAbort sqlite3VdbeMakeReady sqlite3VdbeMemClearAndResize sqlite3VdbeMemExpandBlob sqlite3VdbeMemFromBtree sqlite3VdbeMemFromBtreeZeroOffset sqlite3VdbeMemIntegerify sqlite3VdbeMemMakeWriteable sqlite3VdbeMemRealify sqlite3VdbeMemSetZeroBlob sqlite3VdbeMemShallowCopy sqlite3VdbeMemStringify sqlite3VdbeMultiLoad sqlite3VdbeRecordUnpack sqlite3VdbeResolveLabel sqlite3VdbeSerialGet sqlite3VtabArgInit sqlite3VtabCallCreate sqlite3VtabEponymousTableClearAll sqlite3VtabMakeWritable sqlite3WalkExprList sqlite3WalkWinDefnDummyCallback sqlite3WalkerDepthDecrease sqlite3WalkerDepthIncrease sqlite3WhereExplainOneScan sqlite3WhereMinMaxOptEarlyOut sqlite3WindowAssemble sqlite3WindowAttach sqlite3WindowExtraAggFuncDepth sqlite3WindowLink sqlite3WindowOffsetExpr sqlite3WindowUpdate sqlite3WithPush sqlite3_aggregate_context sqlite3_backup_pagecount sqlite3_backup_remaining sqlite3_bind_int sqlite3_bind_parameter_count sqlite3_bind_parameter_index sqlite3_bind_parameter_name sqlite3_bind_text64_block sqlite3_blob_bytes sqlite3_close sqlite3_close_v2 sqlite3_column_count sqlite3_compileoption_get sqlite3_compileoption_used sqlite3_complete sqlite3_context_db_handle sqlite3_create_function_v2_block sqlite3_create_window_function_block sqlite3_data_count sqlite3_database_file_object sqlite3_db_filename sqlite3_db_handle sqlite3_db_mutex sqlite3_db_readonly sqlite3_db_status sqlite3_errstr sqlite3_filename_database sqlite3_filename_journal sqlite3_filename_wal sqlite3_get_auxdata sqlite3_incomplete sqlite3_initialize sqlite3_interrupt sqlite3_is_interrupted sqlite3_keyword_check sqlite3_keyword_count sqlite3_keyword_name sqlite3_libversion sqlite3_libversion_number sqlite3_mprintf sqlite3_open sqlite3_open_v2 sqlite3_os_end sqlite3_prepare sqlite3_prepare16 sqlite3_prepare16_v2 sqlite3_prepare16_v3_block sqlite3_prepare_v2 sqlite3_prepare_v3_block sqlite3_realloc sqlite3_realloc64 sqlite3_release_memory sqlite3_result_blob sqlite3_result_double sqlite3_result_error sqlite3_result_error16 sqlite3_result_error_code sqlite3_result_error_nomem sqlite3_result_error_toobig sqlite3_result_int sqlite3_result_int64 sqlite3_result_null sqlite3_result_pointer sqlite3_result_subtype sqlite3_result_text sqlite3_result_text16 sqlite3_result_text16be sqlite3_result_text16le sqlite3_result_value sqlite3_result_zeroblob sqlite3_result_zeroblob64 sqlite3_setlk_timeout sqlite3_snprintf sqlite3_sourceid sqlite3_sql sqlite3_stmt_busy sqlite3_stmt_isexplain sqlite3_stmt_readonly sqlite3_str_append sqlite3_str_appendall sqlite3_str_appendchar sqlite3_str_errcode sqlite3_str_length sqlite3_str_truncate sqlite3_str_value sqlite3_strglob sqlite3_stricmp sqlite3_strlike sqlite3_strnicmp sqlite3_threadsafe sqlite3_uri_boolean sqlite3_uri_int64 sqlite3_uri_key sqlite3_uri_parameter sqlite3_user_data sqlite3_value_blob sqlite3_value_bytes sqlite3_value_bytes16 sqlite3_value_double sqlite3_value_encoding sqlite3_value_frombind sqlite3_value_int sqlite3_value_int64 sqlite3_value_nochange sqlite3_value_pointer sqlite3_value_subtype sqlite3_value_text sqlite3_value_text16 sqlite3_value_text16be sqlite3_value_text16le sqlite3_value_type sqlite3_vmprintf sqlite3_vsnprintf sqlite3_vtab_collation sqlite3_vtab_distinct sqlite3_vtab_in sqlite3_vtab_in_first sqlite3_vtab_in_next sqlite3_vtab_nochange sqlite3_vtab_on_conflict sqlite3_vtab_rhs_value sqlite3_wal_checkpoint sqrt strchr strcmp strcspn strlen strncmp strrchr strspn termCanDriveIndex termIsEquivalence triggersReallyExist trunc updateFromSelect_block updateRangeAffinityStr updateVirtualTable_block valueBytes valueFromValueList vdbeCloseStatement vdbeFkError vdbeIndexKeyCompare vdbePmaReadVarint vdbeReleaseAndSetInt64 vdbeSorterCompareRealInt_block walChecksumBytes walCleanupHash walDecodeFrame walEncodeFrame walFindFrame walIndexAppend whereAddLimitExpr whereCheckIfBloomFilterIsUseful whereClauseInsert whereExprIsReady whereInterstageHeuristic whereIsCoveringIndex whereLoopIsNoBetter whereLoopIsOneRow whereOmitNoopJoin wherePathMatchSubqueryOB_block whereReverseScanOrder whereScanInitIndexExpr whereScanNext windowCheckValue windowCodeRangeTest_block xCeil xFloor xferCheckRowid xferCompatibleCheck xferCompatibleIndex zeroPage"
 
+func AdjustTree(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func ChooseLeaf(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func SortByDimension_block(a0 uintptr, a1 uintptr)
+func __cos(a0 uintptr, a1 float64, a2 float64) float64
+func __expo2(a0 uintptr, a1 float64, a2 float64) float64
+func __math_divzero(a0 uintptr, a1 uintptr) float64
+func __math_invalid(a0 uintptr, a1 float64) float64
+func __math_oflow(a0 uintptr, a1 uintptr) float64
+func __math_uflow(a0 uintptr, a1 uintptr) float64
+func __math_xflow(a0 uintptr, a1 uintptr, a2 float64) float64
 func __memrchr(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func __rem_pio2(a0 uintptr, a1 float64, a2 uintptr) uintptr
+func __rem_pio2_large(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func __sin(a0 uintptr, a1 float64, a2 float64, a3 uintptr) float64
 func __strchrnul(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func __tan(a0 uintptr, a1 float64, a2 float64, a3 uintptr) float64
 func absFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func accessPayload(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func accessPayloadChecked(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func acos(a0 uintptr, a1 float64) float64
+func acosh(a0 uintptr, a1 float64) float64
 func addAggInfoFunc(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func addConstraintFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func addModuleArgument(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -50,6 +66,11 @@ func analyzeOneTable_block(a0 uintptr, a1 uintptr)
 func apiHandleError(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func applyAffinity(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func applyNumericAffinity(a0 uintptr, a1 uintptr, a2 uintptr)
+func asin(a0 uintptr, a1 float64) float64
+func asinh(a0 uintptr, a1 float64) float64
+func atan(a0 uintptr, a1 float64) float64
+func atan2(a0 uintptr, a1 float64, a2 float64) float64
+func atanh(a0 uintptr, a1 float64) float64
 func attachFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func attachWithToSelect(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func authFunctions(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -89,6 +110,8 @@ func bytelengthFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func bzero(a0 uintptr, a1 uintptr, a2 uintptr)
 func callFinaliser(a0 uintptr, a1 uintptr, a2 uintptr)
 func cdateFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func ceil(a0 uintptr, a1 float64) float64
+func ceilingFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func cellSizePtr(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func cellSizePtrIdxLeaf(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func cellSizePtrNoPayload(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -141,6 +164,8 @@ func convertToWithoutRowidTable(a0 uintptr, a1 uintptr, a2 uintptr)
 func copyNodeContent(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func copyPayload(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func corruptSchema(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func cos(a0 uintptr, a1 float64) float64
+func cosh(a0 uintptr, a1 float64) float64
 func countFinalize(a0 uintptr, a1 uintptr)
 func countInverse(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func countOfViewOptimization(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -161,6 +186,8 @@ func dbMallocRawFinish(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func dbReallocFinish(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func decodeIntArray(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func defragmentPage(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func degToRad(a0 uintptr, a1 float64) float64
+func deleteCell(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func deleteTable(a0 uintptr, a1 uintptr, a2 uintptr)
 func dense_rankStepFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func dense_rankValueFunc(a0 uintptr, a1 uintptr)
@@ -182,8 +209,10 @@ func estimateIndexWidth(a0 uintptr, a1 uintptr)
 func execSql(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func execSqlF(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func existsToJoin(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func exp(a0 uintptr, a1 float64) float64
 func explainAppendTerm_block(a0 uintptr, a1 uintptr)
 func explainSimpleCount(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func expm1(a0 uintptr, a1 float64) float64
 func exprAnalyze(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func exprCodeBetween(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
 func exprCodeInlineFunction(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
@@ -220,9 +249,11 @@ func finalizeAggFunctions(a0 uintptr, a1 uintptr, a2 uintptr)
 func findBtree(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func findConstInWhere(a0 uintptr, a1 uintptr, a2 uintptr)
 func findConstraintFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func findLeafNode(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func findOrCreateAggInfoColumn(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func first_valueFinalizeFunc(a0 uintptr, a1 uintptr)
 func first_valueStepFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fixBoundingBox(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func fixDistinctOpenEph(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func fixExprCb(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func fixSelectCb(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -230,6 +261,8 @@ func fkActionTrigger(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func fkLookupParent_block(a0 uintptr, a1 uintptr)
 func fkScanChildren_block(a0 uintptr, a1 uintptr)
 func fkTriggerDelete(a0 uintptr, a1 uintptr, a2 uintptr)
+func floor(a0 uintptr, a1 float64) float64
+func fmod(a0 uintptr, a1 float64, a2 float64) float64
 func freeCursorWithCache(a0 uintptr, a1 uintptr, a2 uintptr)
 func freeIndexInfo(a0 uintptr, a1 uintptr, a2 uintptr)
 func freeP4(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -239,11 +272,227 @@ func freePage2(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func freeSpace(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func freeSuperJournal(a0 uintptr, a1 uintptr)
 func fromClauseTermCanBeCoroutine(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ApiCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5ApiColumnCount(a0 uintptr, a1 uintptr) uintptr
+func fts5ApiColumnLocale(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ApiColumnSize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5ApiColumnText(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ApiColumnTotalSize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5ApiGetAuxdata(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ApiInst(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5ApiInstCount(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ApiInstToken(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5ApiPhraseCount(a0 uintptr, a1 uintptr) uintptr
+func fts5ApiPhraseFirst(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5ApiPhraseFirstColumn(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ApiPhraseNext(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5ApiPhraseNextColumn(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5ApiPhraseSize(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ApiQueryPhrase(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ApiQueryToken(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5ApiRowCount(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ApiRowid(a0 uintptr, a1 uintptr) uintptr
+func fts5ApiSetAuxdata(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5ApiTokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5ApiTokenize_v2_block(a0 uintptr, a1 uintptr) uintptr
+func fts5ApiUserData(a0 uintptr, a1 uintptr) uintptr
+func fts5AppendPoslist(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5AppendRowid(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5AsciiCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5AsciiDelete(a0 uintptr, a1 uintptr)
+func fts5AsciiTokenize_block(a0 uintptr, a1 uintptr) uintptr
+func fts5BeginMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5BestIndexMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5Bm25Function(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
+func fts5CacheInstArray(a0 uintptr, a1 uintptr) uintptr
+func fts5ChunkIterate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5CloseMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5ColumnMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5ColumnSizeCb_block(a0 uintptr, a1 uintptr) uintptr
+func fts5CommitMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5ConfigGobbleWord(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ConfigSetEnum(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ConfigSkipLiteral(a0 uintptr, a1 uintptr) uintptr
+func fts5ConnectMethod_block(a0 uintptr, a1 uintptr) uintptr
+func fts5CountCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5CreateAux(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5CreateMethod_block(a0 uintptr, a1 uintptr) uintptr
+func fts5CreateTokenizer(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5CreateTokenizer_v2(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5CsrPoslist(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5CursorFirst(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5CursorFirstSorted(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5DataDelete(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5DataRead(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5DataRelease(a0 uintptr, a1 uintptr)
+func fts5DataWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5DestroyMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5DisconnectMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5DlidxIterInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5DlidxIterNextR(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5DlidxIterPrevR(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5DlidxLvlNext(a0 uintptr, a1 uintptr) uintptr
+func fts5DoclistIterNext(a0 uintptr, a1 uintptr)
+func fts5EofMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5ExecPrintf(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ExprAddChildren(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5ExprCheckPoslists(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ExprClearPoslists(a0 uintptr, a1 uintptr)
+func fts5ExprNodeFirst(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ExprNodeNext_AND(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ExprNodeNext_NOT(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ExprNodeNext_OR(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ExprNodeNext_STRING(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ExprNodeNext_TERM(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5ExprNodeTest_STRING(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ExprNodeZeroPoslist(a0 uintptr, a1 uintptr)
+func fts5ExprPhraseFree(a0 uintptr, a1 uintptr)
+func fts5ExprPopulatePoslistsCb_block(a0 uintptr, a1 uintptr) uintptr
+func fts5ExprSetEof(a0 uintptr, a1 uintptr)
+func fts5ExprSynonymList(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5FilterMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5FindFunctionMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5FindTokenizer(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5FindTokenizer_v2(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5FlushSecureDelete(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5FreeCursorComponents(a0 uintptr, a1 uintptr)
+func fts5Fts5Func(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5GetLocaleFunction(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
+func fts5HashAddPoslistSize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5HighlightCb_block(a0 uintptr, a1 uintptr) uintptr
+func fts5HighlightFunction(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
+func fts5IndexDataVersion(a0 uintptr, a1 uintptr) uintptr
+func fts5IndexFlush(a0 uintptr, a1 uintptr)
+func fts5IndexMerge(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5IndexMergeLevel(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5IndexOptimizeStruct(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5IndexTombstoneAddToPage(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5InitVtab_block(a0 uintptr, a1 uintptr) uintptr
+func fts5InsttokenFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5IntegrityMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5IterClose(a0 uintptr, a1 uintptr)
+func fts5IterSetOutputsTokendata(a0 uintptr, a1 uintptr)
+func fts5IterSetOutputs_Col(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5IterSetOutputs_Col100(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5IterSetOutputs_Full(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5IterSetOutputs_Nocolset(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5IterSetOutputs_None(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5IterSetOutputs_Noop(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5IterSetOutputs_ZeroColset(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5LeafRead(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5LocaleFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5MergeChunkCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5MergePrefixLists(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5MergeRowidLists(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5ModuleDestroy(a0 uintptr, a1 uintptr)
+func fts5MultiIterFinishSetup(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5MultiIterFree(a0 uintptr, a1 uintptr)
+func fts5MultiIterIsDeleted(a0 uintptr, a1 uintptr) uintptr
+func fts5MultiIterNew_block(a0 uintptr, a1 uintptr)
+func fts5MultiIterNext(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5NewTokenizerModule(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5NextMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5OpenMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ParsePhraseToAnd(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ParseSetColset(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5ParseTokenize_block(a0 uintptr, a1 uintptr) uintptr
+func fts5PorterCb_block(a0 uintptr, a1 uintptr) uintptr
+func fts5PorterCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5PorterDelete(a0 uintptr, a1 uintptr)
+func fts5PorterTokenize_block(a0 uintptr, a1 uintptr) uintptr
+func fts5Porter_MEq1(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5Porter_MGt0(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5Porter_MGt1(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5PoslistCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5PoslistFilterCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5PoslistOffsetsCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5PrepareStatement(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5PutVarint64(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ReleaseMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5RenameMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5ResultError(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5RollbackMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5RollbackToMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5RowidMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5SavepointMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5SecureDeleteIdxEntry(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5SeekCursor(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5SegIterInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5SegIterLoadNPos(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5SegIterLoadTerm(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5SegIterNext(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5SegIterNextPage(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5SegIterNext_None(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5SegIterNext_Reverse(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5SegIterReverseInitPage(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5SegIterReverseNewPage(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5SegIterSeekInit_block(a0 uintptr, a1 uintptr)
+func fts5SegiterPoslist(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5SentenceFinderCb_block(a0 uintptr, a1 uintptr) uintptr
+func fts5SetVtabError(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5ShadowName(a0 uintptr, a1 uintptr) uintptr
+func fts5SnippetFunction(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
+func fts5SorterNext(a0 uintptr, a1 uintptr) uintptr
+func fts5SourceIdFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5SpecialDelete(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5StorageCount(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5StorageGetStmt(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5StorageInsertCallback_block(a0 uintptr, a1 uintptr) uintptr
+func fts5StorageInsertDocsize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5StorageIntegrityCallback_block(a0 uintptr, a1 uintptr) uintptr
+func fts5StorageLoadTotals(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5StorageSaveTotals(a0 uintptr, a1 uintptr) uintptr
+func fts5StructureAddLevel(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5StructurePromote(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5StructureRead(a0 uintptr, a1 uintptr) uintptr
+func fts5StructureRelease(a0 uintptr, a1 uintptr)
+func fts5StructureWrite(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5SyncMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5TextFromStmt(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5TokendataIterDelete(a0 uintptr, a1 uintptr)
+func fts5TokendataIterSortMap(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5TriCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5TriDelete(a0 uintptr, a1 uintptr)
+func fts5TriTokenize_block(a0 uintptr, a1 uintptr) uintptr
+func fts5UnicodeAddExceptions(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5UnicodeCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5UnicodeDelete(a0 uintptr, a1 uintptr)
+func fts5UnicodeTokenize_block(a0 uintptr, a1 uintptr) uintptr
+func fts5UpdateMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5V1toV2Tokenize_block(a0 uintptr, a1 uintptr) uintptr
+func fts5V2toV1Tokenize_block(a0 uintptr, a1 uintptr) uintptr
+func fts5ValueClampedInt(a0 uintptr, a1 uintptr) uintptr
+func fts5VisitEntries_block(a0 uintptr, a1 uintptr)
+func fts5VocabBestIndexMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5VocabCloseMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabColumnMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func fts5VocabConnectMethod_block(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabCreateMethod_block(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabDestroyMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabDisconnectMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabEofMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabFilterMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func fts5VocabInitVtab_block(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabInstanceNewTerm(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabNextMethod(a0 uintptr, a1 uintptr) uintptr
+func fts5VocabOpenMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5VocabResetCursor(a0 uintptr, a1 uintptr)
+func fts5VocabRowidMethod(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func fts5VtoVCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func fts5VtoVDelete(a0 uintptr, a1 uintptr)
+func fts5WriteAppendTerm(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func fts5WriteDlidxAppend(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5WriteFinish(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5WriteFlushBtree(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5WriteFlushLeaf(a0 uintptr, a1 uintptr, a2 uintptr)
+func fts5WriteInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func fts5yy_destructor(a0 uintptr, a1 uintptr, a2 uintptr)
 func functionDestroy(a0 uintptr, a1 uintptr, a2 uintptr)
 func gatherSelectWindowsCallback(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func gatherSelectWindowsSelectCallback(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func generateOutputSubroutine_block(a0 uintptr, a1 uintptr) uintptr
 func generateSortTail(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
+func geomCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func getAutoVacuum(a0 uintptr, a1 uintptr) uintptr
 func getCellInfo(a0 uintptr, a1 uintptr)
 func getConstraint(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -302,6 +551,7 @@ func go_create_aggregate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uint
 func go_create_collation(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func go_create_function(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func go_init(a0 uintptr) uintptr
+func go_vtabs_in_tx(a0 uintptr, a1 uintptr) uintptr
 func goasm_chunked_memcpy(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func goasm_chunked_memmove(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func goasm_chunked_memset(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -424,7 +674,14 @@ func last_valueValueFunc(a0 uintptr, a1 uintptr)
 func lengthFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func likeFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func localtime_r(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func log(a0 uintptr, a1 float64) float64
+func log10(a0 uintptr, a1 float64) float64
+func log1p(a0 uintptr, a1 float64) float64
+func log2(a0 uintptr, a1 float64) float64
+func logFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func lowerFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func math1Func(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func math2Func(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func measureAllocationSize(a0 uintptr, a1 uintptr, a2 uintptr)
 func memIntValue(a0 uintptr, a1 uintptr) uintptr
 func memchr(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
@@ -471,6 +728,12 @@ func multiSelectByMergeKeyInfo(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func multiSelectCollSeq(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func newDatabase(a0 uintptr, a1 uintptr) uintptr
 func nocaseCollatingFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func nodeAcquire(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func nodeGetRowid(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func nodeOverwriteCell(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func nodeParentIndex(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func nodeRelease(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func nodeWrite(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func noopMutexAlloc(a0 uintptr, a1 uintptr) uintptr
 func noopMutexEnd(a0 uintptr) uintptr
 func noopMutexEnter(a0 uintptr, a1 uintptr)
@@ -514,6 +777,7 @@ func pager_truncate(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func pager_unlock(a0 uintptr, a1 uintptr)
 func pager_write(a0 uintptr, a1 uintptr) uintptr
 func pager_write_pagelist(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func parentWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func parseHhMmSs(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func parserAddExprIdListTerm(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func parserDoubleLinkSelect(a0 uintptr, a1 uintptr, a2 uintptr)
@@ -535,9 +799,18 @@ func pcache1Shutdown(a0 uintptr, a1 uintptr)
 func pcache1Truncate(a0 uintptr, a1 uintptr, a2 uintptr)
 func pcache1Unpin(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func pcacheFetchFinishWithInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func percentCompute(a0 uintptr, a1 uintptr, a2 uintptr)
+func percentError(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func percentFinal(a0 uintptr, a1 uintptr)
+func percentInverse(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func percentSort(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func percentStep(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func percentValue(a0 uintptr, a1 uintptr)
 func percent_rankInvFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func percent_rankStepFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func percent_rankValueFunc(a0 uintptr, a1 uintptr)
+func piFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func pow(a0 uintptr, a1 float64, a2 float64) float64
 func pragmaFunclistLine(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func pragmaVtabBestIndex(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func pragmaVtabClose(a0 uintptr, a1 uintptr) uintptr
@@ -549,6 +822,8 @@ func pragmaVtabFilter(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr
 func pragmaVtabNext(a0 uintptr, a1 uintptr) uintptr
 func pragmaVtabOpen(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func pragmaVtabRowid(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func prefixIterSetupCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
+func prefixIterSetupTokendataCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
 func printfFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func propagateConstantExprRewrite(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func propagateConstants(a0 uintptr, a1 uintptr, a2 uintptr)
@@ -560,6 +835,7 @@ func pushOntoSorter_block(a0 uintptr, a1 uintptr)
 func putVarint64(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func quoteFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func quotedCompare_block(a0 uintptr, a1 uintptr) uintptr
+func radToDeg(a0 uintptr, a1 float64) float64
 func randomBlob(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func randomFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func rankStepFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -577,6 +853,7 @@ func recomputeColumnsUsedExpr(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func releasePage(a0 uintptr, a1 uintptr)
 func releasePageNotNull(a0 uintptr, a1 uintptr)
 func relocatePage_block(a0 uintptr, a1 uintptr) uintptr
+func removeNode(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func renameColumnElistNames(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func renameColumnExprCb(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func renameColumnFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -604,6 +881,7 @@ func renumberCursors(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func renumberCursorsCb(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func replaceFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func resetAccumulator(a0 uintptr, a1 uintptr, a2 uintptr)
+func resetCursor(a0 uintptr, a1 uintptr)
 func resizeIndexObject(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func resizeResolveLabel(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func resolveAlias(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
@@ -621,10 +899,51 @@ func rowSetNDeepTree(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func rowSetTreeToList(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func row_numberStepFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func row_numberValueFunc(a0 uintptr, a1 uintptr)
+func rowidWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func rtreeBeginTransaction(a0 uintptr, a1 uintptr) uintptr
+func rtreeBestIndex(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func rtreeCheckAppendMsg(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func rtreeCheckCount(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func rtreeCheckMapping(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func rtreeCheckNode(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func rtreeCheckPrepare(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func rtreeCheckTable(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func rtreeClose(a0 uintptr, a1 uintptr) uintptr
+func rtreeColumn(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func rtreeConnect_block(a0 uintptr, a1 uintptr) uintptr
+func rtreeConstraintError(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func rtreeCreate_block(a0 uintptr, a1 uintptr) uintptr
+func rtreeDeleteRowid(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func rtreeDestroy(a0 uintptr, a1 uintptr) uintptr
+func rtreeDisconnect(a0 uintptr, a1 uintptr) uintptr
+func rtreeEndTransaction(a0 uintptr, a1 uintptr) uintptr
+func rtreeEof(a0 uintptr, a1 uintptr) uintptr
+func rtreeFilter(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func rtreeFreeCallback(a0 uintptr, a1 uintptr)
+func rtreeInit_block(a0 uintptr, a1 uintptr) uintptr
+func rtreeInsertCell(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func rtreeIntegrity(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func rtreeMatchArgFree(a0 uintptr, a1 uintptr)
+func rtreeNext(a0 uintptr, a1 uintptr) uintptr
+func rtreeOpen(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func rtreeRelease(a0 uintptr, a1 uintptr)
+func rtreeRename(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func rtreeRollback(a0 uintptr, a1 uintptr) uintptr
+func rtreeRowid(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func rtreeSavepoint(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func rtreeSearchPointNew(a0 uintptr, a1 uintptr, a2 float64, a3 uintptr) uintptr
+func rtreeSearchPointPop(a0 uintptr, a1 uintptr)
+func rtreeShadowName(a0 uintptr, a1 uintptr) uintptr
+func rtreeStepToLeaf(a0 uintptr, a1 uintptr) uintptr
+func rtreeUpdate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func rtreecheck(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func rtreedepth(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func rtreenode(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func rtrimCollFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func sameSrcAlias(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func saveCursorKey(a0 uintptr, a1 uintptr) uintptr
 func saveCursorsOnList(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func scalbn(a0 uintptr, a1 float64, a2 uintptr) float64
 func selectAddSubqueryTypeInfo(a0 uintptr, a1 uintptr, a2 uintptr)
 func selectCheckOnClausesExpr(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func selectCheckOnClausesSelect(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -642,7 +961,11 @@ func setResultStrOrError(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uint
 func setSectorSize(a0 uintptr, a1 uintptr)
 func setupLookaside(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func signFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func sin(a0 uintptr, a1 float64) float64
+func sinh(a0 uintptr, a1 float64) float64
 func sourceidFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func specialcase(a0 uintptr, a1 float64, a2 uintptr, a3 uintptr) float64
+func specialcase_75(a0 uintptr, a1 float64, a2 uintptr, a3 uintptr) float64
 func sqlite3AddCheckConstraint(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func sqlite3AddCollateType(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3AddColumn(a0 uintptr, a1 uintptr, a2, a3 uintptr, a4, a5 uintptr)
@@ -693,6 +1016,8 @@ func sqlite3BtreeInsert(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintp
 func sqlite3BtreeNext(a0 uintptr, a1 uintptr) uintptr
 func sqlite3BtreeOffset(a0 uintptr, a1 uintptr) uintptr
 func sqlite3BtreeOpen_block(a0 uintptr, a1 uintptr) uintptr
+func sqlite3BtreePayloadChecked(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3BtreePutData(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3BtreeRollback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3BtreeRowCountEst(a0 uintptr, a1 uintptr) uintptr
 func sqlite3BtreeSetCacheSize(a0 uintptr, a1 uintptr, a2 uintptr)
@@ -827,6 +1152,51 @@ func sqlite3FkRequired(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintpt
 func sqlite3ForceNotReadOnly(a0 uintptr, a1 uintptr)
 func sqlite3Fp10Convert2(a0 uintptr, a1 uintptr, a2 uintptr) float64
 func sqlite3FreeIndex(a0 uintptr, a1 uintptr, a2 uintptr)
+func sqlite3Fts5BufferAppendPrintf(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func sqlite3Fts5ConfigErrmsg(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func sqlite3Fts5ConfigFree(a0 uintptr, a1 uintptr)
+func sqlite3Fts5ConfigLoad(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5ConfigParseRank(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5ConfigSetValue(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3Fts5CreateTable(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func sqlite3Fts5ExprAnd(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5ExprNew_block(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5GetVarint(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5GetVarint32(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5HashClear(a0 uintptr, a1 uintptr)
+func sqlite3Fts5HashScanInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5HashWrite_block(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5IndexBeginWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5IndexClose(a0 uintptr, a1 uintptr)
+func sqlite3Fts5IndexQuery_block(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5IndexReinit(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5Init(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5IsLocaleValue(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5LoadTokenizer(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5Mprintf(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5ParseColset(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5ParseColsetInvert(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5ParseError(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func sqlite3Fts5ParseNearset(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5ParseNode(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
+func sqlite3Fts5ParseNodeFree(a0 uintptr, a1 uintptr)
+func sqlite3Fts5ParseTerm(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3Fts5PoslistNext64(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3Fts5PoslistSafeAppend(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func sqlite3Fts5PutVarint(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5StorageClose(a0 uintptr, a1 uintptr)
+func sqlite3Fts5StorageConfigValue(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3Fts5StorageContentInsert(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3Fts5StorageDelete(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3Fts5StorageDeleteAll(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5StorageDocsize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5StorageFindDeleteRow(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5StorageIndexInsert(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3Fts5StorageIntegrity(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5StorageRollback(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5StorageSync(a0 uintptr, a1 uintptr) uintptr
+func sqlite3Fts5Strndup(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3Fts5TermsetAdd(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func sqlite3GenerateColumnNames(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3GenerateConstraintChecks_block(a0 uintptr, a1 uintptr)
 func sqlite3GenerateIndexKey_block(a0 uintptr, a1 uintptr) uintptr
@@ -952,6 +1322,7 @@ func sqlite3RowSetInsert(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3RowSetNext(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3RowSetTest(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3RowidConstraint(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func sqlite3RtreeInit(a0 uintptr, a1 uintptr) uintptr
 func sqlite3RunParser(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3RunVacuum(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3Savepoint(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1296,6 +1667,8 @@ func sqlite3_result_value(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3_result_zeroblob(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3_result_zeroblob64(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3_rollback_hook(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3_rtree_geometry_callback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3_rtree_query_callback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func sqlite3_serialize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3_set_authorizer(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3_set_auxdata(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
@@ -1387,6 +1760,7 @@ func sqlite3_wal_checkpoint(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3_wal_checkpoint_v2(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func sqlite3_wal_hook(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqliteDefaultBusyCallback(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqrt(a0 uintptr, a1 float64) float64
 func srclistRenumberCursors(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func statAccumDestructor(a0 uintptr, a1 uintptr)
 func statGet(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1410,6 +1784,8 @@ func sumFinalize(a0 uintptr, a1 uintptr)
 func sumInverse(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sumStep(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func syncJournal(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func tan(a0 uintptr, a1 float64) float64
+func tanh(a0 uintptr, a1 float64) float64
 func termCanDriveIndex(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func termIsEquivalence(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func timeFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1421,6 +1797,7 @@ func total_changes(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func triggerStepAllocate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func triggersReallyExist(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func trimFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func trunc(a0 uintptr, a1 float64) float64
 func typeofFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func unhexFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func unicodeFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1429,6 +1806,7 @@ func unixepochFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func unsetJoinExpr(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func updateAccumulator(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func updateFromSelect_block(a0 uintptr, a1 uintptr)
+func updateMapping(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func updateRangeAffinityStr(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func updateVirtualTable_block(a0 uintptr, a1 uintptr)
 func upperFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1531,6 +1909,8 @@ func windowIfNewPeer(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr,
 func windowReturnOneRow(a0 uintptr, a1 uintptr)
 func writeJournalHdr(a0 uintptr, a1 uintptr) uintptr
 func writeSuperJournal(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func xCeil(a0 uintptr, a1 float64) float64
+func xFloor(a0 uintptr, a1 float64) float64
 func xferCheckRowid(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func xferCompatibleCheck(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func xferCompatibleIndex(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -1588,6 +1968,21 @@ var missingNames = []string{}
 
 // packedSlot makes a pointer of an address in the shadow-stack region.
 func packedSlot(a uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&a)) }
+
+// SortByDimension stores its arguments in a block at the shadow pointer for
+// SortByDimension_block (gen.PackedGo).
+func SortByDimension(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of SortByDimension ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	SortByDimension_block(a0+48, a0)
+}
 
 // addOp4IntSlow stores its arguments in a block at the shadow pointer for
 // addOp4IntSlow_block (gen.PackedGo).
@@ -1798,6 +2193,376 @@ func fkScanChildren(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, 
 	fkScanChildren_block(a0+64, a0)
 }
 
+// fts5ApiTokenize_v2 stores its arguments in a block at the shadow pointer for
+// fts5ApiTokenize_v2_block (gen.PackedGo).
+func fts5ApiTokenize_v2(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr) uintptr {
+	if (a0+64)&(1<<shadowSizeLog2-1) < 64 {
+		panic("cengine: the block of fts5ApiTokenize_v2 ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	return fts5ApiTokenize_v2_block(a0+64, a0)
+}
+
+// fts5AsciiTokenize stores its arguments in a block at the shadow pointer for
+// fts5AsciiTokenize_block (gen.PackedGo).
+func fts5AsciiTokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5AsciiTokenize ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5AsciiTokenize_block(a0+48, a0)
+}
+
+// fts5ColumnSizeCb stores its arguments in a block at the shadow pointer for
+// fts5ColumnSizeCb_block (gen.PackedGo).
+func fts5ColumnSizeCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5ColumnSizeCb ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5ColumnSizeCb_block(a0+48, a0)
+}
+
+// fts5ConnectMethod stores its arguments in a block at the shadow pointer for
+// fts5ConnectMethod_block (gen.PackedGo).
+func fts5ConnectMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5ConnectMethod ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5ConnectMethod_block(a0+48, a0)
+}
+
+// fts5CreateMethod stores its arguments in a block at the shadow pointer for
+// fts5CreateMethod_block (gen.PackedGo).
+func fts5CreateMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5CreateMethod ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5CreateMethod_block(a0+48, a0)
+}
+
+// fts5ExprPopulatePoslistsCb stores its arguments in a block at the shadow pointer for
+// fts5ExprPopulatePoslistsCb_block (gen.PackedGo).
+func fts5ExprPopulatePoslistsCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5ExprPopulatePoslistsCb ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5ExprPopulatePoslistsCb_block(a0+48, a0)
+}
+
+// fts5HighlightCb stores its arguments in a block at the shadow pointer for
+// fts5HighlightCb_block (gen.PackedGo).
+func fts5HighlightCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5HighlightCb ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5HighlightCb_block(a0+48, a0)
+}
+
+// fts5InitVtab stores its arguments in a block at the shadow pointer for
+// fts5InitVtab_block (gen.PackedGo).
+func fts5InitVtab(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr) uintptr {
+	if (a0+64)&(1<<shadowSizeLog2-1) < 64 {
+		panic("cengine: the block of fts5InitVtab ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	return fts5InitVtab_block(a0+64, a0)
+}
+
+// fts5MultiIterNew stores its arguments in a block at the shadow pointer for
+// fts5MultiIterNew_block (gen.PackedGo).
+func fts5MultiIterNew(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr, a9 uintptr) {
+	if (a0+80)&(1<<shadowSizeLog2-1) < 80 {
+		panic("cengine: the block of fts5MultiIterNew ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	*(*uintptr)(packedSlot(a0 + 56)) = a8
+	*(*uintptr)(packedSlot(a0 + 64)) = a9
+	fts5MultiIterNew_block(a0+80, a0)
+}
+
+// fts5ParseTokenize stores its arguments in a block at the shadow pointer for
+// fts5ParseTokenize_block (gen.PackedGo).
+func fts5ParseTokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5ParseTokenize ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5ParseTokenize_block(a0+48, a0)
+}
+
+// fts5PorterCb stores its arguments in a block at the shadow pointer for
+// fts5PorterCb_block (gen.PackedGo).
+func fts5PorterCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5PorterCb ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5PorterCb_block(a0+48, a0)
+}
+
+// fts5PorterTokenize stores its arguments in a block at the shadow pointer for
+// fts5PorterTokenize_block (gen.PackedGo).
+func fts5PorterTokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr) uintptr {
+	if (a0+64)&(1<<shadowSizeLog2-1) < 64 {
+		panic("cengine: the block of fts5PorterTokenize ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	*(*uintptr)(packedSlot(a0 + 56)) = a8
+	return fts5PorterTokenize_block(a0+64, a0)
+}
+
+// fts5SegIterSeekInit stores its arguments in a block at the shadow pointer for
+// fts5SegIterSeekInit_block (gen.PackedGo).
+func fts5SegIterSeekInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5SegIterSeekInit ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	fts5SegIterSeekInit_block(a0+48, a0)
+}
+
+// fts5SentenceFinderCb stores its arguments in a block at the shadow pointer for
+// fts5SentenceFinderCb_block (gen.PackedGo).
+func fts5SentenceFinderCb(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5SentenceFinderCb ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5SentenceFinderCb_block(a0+48, a0)
+}
+
+// fts5StorageInsertCallback stores its arguments in a block at the shadow pointer for
+// fts5StorageInsertCallback_block (gen.PackedGo).
+func fts5StorageInsertCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5StorageInsertCallback ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5StorageInsertCallback_block(a0+48, a0)
+}
+
+// fts5StorageIntegrityCallback stores its arguments in a block at the shadow pointer for
+// fts5StorageIntegrityCallback_block (gen.PackedGo).
+func fts5StorageIntegrityCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5StorageIntegrityCallback ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5StorageIntegrityCallback_block(a0+48, a0)
+}
+
+// fts5TriTokenize stores its arguments in a block at the shadow pointer for
+// fts5TriTokenize_block (gen.PackedGo).
+func fts5TriTokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5TriTokenize ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5TriTokenize_block(a0+48, a0)
+}
+
+// fts5UnicodeTokenize stores its arguments in a block at the shadow pointer for
+// fts5UnicodeTokenize_block (gen.PackedGo).
+func fts5UnicodeTokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5UnicodeTokenize ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5UnicodeTokenize_block(a0+48, a0)
+}
+
+// fts5V1toV2Tokenize stores its arguments in a block at the shadow pointer for
+// fts5V1toV2Tokenize_block (gen.PackedGo).
+func fts5V1toV2Tokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5V1toV2Tokenize ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5V1toV2Tokenize_block(a0+48, a0)
+}
+
+// fts5V2toV1Tokenize stores its arguments in a block at the shadow pointer for
+// fts5V2toV1Tokenize_block (gen.PackedGo).
+func fts5V2toV1Tokenize(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr) uintptr {
+	if (a0+64)&(1<<shadowSizeLog2-1) < 64 {
+		panic("cengine: the block of fts5V2toV1Tokenize ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	*(*uintptr)(packedSlot(a0 + 56)) = a8
+	return fts5V2toV1Tokenize_block(a0+64, a0)
+}
+
+// fts5VisitEntries stores its arguments in a block at the shadow pointer for
+// fts5VisitEntries_block (gen.PackedGo).
+func fts5VisitEntries(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr) {
+	if (a0+64)&(1<<shadowSizeLog2-1) < 64 {
+		panic("cengine: the block of fts5VisitEntries ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	fts5VisitEntries_block(a0+64, a0)
+}
+
+// fts5VocabConnectMethod stores its arguments in a block at the shadow pointer for
+// fts5VocabConnectMethod_block (gen.PackedGo).
+func fts5VocabConnectMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5VocabConnectMethod ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5VocabConnectMethod_block(a0+48, a0)
+}
+
+// fts5VocabCreateMethod stores its arguments in a block at the shadow pointer for
+// fts5VocabCreateMethod_block (gen.PackedGo).
+func fts5VocabCreateMethod(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5VocabCreateMethod ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5VocabCreateMethod_block(a0+48, a0)
+}
+
+// fts5VocabInitVtab stores its arguments in a block at the shadow pointer for
+// fts5VocabInitVtab_block (gen.PackedGo).
+func fts5VocabInitVtab(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of fts5VocabInitVtab ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return fts5VocabInitVtab_block(a0+48, a0)
+}
+
 // generateOutputSubroutine stores its arguments in a block at the shadow pointer for
 // generateOutputSubroutine_block (gen.PackedGo).
 func generateOutputSubroutine(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr) uintptr {
@@ -1950,6 +2715,52 @@ func relocatePage(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5
 	*(*uintptr)(packedSlot(a0 + 32)) = a5
 	*(*uintptr)(packedSlot(a0 + 40)) = a6
 	return relocatePage_block(a0+48, a0)
+}
+
+// rtreeConnect stores its arguments in a block at the shadow pointer for
+// rtreeConnect_block (gen.PackedGo).
+func rtreeConnect(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of rtreeConnect ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return rtreeConnect_block(a0+48, a0)
+}
+
+// rtreeCreate stores its arguments in a block at the shadow pointer for
+// rtreeCreate_block (gen.PackedGo).
+func rtreeCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of rtreeCreate ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return rtreeCreate_block(a0+48, a0)
+}
+
+// rtreeInit stores its arguments in a block at the shadow pointer for
+// rtreeInit_block (gen.PackedGo).
+func rtreeInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr) uintptr {
+	if (a0+64)&(1<<shadowSizeLog2-1) < 64 {
+		panic("cengine: the block of rtreeInit ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	return rtreeInit_block(a0+64, a0)
 }
 
 // selectInnerLoop stores its arguments in a block at the shadow pointer for
@@ -2170,6 +2981,52 @@ func sqlite3FkCheck(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, 
 	*(*uintptr)(packedSlot(a0 + 32)) = a5
 	*(*uintptr)(packedSlot(a0 + 40)) = a6
 	sqlite3FkCheck_block(a0+48, a0)
+}
+
+// sqlite3Fts5ExprNew stores its arguments in a block at the shadow pointer for
+// sqlite3Fts5ExprNew_block (gen.PackedGo).
+func sqlite3Fts5ExprNew(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of sqlite3Fts5ExprNew ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return sqlite3Fts5ExprNew_block(a0+48, a0)
+}
+
+// sqlite3Fts5HashWrite stores its arguments in a block at the shadow pointer for
+// sqlite3Fts5HashWrite_block (gen.PackedGo).
+func sqlite3Fts5HashWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr) uintptr {
+	if (a0+64)&(1<<shadowSizeLog2-1) < 64 {
+		panic("cengine: the block of sqlite3Fts5HashWrite ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	*(*uintptr)(packedSlot(a0 + 48)) = a7
+	return sqlite3Fts5HashWrite_block(a0+64, a0)
+}
+
+// sqlite3Fts5IndexQuery stores its arguments in a block at the shadow pointer for
+// sqlite3Fts5IndexQuery_block (gen.PackedGo).
+func sqlite3Fts5IndexQuery(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr {
+	if (a0+48)&(1<<shadowSizeLog2-1) < 48 {
+		panic("cengine: the block of sqlite3Fts5IndexQuery ends past the shadow-stack region")
+	}
+	*(*uintptr)(packedSlot(a0 + 0)) = a1
+	*(*uintptr)(packedSlot(a0 + 8)) = a2
+	*(*uintptr)(packedSlot(a0 + 16)) = a3
+	*(*uintptr)(packedSlot(a0 + 24)) = a4
+	*(*uintptr)(packedSlot(a0 + 32)) = a5
+	*(*uintptr)(packedSlot(a0 + 40)) = a6
+	return sqlite3Fts5IndexQuery_block(a0+48, a0)
 }
 
 // sqlite3GenerateConstraintChecks stores its arguments in a block at the shadow pointer for
