@@ -4,6 +4,6 @@
 // root of this repository.
 
 // Package bench compares SQLite drivers for database/sql. Exactly one driver
-// is linked per binary, chosen with a build tag: mattn, modernc or ncruces.
+// is linked per binary, chosen with a build tag: liustack, mattn, modernc or ncruces.
 // See README.md.
 package bench

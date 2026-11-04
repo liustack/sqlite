@@ -3,11 +3,6 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-// Copyright (c) 2026 The liustack/sqlite Authors.
-// SPDX-License-Identifier: MIT
-// Use of this source code is governed by the MIT license in LICENSE at the
-// root of this repository.
-
 package bench
 
 import (
@@ -59,8 +54,9 @@ const (
 	postRows  = 100_000
 )
 
-// fillItems makes table items(id, name, score, created) with n rows.
-func fillItems(tb testing.TB, db *sql.DB, n int) {
+// fillItems makes table items(id, name, score, created) with pointRows rows.
+func fillItems(tb testing.TB, db *sql.DB) {
+	n := pointRows
 	tb.Helper()
 	exec(tb, db, `CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, score REAL NOT NULL, created INTEGER NOT NULL)`)
 	tx, err := db.Begin()
@@ -101,6 +97,10 @@ func BenchmarkInsert(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.StopTimer()
+	if n := count(b, db, "t"); n != b.N {
+		b.Fatalf("%d rows, want %d", n, b.N)
+	}
 }
 
 // InsertTx: 1000 rows in one transaction per op.
@@ -134,8 +134,7 @@ func BenchmarkInsertTx(b *testing.B) {
 
 // Point: SELECT one row by primary key, one goroutine.
 func BenchmarkPoint(b *testing.B) {
-	db := open(b)
-	fillItems(b, db, pointRows)
+	db := fixture(b, "items", fillItems)
 	st := prepare(b, db, `SELECT id, name, score, created FROM items WHERE id = ?`)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -145,16 +144,19 @@ func BenchmarkPoint(b *testing.B) {
 			name        string
 			score       float64
 		)
-		if err := st.QueryRow(i%pointRows+1).Scan(&id, &name, &score, &created); err != nil {
+		k := i%pointRows + 1
+		if err := st.QueryRow(k).Scan(&id, &name, &score, &created); err != nil {
 			b.Fatal(err)
+		}
+		if id != int64(k) || created != int64(1_700_000_000+k) {
+			b.Fatalf("row %d: id %d created %d", k, id, created)
 		}
 	}
 }
 
 // Scan: read and scan every column of 100k rows per op.
 func BenchmarkScan(b *testing.B) {
-	db := open(b)
-	fillItems(b, db, pointRows)
+	db := fixture(b, "items", fillItems)
 	st := prepare(b, db, `SELECT id, name, score, created FROM items`)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -188,6 +190,29 @@ func BenchmarkScan(b *testing.B) {
 	}
 }
 
+// fillAggregate makes users (10k) and posts (100k) with an index on
+// posts.user_id.
+func fillAggregate(tb testing.TB, db *sql.DB) {
+	exec(tb, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)`)
+	exec(tb, db, `CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, score REAL NOT NULL, created INTEGER NOT NULL)`)
+	tx, err := db.Begin()
+	if err != nil {
+		tb.Fatal(err)
+	}
+	for i := 1; i <= userRows; i++ {
+		exec(tb, tx, `INSERT INTO users (id, name) VALUES (?, ?)`, i, fmt.Sprintf("user-%d", i))
+	}
+	for i := 1; i <= postRows; i++ {
+		exec(tb, tx, `INSERT INTO posts (id, user_id, score, created) VALUES (?, ?, ?, ?)`,
+			i, i%userRows+1, float64(i%1000)/10, 1_700_000_000+i)
+	}
+	if err := tx.Commit(); err != nil {
+		tb.Fatal(err)
+	}
+	// The posts.user_id index is part of the schema, not the timed query.
+	exec(tb, db, `CREATE INDEX posts_user ON posts (user_id)`)
+}
+
 const aggregateSQL = `
 SELECT u.id, u.name, COUNT(*) AS posts, SUM(p.score) AS total, MAX(p.created) AS last
 FROM users u JOIN posts p ON p.user_id = u.id
@@ -197,25 +222,7 @@ ORDER BY total DESC, u.id`
 
 // Aggregate: join 10k users with 100k posts, group and sort, 250 rows back.
 func BenchmarkAggregate(b *testing.B) {
-	db := open(b)
-	exec(b, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)`)
-	exec(b, db, `CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, score REAL NOT NULL, created INTEGER NOT NULL)`)
-	tx, err := db.Begin()
-	if err != nil {
-		b.Fatal(err)
-	}
-	for i := 1; i <= userRows; i++ {
-		exec(b, tx, `INSERT INTO users (id, name) VALUES (?, ?)`, i, fmt.Sprintf("user-%d", i))
-	}
-	for i := 1; i <= postRows; i++ {
-		exec(b, tx, `INSERT INTO posts (id, user_id, score, created) VALUES (?, ?, ?, ?)`,
-			i, i%userRows+1, float64(i%1000)/10, 1_700_000_000+i)
-	}
-	if err := tx.Commit(); err != nil {
-		b.Fatal(err)
-	}
-	// The posts.user_id index is part of the schema, not the timed query.
-	exec(b, db, `CREATE INDEX posts_user ON posts (user_id)`)
+	db := fixture(b, "aggregate", fillAggregate)
 	st := prepare(b, db, aggregateSQL)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -253,8 +260,7 @@ func BenchmarkAggregate(b *testing.B) {
 // between uses (database/sql keeps 2 by default). RunParallel
 // starts GOMAXPROCS goroutines (parallelism 1), each doing lookups.
 func BenchmarkPointParallel(b *testing.B) {
-	db := open(b)
-	fillItems(b, db, pointRows)
+	db := fixture(b, "items", fillItems)
 	db.SetMaxOpenConns(runtime.GOMAXPROCS(0) * 2)
 	db.SetMaxIdleConns(runtime.GOMAXPROCS(0) * 2)
 	st := prepare(b, db, `SELECT id, name, score, created FROM items WHERE id = ?`)
@@ -319,4 +325,14 @@ func insertParallel(b *testing.B, synchronous string) {
 			}
 		})
 	}
+}
+
+// count is the number of rows of table.
+func count(tb testing.TB, db *sql.DB, table string) int {
+	tb.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM ` + table).Scan(&n); err != nil {
+		tb.Fatal(err)
+	}
+	return n
 }
