@@ -92,6 +92,12 @@ db := sql.OpenDB(c)
 
 `sqlite.Register` 把它们交给之后 `sql.Open` 创建的每个 connector。函数出错或 panic 只让它所在的语句失败，连接不受影响。
 
+常用函数在 `ext/` 下的包里现成可用：[`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp)（`REGEXP` 运算符、`regexp_like`、`regexp_substr`、`regexp_replace`）、[`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid)、[`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash)（md5、sha1、sha256、sha512、crc32）和 [`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats)（方差和标准差）。每个包是一个 option，`sqlite.Join` 能把几个合成一个交出去：
+
+```go
+sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
+```
+
 驱动注册的名字是 `sqlite`，和 modernc.org/sqlite、glebarez/go-sqlite 一样，所以同时导入其中一个的程序启动时会 panic。这时用 `sql.OpenDB(sqlite.NewConnector(dsn))` 打开数据库。
 
 ## 对你有什么不同
