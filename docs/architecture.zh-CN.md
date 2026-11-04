@@ -1,0 +1,119 @@
+# 架构
+
+[English](architecture.md) · 简体中文
+
+## 分层
+
+```mermaid
+flowchart TB
+    app["你的程序，通过 database/sql"] --> drv["驱动（根包）<br>每个文件一个写入者，合并提交"]
+    drv --> api["internal/csqlite<br>C API 和 Go host：<br>影子栈、malloc、互斥锁"]
+    api --> eng["Go 汇编形式的 SQLite<br>由 engine/ 生成"]
+    eng -- "VFS 和互斥锁调用" --> api
+    api --> vfs["internal/vfs<br>文件、锁、共享内存"]
+    vfs --> os["内核"]
+```
+
+从下往上：
+
+1. **C 树**（`engine/`）：发布原样的 SQLite amalgamation、编译选项（`engine/sqlite.c`）、调用 Go 的 VFS 和互斥锁（`engine/os.c`、`engine/host.h`），以及一个小 libc（`engine/libc/`）。它按 freestanding 方式编译，不用系统头文件。
+2. **生成器**（`internal/goasm/gen/`）：把 C 树变成 Go 汇编，每个 C 函数对应一个 Go 函数，再加一个声明它们的 Go 文件。由维护者运行（`make gen`），用户不用跑。
+3. **引擎包**（`internal/csqlite`）：生成的 Go 汇编和它的声明，都提交进仓库，旁边是 Go host：影子栈、poll、malloc、互斥锁、VFS 的回调，以及驱动调用的那一小组 C API。
+4. **文件层**（`internal/vfs`）：纯 Go，不含引擎。在 linux 和 darwin 上实现 SQLite 的文件和锁规则，做法和 os_unix 一样：同一进程里连到同一个数据库的各个连接共享一套锁，这些锁在内存里彼此分开，只有进程持有的锁发生变化时才去问内核。内核锁用 OFD 锁（属于打开文件的锁），所以关掉一个连接不会放掉别的连接的锁。`-shm` 文件为 WAL 做了内存映射。
+5. **驱动**（根包）：在这套 API 之上实现 `database/sql/driver`，每个数据库文件一个写入者，并带合并提交。
+
+## 从 C 到 Go 汇编
+
+`make gen` 运行 `scripts/gen-engine.sh`，它让生成器处理 `engine/sqlite.c` 和 `engine/libc/string/*.c`：
+
+```mermaid
+flowchart LR
+    c["engine/<br>SQLite、os.c、libc"] -->|clang| ir["LLVM IR<br>每个文件一份"]
+    ir -->|"llvm-link、opt"| mod["一个模块"]
+    mod -->|"影子栈 pass"| mod2["局部变量放在<br>影子栈上，加入 poll"]
+    mod2 -->|llc| mc["机器码"]
+    mc -->|"生成器"| goasm["Go 汇编<br>internal/csqlite"]
+    goasm -->|"go build，然后<br>链接后检查"| bin["二进制"]
+```
+
+1. clang 用 `engine/flags.sh` 的参数和生成器自己的参数（目标平台、帧指针、不做尾调用、保留 Go 用的寄存器）把每个文件编译成 LLVM IR。
+2. llvm-link 把这些文件合在一起，优化器再对整个模块跑一遍。
+3. 影子栈 pass（`internal/goasm/gen/pass/`，一个 LLVM 插件）把每个被取过地址的局部变量搬到 host 提供的一块独立的栈上，因为 Go 的栈在增长时会移动。它在每个循环里放一个 poll，好让 Go 能中止这个 goroutine，还把可变参数调用的额外参数放在这个栈上的一块内存里传递。
+4. llc 生成机器码。生成器把每个函数改写成 Go 汇编：用 Go 的函数序言和它的栈检查，参数从 Go 的栈上取，每次调用都按 Go 的方式发出。
+5. 一道检查会读取链接好的二进制，保证每个函数都和 llc 写出的一致。
+
+这个过程不需要改 SQLite。SQLite 3.54.1 在两个目标平台上都能整个降级成功：大约 1460 个函数，没有桩函数，10 MB 汇编，一分钟内完成，链接后检查在 linux/arm64 和 linux/amd64 的二进制上都通过。
+
+### 可写数据
+
+SQLite 有 31 个可写的全局变量：它的配置、分配器和页缓存的状态，还有启动时串起来的内置函数表。它们和 Go 的全局变量一样由整个进程共享，所以和只读数据一起放进那一个 Go 数据符号，这个符号不带 RODATA 来写。SQLite 的只读数据也因此变成了可写内存，但 SQLite 从不写它们。
+
+降级只能改写那些取地址的数据引用：直接 load 要变成函数体里的一份拷贝，对会变化的数据来说这是错的。所以生成器在 llc 运行前，先在 IR 里把每个可写全局变量改成 external 和 preemptible（`ExposeWritableData`）。这样位置无关代码只能通过 GOT 加载它的地址来访问每一个，降级再把这次加载换成数据符号里的地址。x86 有时会把这次加载并进比较、加法或减法里（`cmpq sym@GOTPCREL(%rip), %rdi`）。对这些全局变量，数据符号的末尾放一个 8 字节的槽，里面存全局变量的地址，指令读的是这个槽。直接引用可写数据会让构建失败。试过 `SQLITE_OMIT_WSD`，但不合适：它让 33 个全局变量里仍有 21 个可写（3.50.4），而且每次读配置都要查一次。
+
+## Go host
+
+`engine/host.h` 里声明的 C 函数 `host_x`，会变成对 `internal/csqlite` 里 Go 函数 `host_x` 的调用，影子指针放在第一个参数。生成器靠前缀认出它们。
+
+- **影子栈。** 每个连接有一块 32 MiB 的区域，按自身大小对齐，后面跟一个保护页，用 mmap 映射，C 用到哪里才碰到哪里。调用 C 时传入指向它的指针。调用的字符串和输出参数也写在这里，所以一次调用不分配任何内存。
+- **Poll。** C 的循环每走 10000 个 tick 调用一次 `host_poll`。它的栈检查就是 Go 运行时能中止这个 goroutine 的地方。
+- **内存。** `malloc`、`realloc` 和 `free` 都是 Go 写的：256 KiB 以内的大小分档，从 4 MiB 的 mmap 区域里切，超过的各自单独映射。垃圾回收器看不到 SQLite 的内存。
+- **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
+- **文件。** `engine/os.c` 就是 VFS（名字叫 `go`）。它的每个方法都调用 `internal/vfs`。
+
+## 每个文件一个写入者
+
+在驱动内部，一个连接执行可能写入的语句之前（`sqlite3_stmt_readonly`）先拿这个文件的写锁，等连接结束事务后再还回去。读从不拿这把锁。没有这把锁时，同一进程里的许多写入者会在 SQLite 的 busy handler 里等，它的休眠时间越来越长（1、2、5 ms，最高 100 ms），而持有 SQLite 锁的写入者却在等一个线程：在 Apple M4 上，64 个 goroutine 各插入一行，每次插入 1.7 ms，有了这把锁是 12 µs。用 cgo 时每次调用各占一个线程，所以 mattn/go-sqlite3 碰不到这个问题。其他进程的写入者仍然要面对 SQLite 自己的锁。
+
+## 合并提交
+
+许多 goroutine 各自在 autocommit 模式下写一行，每个都要付一次提交的代价，而 SQLite 同一时刻只有一个写入者，它们还要互相等。驱动把许多调用者的 autocommit DML 收到一起，放进一个事务里执行，只提交一次。规则写在 [AGENTS.md](../AGENTS.md#hard-constraints)：只合并主数据库上的 autocommit DML，每条语句一个 SAVEPOINT，每个调用者拿到自己的结果，调用要等提交之后才返回。
+
+做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间（失败时用 `ROLLBACK TO`，它的调用者拿到错误），再 `COMMIT`，这时每个调用者才拿到结果。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
+
+```mermaid
+sequenceDiagram
+    participant A as goroutine A
+    participant B as goroutine B
+    participant C as goroutine C
+    participant L as 文件的写锁
+    A->>L: Exec INSERT：锁是空的，A 拿到锁
+    B->>L: Exec INSERT：锁被占用，B 加入队列
+    C->>L: Exec UPDATE：C 加入队列
+    Note over A: A 的 INSERT 执行并提交
+    L->>A: 还锁之前，A 接管队列
+    Note over A: BEGIN IMMEDIATE<br>SAVEPOINT，B 的 INSERT，RELEASE<br>SAVEPOINT，C 的 UPDATE，RELEASE<br>COMMIT
+    A-->>B: B 的错误、LastInsertId、RowsAffected
+    A-->>C: C 的结果
+    Note over A,C: 每个调用都在 COMMIT 之后才返回
+```
+
+哪些语句可以加入：驱动在 C 里装了一个 authorizer（`engine/os.c` 里的 `goClassify`），语句在准备时它就能看到。只有同时满足这些条件，语句才能加入：它写的是主数据库的表，且不碰只属于自己这个连接的东西。具体是：不涉及其他 schema（temp、attached），不由触发器写入（那可能是临时触发器），不用 `last_insert_rowid()`、`changes()` 或 `total_changes()`，也不是非 DML 的语句。只有 `Exec` 会合并。事务里的语句从不合并。
+
+在 Apple M4 上（WAL，`synchronous=NORMAL`，每次调用一条 autocommit `INSERT`，`bench/`），每次插入的耗时：
+
+| 写入者 | mattn（cgo） | 本驱动 |
+| --- | --- | --- |
+| 1 | 9.7 µs | 9.1 µs |
+| 8 | 9.0 µs | 3.4 µs |
+| 64 | 16.8 µs | 1.4 µs |
+
+更多驱动和 linux 的数字见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md)。
+
+在应用代码里做的原型，基于 mattn/go-sqlite3（WAL，一个写入 goroutine，把正在等的调用者全收走，最多 256 个），在 Apple M4 上测得：
+
+| 写入者 | synchronous | 每次写入一次提交 | 合并提交 | 提升 |
+| --- | --- | --- | --- | --- |
+| 1 | NORMAL | 133k writes/s | 88k writes/s | 0.7x |
+| 16 | NORMAL | 88k | 197k | 2.2x |
+| 256 | NORMAL | 94k | 359k | 3.8x |
+| 16 | FULL, fullfsync | 213 | 2.0k | 9.5x |
+| 256 | FULL, fullfsync | 150 | 34.8k | 232x |
+
+所以大约从 16 个并发写入者起才划算，提交要等磁盘时收益最大。只有一个写入者时反而有代价，因为队列只会多绕一步：没有别人在等时，驱动必须直接写。每次写入一次提交也不公平：有的 goroutine 等了好几秒，有的拿到了 `SQLITE_BUSY`。每条语句一个 SAVEPOINT 会让峰值减半（原型里每条语句多两次调用）。SQLite 里约束失败本来就只撤销自己那条语句，所以到底哪里真需要 SAVEPOINT，还没有证明。不过它还是留着：安全优先于速度。每次运行只跑了 3 秒，相同配置的多次运行相差最多 90%，所以低于 1.5x 的提升当作噪声看待。
+
+## 没有走的路
+
+- **cgo**（mattn/go-sqlite3）：每次构建、每个目标平台都要 C 编译器，交叉编译也难。免去这些正是这个项目存在的原因。
+- **把 C 翻译成 Go**（modernc.org/sqlite，用 ccgo 做的）：不用 cgo，但比 cgo 慢：点查询要 1.2 到 1.4 倍的时间，join 要 1.6 到 2.4 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md)）。slowjs 之前为 QuickJS 走过这条路，也是因为同样的原因离开了。
+- **WebAssembly**（ncruces/go-sqlite3）：SQLite 先编成 wasm，再由 wasm2go 翻译成 Go。不用 cgo，但 C 到 CPU 之间多绕了一层机器模型。
+- **用 purego 加载共享库**：没法得到单个静态二进制，SQLite 版本取决于系统，每次调用的开销也更大。

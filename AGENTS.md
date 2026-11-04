@@ -4,6 +4,10 @@
 
 `github.com/liustack/sqlite` is a SQLite driver for Go's `database/sql` that needs no cgo. SQLite's C (the amalgamation in `engine/`) is compiled by LLVM to Go assembly that is checked in, so building a program with it needs no C compiler. The driver will also merge the autocommit writes of many goroutines into one transaction (group commit), so that concurrent writers do not each pay for a commit. See [docs/architecture.md](docs/architecture.md).
 
+## Priorities
+
+Stability and safety first, speed second, memory third. A change that is faster or smaller but could lose a write, return a wrong result or weaken a commit is not taken.
+
 ## Hard constraints
 
 - Pure Go, `CGO_ENABLED=0` for the user of the module: no cgo, no C compiler, no shared library. Targets are amd64 and arm64.
@@ -36,7 +40,8 @@ The driver runs on linux and darwin, amd64 and arm64. Group commit merges concur
    - [docs/upstream.md](docs/upstream.md): where the code comes from and how to move to a new SQLite
    - [docs/benchmarks.md](docs/benchmarks.md): how fast the driver is against the other drivers, on linux/amd64 and darwin/arm64
 4. Docs are written for readers: conclusions and how to do things, not reasoning or work logs. The README is a landing page and only links to the docs.
-5. Docs are written in English. Keep it short and direct, use everyday words, and do not invent terms. Do not use semicolons, and do not use dashes as punctuation.
+5. Docs are written in English. README.md, docs/architecture.md, docs/benchmarks.md and docs/upstream.md also have a `*.zh-CN.md` Chinese version, linked from the top of each side: when you change one side, change the other to match. `scripts/docs-list.sh` skips `*.zh-CN.md` files.
+6. English: keep it short and direct, use everyday words, and do not invent terms. Both languages: do not use semicolons, and do not use dashes as punctuation.
 
 ## License headers
 
