@@ -35,12 +35,20 @@ The Go assembly of `internal/csqlite` was made with Go 1.27.2 and is checked wit
 - The stack check at the start of every function that is not NOSPLIT: a compare of the stack pointer with `g.stackguard0` (offset 16 of `g`, in R14 on amd64 and X28 on arm64), and a call of `runtime.morestack_noctxt.abi0` (`internal/goasm/gen/verify_insn.go`, `arm64_verify.go`).
 - The room of a chain of NOSPLIT functions that the linker allows, less what a fault pushes for `runtime.sigpanic` (`internal/goasm/gen/nosplit.go`).
 
-To move to a newer Go, with it and with `-tags sqlite_anygo`:
+To move to a newer Go, with it:
 
-1. Run `make check`, `make check-gen` (its post-link check holds every generated function to the shape above in a binary the new Go linked) and `make test-gen`.
+1. Run the tests with the gate turned off, then `make check-gen` (its post-link check builds with `sqlite_anygo` and holds every generated function to the shape above in a binary the new Go linked) and `make test-gen`. `make check` cannot be used here, since a `-tags` on the command line takes the place of the one in `GOFLAGS`.
+
+   ```sh
+   go vet -asmdecl=false -tags sqlite_anygo ./...
+   go test -count=1 -tags sqlite_anygo ./...
+   go test -race -count=1 -tags sqlite_anygo . ./internal/vfs ./internal/csqlite
+   make check-gen test-gen
+   ```
+
 2. If one fails, read the stack check and `runtime.sigpanic` in the source of the new release, and change the generator only for what you read there.
-3. When all pass, move the build line of `internal/goversion/newer.go` to the next version and the name in it to the version you checked, and write the new range here and in the README, in both languages. `TestNewerGoStops` checks that the line and the name agree.
+3. When all pass, move the build line of `internal/goversion/newer.go` to the next version and the name in it to the version you checked, and write the new range here, in the README (both languages), in AGENTS.md and in the `go-version` of `.github/workflows/test.yml`. `TestNewerGoStops` checks that the line and the name agree.
 
 The lowest Go is 1.26.6, the `go` line of `go.mod`. Before 1.26.6, when a goroutine's stack was copied, the frame of a function into which Go injected a call (as it injects `sigpanic` into a generated function that faulted) kept a frame pointer into the old stack, which the execution tracer and the block and mutex profiles may follow (`adjustframe` in `runtime/stack.go`). On Go 1.26, `database/sql` has no `RowsColumnScanner`, so `Scan` reads a row through `Next` and allocates more (`scan_go127.go` is built only on Go 1.27). The results are the same.
 
-`scripts/go-versions.sh` runs the tests with the lowest Go and the newest patch release of each minor version up to the one `internal/goversion` stops. The weekly workflow `go-latest` runs it on every target, and runs the tests on the newest stable Go with `sqlite_anygo` to warn of a release that breaks the assembly.
+`scripts/go-versions.sh` runs the tests with the lowest Go and the newest patch release of each minor version up to the one `internal/goversion` stops. The weekly workflow `go-latest` runs it on every target, and runs the tests on the newest stable Go with `sqlite_anygo`, to warn early of a release that breaks the assembly in a way the tests see.
