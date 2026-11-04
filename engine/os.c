@@ -73,6 +73,17 @@ int go_create_aggregate(sqlite3 *db, const char *name, int nArg, int flags, long
   return sqlite3_create_function_v2(db, name, nArg, flags, (void *)h, 0, goStep, goFinal, goFuncDestroy);
 }
 
+static void goValue(sqlite3_context *ctx) { host_value(ctx); }
+static void goInverse(sqlite3_context *ctx, int argc, sqlite3_value **argv) { host_inverse(ctx, argc, argv); }
+
+/* go_create_window is go_create_aggregate for an aggregate window function:
+   goValue gives the result for the current frame, and goInverse takes out
+   a row that left it. */
+int go_create_window(sqlite3 *db, const char *name, int nArg, int flags, long h) {
+  return sqlite3_create_window_function(db, name, nArg, flags, (void *)h, goStep, goFinal, goValue, goInverse,
+                                        goFuncDestroy);
+}
+
 static int goCollate(void *h, int n1, const void *p1, int n2, const void *p2) {
   return host_collate((long)h, n1, p1, n2, p2);
 }

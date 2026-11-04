@@ -67,6 +67,28 @@ func (c *Conn) CreateAggregate(name string, nArg int, flags int, newAgg func() A
 	return c.createFunc(name, nArg, flags, funcEntry{newAgg: newAgg}, go_create_aggregate)
 }
 
+// WindowAgg is an Agg that is also an aggregate window function: Value gives
+// the result for the rows of the frame so far, and Inverse takes out a row
+// that left the frame, with the arguments Step had for it.
+type WindowAgg interface {
+	Agg
+	Value() (driver.Value, error)
+	Inverse(args []driver.Value) error
+}
+
+// CreateWindow makes an aggregate window function name: newWin makes the
+// state of each group or partition.
+func (c *Conn) CreateWindow(name string, nArg int, flags int, newWin func() WindowAgg) error {
+	newAgg := func() Agg {
+		w := newWin()
+		if w == nil {
+			return nil
+		}
+		return w
+	}
+	return c.createFunc(name, nArg, flags, funcEntry{newAgg: newAgg}, go_create_window)
+}
+
 func (c *Conn) createFunc(name string, nArg, flags int, e funcEntry, create func(sp, db, name, nArg, flags, h uintptr) uintptr) error {
 	if err := c.brokenErr(); err != nil {
 		return err
@@ -119,25 +141,65 @@ func host_func(sp, ctx, argc, argv uintptr) {
 // host_step runs Step of the group's state, made at its first row.
 func host_step(sp, ctx, argc, argv uintptr) {
 	defer failQuiet(sp)
+	a, ok := groupState(sp, ctx)
+	if !ok {
+		return
+	}
+	args := values(sp, argc, argv)
+	if _, err := safely(func() (driver.Value, error) { return nil, a.Step(args) }); err != nil {
+		resultError(sp, ctx, err)
+	}
+}
+
+// host_value runs Value of the state of a window function's group. A frame
+// with no rows yet gets a state of its own, which host_final drops at the
+// end of the partition.
+func host_value(sp, ctx uintptr) {
+	defer failQuiet(sp)
+	a, ok := groupState(sp, ctx)
+	if !ok {
+		return
+	}
+	v, err := safely(a.(WindowAgg).Value)
+	if err == nil {
+		err = result(sp, ctx, v)
+	}
+	if err != nil {
+		resultError(sp, ctx, err)
+	}
+}
+
+// host_inverse runs Inverse of the state of a window function's group.
+func host_inverse(sp, ctx, argc, argv uintptr) {
+	defer failQuiet(sp)
+	a, ok := groupState(sp, ctx)
+	if !ok {
+		return
+	}
+	args := values(sp, argc, argv)
+	if _, err := safely(func() (driver.Value, error) { return nil, a.(WindowAgg).Inverse(args) }); err != nil {
+		resultError(sp, ctx, err)
+	}
+}
+
+// groupState is the state of the group of ctx, made at its first call. When
+// it cannot give one it sets the error of ctx.
+func groupState(sp, ctx uintptr) (Agg, bool) {
 	p := sqlite3_aggregate_context(sp, ctx, 8)
 	if p == 0 {
 		sqlite3_result_error_nomem(sp, ctx)
-		return
+		return nil, false
 	}
 	slot := (*uintptr)(at(p))
 	if *slot == 0 {
 		a, err := newState(sp, ctx)
 		if err != nil {
 			resultError(sp, ctx, err)
-			return
+			return nil, false
 		}
 		*slot = aggs.add(&a)
 	}
-	a := *aggs.get(*slot)
-	args := values(sp, argc, argv)
-	if _, err := safely(func() (driver.Value, error) { return nil, a.Step(args) }); err != nil {
-		resultError(sp, ctx, err)
-	}
+	return *aggs.get(*slot), true
 }
 
 // host_final runs Final of the group's state and drops it. SQLite calls it
