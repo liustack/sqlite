@@ -48,9 +48,20 @@ const (
 type Error struct {
 	Code int // the extended result code
 	Msg  string
+	err  error // ErrCollationPanic, or nil
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("sqlite: %s (%d)", e.Msg, e.Code) }
+
+func (e *Error) Unwrap() error { return e.err }
+
+// ErrCollationPanic is under the error of a statement in which a Go collation
+// panicked, and of the COMMIT that such a statement made fail.
+var ErrCollationPanic = errors.New("panic in a Go collation")
+
+// commitHookCode is SQLITE_CONSTRAINT_COMMITHOOK: the commit hook of
+// go_guard_commits refused a commit.
+const commitHookCode = 531
 
 // Primary is the primary result code.
 func (e *Error) Primary() int { return e.Code & 0xff }
@@ -198,6 +209,13 @@ func (c *Conn) err(r int) error {
 	if c.db == 0 {
 		return &Error{Code: r, Msg: errstr(c.sp, r)}
 	}
+	if r == commitHookCode && c.st.doomed != "" {
+		// The commit hook refused because of a collation's panic, and
+		// SQLite rolled the transaction back.
+		msg := c.st.doomed
+		c.st.doomed = ""
+		return &Error{Code: r, Msg: "the transaction is rolled back: panic in a Go collation: " + msg, err: ErrCollationPanic}
+	}
 	return &Error{Code: r, Msg: cstring(sqlite3_errmsg(c.sp, c.db))}
 }
 
@@ -244,30 +262,63 @@ func (c *Conn) Exec(sql string) error {
 
 func (c *Conn) execResult(r int) error {
 	if c.st.collatePanic != "" {
-		return c.endCollatePanic(0)
+		// endCollatePanic runs C, which a broken connection must not.
+		if err := c.brokenErr(); err != nil {
+			return err
+		}
+		return c.endCollatePanic(0, false)
 	}
 	return c.err(r)
 }
 
-// endCollatePanic ends the statement s (0 for none) in which a Go collation
-// panicked, and gives the panic as its error. The comparisons after the
-// panic returned 0, so what the statement wrote may be out of order: the
-// commit hook has refused every commit since, and here the statement is
-// reset and an open transaction rolled back, so none of it stays. Then the
-// connection is as before the transaction.
-func (c *Conn) endCollatePanic(s uintptr) error {
+// pending is the word of go_guard_commits: while it is set, the commit hook
+// refuses every commit. A collation's panic sets it and the rollback hook
+// clears it, so it is 0 whenever no write transaction is open.
+func (c *Conn) pending() *int32 { return (*int32)(at(c.st.base + pendingOffset)) }
+
+// endCollatePanic ends the statement s (0 for none, as in Exec) in which a
+// Go collation panicked, and gives the panic as its error. wasPending is the
+// pending word before s ran.
+//
+// The comparisons after the panic gave 0, so the rows s read may be wrong
+// and what it wrote may be out of order. The commit hook has refused every
+// commit since the panic: an autocommit write is already rolled back. What
+// is left decides the word:
+//   - no write transaction is open: nothing can commit, clear it.
+//   - s only read and the word was clear before: the transaction holds
+//     nothing of s, clear it.
+//   - else s, or a statement of Exec, wrote in the open transaction: keep it,
+//     so that the transaction's COMMIT fails and rolls it back.
+func (c *Conn) endCollatePanic(s uintptr, wasPending bool) error {
 	msg := c.st.collatePanic
 	c.st.collatePanic = ""
+	readOnly := false
 	if s != 0 {
+		readOnly = int32(sqlite3_stmt_readonly(c.sp, s)) != 0
 		sqlite3_reset(c.sp, s)
 	}
-	if !c.AutoCommit() {
-		c.Exec("ROLLBACK")
+	switch {
+	case int32(sqlite3_txn_state(c.sp, c.db, 0)) != txnWrite:
+		*c.pending() = 0
+		c.st.doomed = ""
+	case readOnly && !wasPending:
+		*c.pending() = 0
+	case c.st.doomed == "":
+		c.st.doomed = msg
 	}
-	if c.AutoCommit() {
-		*(*int32)(at(c.st.base + pendingOffset)) = 0
-	}
-	return &Error{Code: 1, Msg: "panic in a Go collation: " + msg}
+	return &Error{Code: 1, Msg: "panic in a Go collation: " + msg, err: ErrCollationPanic}
+}
+
+// txnWrite is SQLITE_TXN_WRITE.
+const txnWrite = 2
+
+// UndoCollationPanic tells the connection that what a statement wrote after
+// a Go collation panicked is gone: the caller rolled back to a SAVEPOINT it
+// took before the statement, and no earlier statement of the transaction
+// panicked. The transaction may commit again.
+func (c *Conn) UndoCollationPanic() {
+	*c.pending() = 0
+	c.st.doomed = ""
 }
 
 // Prepare compiles the first statement of sql. tail is the rest of sql. A
@@ -397,14 +448,15 @@ func (s *Stmt) Step() (bool, error) {
 	if err := s.c.brokenErr(); err != nil {
 		return false, err
 	}
+	wasPending := *s.c.pending() != 0
 	r := int32(sqlite3_step(s.c.sp, s.p))
-	if s.c.st.collatePanic != "" {
-		return false, s.c.endCollatePanic(s.p)
-	}
 	// A callback that panicked during the step leaves no trace in r: the
 	// row it gave, or its end, may be wrong.
 	if err := s.c.brokenErr(); err != nil {
 		return false, err
+	}
+	if s.c.st.collatePanic != "" {
+		return false, s.c.endCollatePanic(s.p, wasPending)
 	}
 	switch r {
 	case Row:

@@ -175,7 +175,7 @@ int go_classify(sqlite3 *db, int *flags) { return sqlite3_set_authorizer(db, goC
 /* A Go collation that panicked sets *pending, as the comparisons after the
    panic returned 0 and what the statement wrote may be out of order: no
    commit happens while it is set. Any rollback clears it, and so does the Go
-   side once no transaction is open. */
+   side when nothing written is left that it must keep from committing. */
 static int goCommitHook(void *pending) { return *(volatile int *)pending != 0; }
 static void goRollbackHook(void *pending) { *(volatile int *)pending = 0; }
 

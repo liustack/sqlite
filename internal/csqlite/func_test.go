@@ -465,9 +465,10 @@ func TestCollation(t *testing.T) {
 }
 
 // A comparison cannot fail in SQLite: after a panic in a collation the
-// statement goes on with comparisons of 0. Nothing it wrote may commit, the
-// statement and its transaction fail with the panic, and the connection and
-// the file stay usable.
+// statement goes on with comparisons of 0. The statement fails with the
+// panic. A read changes nothing else. After a write, what it wrote may be out
+// of order, so the transaction it ran in never commits: its COMMIT fails and
+// rolls it back. The connection and the file stay usable.
 func TestCollationPanic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "c.db")
 	c := open(t, path)
@@ -484,76 +485,139 @@ func TestCollationPanic(t *testing.T) {
 		}
 	}
 	if err := c.Exec(`PRAGMA journal_mode=WAL; CREATE TABLE t(x TEXT); CREATE INDEX tx ON t(x COLLATE pc);
+		CREATE TABLE u(x TEXT); INSERT INTO u VALUES ('zz'), ('a');
+		CREATE TABLE r(n INTEGER);
 		INSERT INTO t VALUES ('a'), ('m'), ('y')`); err != nil {
 		t.Fatal(err)
 	}
-	count := func() string {
+	rows := func(table string) string {
 		t.Helper()
-		return mustOne(t, other, "SELECT group_concat(x, ',') FROM (SELECT x FROM t ORDER BY rowid)")
+		return mustOne(t, other, "SELECT ifnull(group_concat(x, ','), '') FROM (SELECT x FROM "+table+" ORDER BY rowid)")
 	}
 	isPanic := func(what string, err error) {
 		t.Helper()
-		if err == nil || !strings.Contains(err.Error(), "cannot compare zz") {
+		if !errors.Is(err, ErrCollationPanic) || !strings.Contains(err.Error(), "cannot compare zz") {
 			t.Fatalf("%s: %v, want the panic", what, err)
 		}
 		if c.Broken() {
 			t.Fatalf("%s: the connection is broken", what)
 		}
-		if !c.AutoCommit() {
-			t.Fatalf("%s: a transaction is still open", what)
+	}
+	step := func(sql string) error {
+		t.Helper()
+		s, _, err := c.Prepare(sql)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Finalize()
+		for {
+			more, err := s.Step()
+			if err != nil || !more {
+				return err
+			}
 		}
 	}
 
-	// An autocommit insert does not commit.
-	s, _, err := c.Prepare(`INSERT INTO t VALUES ('zz')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = s.Step()
-	isPanic("autocommit insert", err)
-	s.Finalize()
-	if v := count(); v != "a,m,y" {
-		t.Fatalf("after the autocommit insert: %s", v)
-	}
+	t.Run("autocommit write", func(t *testing.T) {
+		isPanic("insert", step(`INSERT INTO t VALUES ('zz')`))
+		isPanic("insert returning", step(`INSERT INTO t VALUES ('zz') RETURNING x`))
+		if v := rows("t"); v != "a,m,y" {
+			t.Fatalf("t: %s", v)
+		}
+	})
 
-	// A transaction is rolled back, with what it wrote before.
-	if err := c.Exec(`BEGIN; INSERT INTO t VALUES ('b')`); err != nil {
-		t.Fatal(err)
-	}
-	isPanic("insert in a transaction", c.Exec(`INSERT INTO t VALUES ('zz')`))
-	if v := count(); v != "a,m,y" {
-		t.Fatalf("after the transaction: %s", v)
-	}
+	t.Run("exec stops at the statement", func(t *testing.T) {
+		isPanic("exec", c.Exec(`INSERT INTO t VALUES ('c'); INSERT INTO t VALUES ('zz'); INSERT INTO t VALUES ('d')`))
+		if v := rows("t"); v != "a,m,y,c" {
+			t.Fatalf("t: %s", v)
+		}
+		if err := c.Exec(`DELETE FROM t WHERE x = 'c'`); err != nil {
+			t.Fatal(err)
+		}
+	})
 
-	// sqlite3_exec stops at the statement, and the ones before it stay.
-	isPanic("exec", c.Exec(`INSERT INTO t VALUES ('c'); INSERT INTO t VALUES ('zz'); INSERT INTO t VALUES ('d')`))
-	if v := count(); v != "a,m,y,c" {
-		t.Fatalf("after exec: %s", v)
-	}
+	t.Run("write while another write is open", func(t *testing.T) {
+		// r's statement holds the write transaction open, so the insert
+		// of zz does not try to commit: the commit of r's must fail.
+		s, _, err := c.Prepare(`INSERT INTO r VALUES (1), (2) RETURNING n`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Finalize()
+		if more, err := s.Step(); err != nil || !more {
+			t.Fatalf("first row: %v %v", more, err)
+		}
+		isPanic("insert", c.Exec(`INSERT INTO t VALUES ('zz')`))
+		var end error
+		for end == nil {
+			var more bool
+			if more, end = s.Step(); !more && end == nil {
+				end = s.Reset()
+				break
+			}
+		}
+		if end == nil {
+			t.Fatal("the open write committed")
+		}
+		if v := rows("t"); v != "a,m,y" {
+			t.Fatalf("t: %s", v)
+		}
+		if v := mustOne(t, other, "SELECT count(*) FROM r"); v != "0" {
+			t.Fatalf("r has %s rows", v)
+		}
+		if !c.AutoCommit() {
+			t.Fatal("a transaction is still open")
+		}
+	})
 
-	// A read fails, and holds no lock afterwards.
-	s, _, err = c.Prepare(`SELECT x FROM t ORDER BY x COLLATE pc`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Exec(`INSERT INTO t VALUES ('zz')`); err == nil {
-		t.Fatal("no panic") // the index compares 'zz' with what is there
-	}
-	_, err = s.Step()
-	s.Finalize()
-	if err != nil {
-		t.Fatalf("a read with no zz: %v", err)
-	}
-	if err := other.Exec(`CREATE TABLE u(x TEXT); INSERT INTO u VALUES ('zz'), ('a')`); err != nil {
-		t.Fatal(err)
-	}
-	s, _, err = c.Prepare(`SELECT x FROM u ORDER BY x COLLATE pc`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = s.Step()
-	isPanic("read", err)
-	s.Finalize()
+	t.Run("read in a transaction", func(t *testing.T) {
+		// A read writes nothing: the transaction goes on and commits.
+		if err := c.Exec(`BEGIN; INSERT INTO t VALUES ('b')`); err != nil {
+			t.Fatal(err)
+		}
+		isPanic("read", step(`SELECT x FROM u ORDER BY x COLLATE pc`))
+		if c.AutoCommit() {
+			t.Fatal("the read ended the transaction")
+		}
+		if err := c.Exec(`INSERT INTO t VALUES ('c'); COMMIT`); err != nil {
+			t.Fatal(err)
+		}
+		if v := rows("t"); v != "a,m,y,b,c" {
+			t.Fatalf("t: %s", v)
+		}
+	})
+
+	t.Run("write in a transaction", func(t *testing.T) {
+		if err := c.Exec(`BEGIN; INSERT INTO t VALUES ('d')`); err != nil {
+			t.Fatal(err)
+		}
+		isPanic("insert", c.Exec(`INSERT INTO t VALUES ('zz')`))
+		if c.AutoCommit() {
+			t.Fatal("the transaction ended before its COMMIT")
+		}
+		if err := c.Exec(`INSERT INTO t VALUES ('e')`); err != nil {
+			t.Fatal(err)
+		}
+		isPanic("commit", c.Exec(`COMMIT`))
+		if !c.AutoCommit() {
+			t.Fatal("the failed COMMIT left the transaction open")
+		}
+		if v := rows("t"); v != "a,m,y,b,c" {
+			t.Fatalf("t: %s", v)
+		}
+		// ROLLBACK ends such a transaction too.
+		if err := c.Exec(`BEGIN; INSERT INTO t VALUES ('d')`); err != nil {
+			t.Fatal(err)
+		}
+		isPanic("insert", c.Exec(`INSERT INTO t VALUES ('zz')`))
+		if err := c.Exec(`ROLLBACK`); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("read in autocommit", func(t *testing.T) {
+		isPanic("read", step(`SELECT x FROM u ORDER BY x COLLATE pc`))
+	})
 
 	// Both connections write again, and the file is whole.
 	if err := c.Exec(`INSERT INTO t VALUES ('e')`); err != nil {
@@ -565,7 +629,7 @@ func TestCollationPanic(t *testing.T) {
 	if v := mustOne(t, other, "PRAGMA integrity_check"); v != "ok" {
 		t.Fatalf("integrity_check: %s", v)
 	}
-	if v := count(); v != "a,m,y,c,e,f" {
+	if v := rows("t"); v != "a,m,y,b,c,e,f" {
 		t.Fatalf("at the end: %s", v)
 	}
 }

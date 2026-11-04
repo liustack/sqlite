@@ -69,6 +69,9 @@ type stack struct {
 	// collatePanic is the panic of a Go collation during the call of C
 	// running now, or "". Only the goroutine that runs the C touches it.
 	collatePanic string
+	// doomed is the panic of a collation in a write whose transaction is
+	// still open: its commit fails with this.
+	doomed string
 }
 
 // stacks finds the stack of a shadow pointer, for a callback that must mark

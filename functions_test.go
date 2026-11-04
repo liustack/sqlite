@@ -459,3 +459,58 @@ func TestMergeWithCollationPanic(t *testing.T) {
 		t.Fatalf("integrity_check: %s", got)
 	}
 }
+
+// In a transaction of database/sql, a panic in a collation fails the
+// statement. After a read the transaction goes on. After a write its Commit
+// fails, and nothing of it is kept.
+func TestCollationPanicInTx(t *testing.T) {
+	pc := WithCollation("pc", func(a, b string) int {
+		if a == "zz" || b == "zz" {
+			panic("cannot compare zz")
+		}
+		return strings.Compare(a, b)
+	})
+	db := fOpen(t, "file:"+mPath(t), pc)
+	mExec(t, db, `CREATE TABLE t(x TEXT); CREATE INDEX tx ON t(x COLLATE pc); CREATE TABLE u(x TEXT); INSERT INTO u VALUES ('zz'), ('a')`)
+	isPanic := func(what string, err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "cannot compare zz") {
+			t.Fatalf("%s: %v, want the panic", what, err)
+		}
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, tx, `INSERT INTO t VALUES ('before')`)
+	var x string
+	isPanic("read", tx.QueryRow(`SELECT x FROM u ORDER BY x COLLATE pc`).Scan(&x))
+	mExec(t, tx, `INSERT INTO t VALUES ('after')`)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if got := fString(t, db, `SELECT group_concat(x, ',') FROM t`); got != "before,after" {
+		t.Fatalf("after the read: %s", got)
+	}
+
+	tx, err = db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, tx, `INSERT INTO t VALUES ('b')`)
+	_, err = tx.Exec(`INSERT INTO t VALUES ('zz')`)
+	isPanic("write", err)
+	mExec(t, tx, `INSERT INTO u VALUES ('c')`)
+	isPanic("commit", tx.Commit())
+	if got := fString(t, db, `SELECT group_concat(x, ',') FROM t`); got != "before,after" {
+		t.Fatalf("after the write: %s", got)
+	}
+	if got := fString(t, db, `SELECT count(*) FROM u WHERE x = 'c'`); got != "0" {
+		t.Fatalf("u kept c")
+	}
+	mExec(t, db, `INSERT INTO t VALUES ('d')`)
+	if got := fString(t, db, `PRAGMA integrity_check`); got != "ok" {
+		t.Fatalf("integrity_check: %s", got)
+	}
+}

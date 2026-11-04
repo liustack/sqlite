@@ -178,9 +178,11 @@ func newFunction(name string, nArg int, isNil bool, flags []FuncFlag) (function,
 // and in the schema. cmp returns a negative number, 0 or a positive number
 // as a sorts before, with or after b, and must be a total order. SQLite has
 // no way to fail a comparison, so after a panic in cmp the statement goes on
-// with comparisons that say equal. None of what it does then is kept: it
-// fails with the panic, the transaction it ran in is rolled back, and no
-// commit happens before that. The connection stays good.
+// with comparisons that say equal, and then fails with the panic. A
+// statement that only reads changes nothing else. After one that writes,
+// what it wrote may be out of order, so nothing of its transaction commits:
+// an autocommit statement is rolled back, and in a transaction the
+// transaction's Commit fails and rolls it back. The connection stays good.
 func WithCollation(name string, cmp func(a, b string) int) Option {
 	return Option{func(o *options) error {
 		switch {

@@ -186,7 +186,7 @@ func host_func_destroy(sp, h uintptr) {
 // host_collate compares two strings with a Go collation. A comparison has no
 // way to fail: a panic in one is kept on the stack of the connection, the
 // comparison gives 0, and the pending word keeps the transaction from
-// committing until Step or Exec ends it (endCollatePanic).
+// committing (endCollatePanic says until when).
 func host_collate(sp, h, n1, p1, n2, p2 uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, 0)
 	cmp := *collations.get(h)
