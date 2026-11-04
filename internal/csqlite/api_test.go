@@ -253,3 +253,32 @@ func TestRolledBackWhileRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// SQLite rolls back and runs a statement again inside one step when the
+// schema changed under it. That rollback is not another statement's: the
+// write commits and must end with no error.
+func TestSchemaRetryIsNotRolledBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.db")
+	a := open(t, path)
+	b := open(t, path)
+	if err := a.Exec(`CREATE TABLE t(x)`); err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := b.Prepare(`INSERT INTO t VALUES (1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Finalize()
+	if err := a.Exec(`CREATE TABLE other(x)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Step(); err != nil {
+		t.Fatalf("insert after a change of the schema: %v", err)
+	}
+	if err := s.Reset(); err != nil {
+		t.Fatal(err)
+	}
+	if v := mustOne(t, a, "SELECT count(*) FROM t"); v != "1" {
+		t.Fatalf("t has %s rows", v)
+	}
+}

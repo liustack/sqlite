@@ -351,25 +351,22 @@ type Stmt struct {
 	c    *Conn
 	p    uintptr
 	kind int32 // what goClassify saw as it was prepared
-	// writes says the statement is not read-only. running says it has
-	// stepped since its last end, when the connection had rolled back
-	// rollbacks transactions.
+	// writes says the statement is not read-only. paused says it stopped
+	// at a row, when the connection had rolled back rollbacks
+	// transactions.
 	writes    bool
-	running   bool
+	paused    bool
 	rollbacks uint32
 }
 
-// lost ends a run of the statement: ErrRolledBack when it writes and a
-// transaction was rolled back since it started.
-func (s *Stmt) lost() error {
-	if !s.running {
-		return nil
-	}
-	s.running = false
-	if s.writes && s.c.rollbacks() != s.rollbacks {
-		return ErrRolledBack
-	}
-	return nil
+// lost says whether a statement that writes lost its transaction while it
+// stopped at a row: another statement ended it. A rollback inside its own
+// step is its own error, already in the result, or SQLite running it again
+// after a change of the schema, after which it goes on and commits.
+func (s *Stmt) lost() bool {
+	lost := s.paused && s.c.rollbacks() != s.rollbacks
+	s.paused = false
+	return lost
 }
 
 // Mergeable says the statement changes tables of the main database and
@@ -404,10 +401,11 @@ func (s *Stmt) Reset() error {
 	if err := s.c.brokenErr(); err != nil {
 		return err
 	}
+	lost := s.lost()
 	// A statement stopped before its end finishes its write here.
 	err := s.err(sqlite3_reset(s.c.sp, s.p))
-	if lost := s.lost(); err == nil {
-		err = lost
+	if lost && err == nil {
+		err = ErrRolledBack
 	}
 	return err
 }
@@ -425,8 +423,10 @@ func (s *Stmt) Step() (bool, error) {
 	if err := s.c.brokenErr(); err != nil {
 		return false, err
 	}
-	if !s.running {
-		s.running, s.rollbacks = true, s.c.rollbacks()
+	if s.lost() {
+		// The rows still to come are of a write that is gone.
+		sqlite3_reset(s.c.sp, s.p)
+		return false, ErrRolledBack
 	}
 	r := int32(sqlite3_step(s.c.sp, s.p))
 	// A callback that panicked during the step leaves no trace in r: the
@@ -436,11 +436,13 @@ func (s *Stmt) Step() (bool, error) {
 	}
 	switch r {
 	case Row:
+		if s.writes {
+			s.paused, s.rollbacks = true, s.c.rollbacks()
+		}
 		return true, nil
 	case Done:
-		return false, s.lost()
+		return false, nil
 	default:
-		s.running = false
 		return false, s.c.err(int(r))
 	}
 }

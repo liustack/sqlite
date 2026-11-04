@@ -765,3 +765,35 @@ func TestTxEndedBySQLite(t *testing.T) {
 	}
 	mExec(t, db, `INSERT INTO t VALUES ('c')`)
 }
+
+// A write on one connection after another connection changed the schema
+// succeeds once: SQLite runs it again inside the step, and it commits.
+func TestWriteAfterSchemaChange(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	ctx := t.Context()
+	a, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if _, err := a.ExecContext(ctx, `CREATE TABLE t(x)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ExecContext(ctx, `INSERT INTO t VALUES (1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.ExecContext(ctx, `CREATE TABLE other(x)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ExecContext(ctx, `INSERT INTO t VALUES (2)`); err != nil {
+		t.Fatalf("insert after a change of the schema: %v", err)
+	}
+	if n := mCount(t, db, `SELECT count(*) FROM t`); n != 2 {
+		t.Fatalf("t has %d rows", n)
+	}
+}
