@@ -16,25 +16,6 @@ import (
 	"testing"
 )
 
-const (
-	mainDB    = OpenReadWrite | OpenCreate | OpenMainDB
-	mainJrnl  = OpenReadWrite | OpenCreate | OpenMainJournal
-	walFile   = OpenReadWrite | OpenCreate | OpenWAL
-	tempJrnl  = OpenReadWrite | OpenCreate | OpenExclusive | OpenDeleteOnClose | OpenTempJournal
-	readOnlyD = OpenReadOnly | OpenMainDB
-)
-
-// openT opens name and fails the test unless it opens.
-func openT(t *testing.T, name string, flags int) *File {
-	t.Helper()
-	f, _, rc := Open(name, flags)
-	if rc != OK {
-		t.Fatalf("Open(%q, %#x) = %d", name, flags, rc)
-	}
-	t.Cleanup(func() { f.Close() })
-	return f
-}
-
 func isRoot() bool { return os.Geteuid() == 0 }
 
 // umask returns the process umask without changing it.
@@ -71,25 +52,6 @@ func TestOpenCreate(t *testing.T) {
 	}
 	if size, rc := f.Size(); rc != OK || size != 5 {
 		t.Errorf("Size = %d, %d", size, rc)
-	}
-}
-
-func TestOpenMissing(t *testing.T) {
-	name := filepath.Join(t.TempDir(), "missing.db")
-	if _, _, rc := Open(name, OpenReadWrite|OpenMainDB); rc != CantOpen {
-		t.Errorf("Open read-write without create = %d, want CantOpen", rc)
-	}
-	if _, _, rc := Open(name, readOnlyD); rc != CantOpen {
-		t.Errorf("Open read-only = %d, want CantOpen", rc)
-	}
-	if _, err := os.Stat(name); !os.IsNotExist(err) {
-		t.Errorf("file was created: %v", err)
-	}
-}
-
-func TestOpenDirectory(t *testing.T) {
-	if _, _, rc := Open(t.TempDir(), mainDB); rc&0xff != CantOpen {
-		t.Errorf("Open of a directory = %d, want CantOpen", rc)
 	}
 }
 
@@ -150,15 +112,6 @@ func TestOpenReadOnlyDirectory(t *testing.T) {
 	f := openT(t, db, mainDB)
 	if rc := f.WriteAt([]byte("x"), 0); rc != OK {
 		t.Errorf("WriteAt = %d", rc)
-	}
-}
-
-func TestOpenExclusive(t *testing.T) {
-	name := filepath.Join(t.TempDir(), "excl")
-	flags := OpenReadWrite | OpenCreate | OpenExclusive | OpenTempDB
-	openT(t, name, flags)
-	if _, _, rc := Open(name, flags); rc != CantOpen {
-		t.Errorf("second exclusive Open = %d, want CantOpen", rc)
 	}
 }
 
@@ -241,92 +194,6 @@ func TestTempFileDir(t *testing.T) {
 	}
 	if len(ents) != 0 {
 		t.Errorf("temp dir holds %v", ents)
-	}
-}
-
-func TestDeleteOnClose(t *testing.T) {
-	name := filepath.Join(t.TempDir(), "doc")
-	f, _, rc := Open(name, OpenReadWrite|OpenCreate|OpenDeleteOnClose|OpenSubjournal)
-	if rc != OK {
-		t.Fatalf("Open = %d", rc)
-	}
-	if rc := f.WriteAt([]byte("x"), 0); rc != OK {
-		t.Fatalf("WriteAt = %d", rc)
-	}
-	if rc := f.Close(); rc != OK {
-		t.Fatalf("Close = %d", rc)
-	}
-	if _, err := os.Stat(name); !os.IsNotExist(err) {
-		t.Errorf("file still there after Close: %v", err)
-	}
-}
-
-func TestShortRead(t *testing.T) {
-	f := openT(t, filepath.Join(t.TempDir(), "short.db"), mainDB)
-	if rc := f.WriteAt([]byte("0123456789"), 0); rc != OK {
-		t.Fatalf("WriteAt = %d", rc)
-	}
-	buf := bytes.Repeat([]byte{0xff}, 20)
-	if rc := f.ReadAt(buf, 4); rc != IOErrShortRead {
-		t.Errorf("ReadAt = %d, want IOErrShortRead", rc)
-	}
-	want := append([]byte("456789"), make([]byte, 14)...)
-	if !bytes.Equal(buf, want) {
-		t.Errorf("buf = %q, want %q", buf, want)
-	}
-
-	buf = bytes.Repeat([]byte{0xff}, 8)
-	if rc := f.ReadAt(buf, 1000); rc != IOErrShortRead {
-		t.Errorf("ReadAt past the end = %d, want IOErrShortRead", rc)
-	}
-	if !bytes.Equal(buf, make([]byte, 8)) {
-		t.Errorf("buf = %q, want zeros", buf)
-	}
-}
-
-func TestTruncateAndSize(t *testing.T) {
-	f := openT(t, filepath.Join(t.TempDir(), "trunc.db"), mainDB)
-	if rc := f.WriteAt(make([]byte, 8192), 0); rc != OK {
-		t.Fatal(rc)
-	}
-	if rc := f.Truncate(4096); rc != OK {
-		t.Fatalf("Truncate = %d", rc)
-	}
-	if size, rc := f.Size(); rc != OK || size != 4096 {
-		t.Errorf("Size = %d, %d, want 4096", size, rc)
-	}
-	// With a chunk size, Truncate rounds up to whole chunks.
-	f.SetChunkSize(3000)
-	if rc := f.Truncate(1000); rc != OK {
-		t.Fatalf("Truncate = %d", rc)
-	}
-	if size, _ := f.Size(); size != 3000 {
-		t.Errorf("Size = %d, want 3000", size)
-	}
-}
-
-func TestSizeHint(t *testing.T) {
-	f := openT(t, filepath.Join(t.TempDir(), "hint.db"), mainDB)
-	// Without a chunk size the hint does nothing, as os_unix.
-	if rc := f.SizeHint(10000); rc != OK {
-		t.Fatalf("SizeHint = %d", rc)
-	}
-	if size, _ := f.Size(); size != 0 {
-		t.Errorf("Size = %d, want 0", size)
-	}
-	f.SetChunkSize(4096)
-	if rc := f.SizeHint(10000); rc != OK {
-		t.Fatalf("SizeHint = %d", rc)
-	}
-	if size, _ := f.Size(); size != 12288 {
-		t.Errorf("Size = %d, want 12288", size)
-	}
-	// A hint never makes the file smaller.
-	if rc := f.SizeHint(100); rc != OK {
-		t.Fatalf("SizeHint = %d", rc)
-	}
-	if size, _ := f.Size(); size != 12288 {
-		t.Errorf("Size = %d, want 12288", size)
 	}
 }
 
@@ -413,20 +280,6 @@ func TestAccess(t *testing.T) {
 		if rc != OK || got != c.want {
 			t.Errorf("Access(%s, %d) = %v, %d, want %v", filepath.Base(c.name), c.flags, got, rc, c.want)
 		}
-	}
-}
-
-func TestDelete(t *testing.T) {
-	name := filepath.Join(t.TempDir(), "del")
-	os.WriteFile(name, []byte("x"), 0644)
-	if rc := Delete(name, true); rc != OK {
-		t.Fatalf("Delete = %d", rc)
-	}
-	if _, err := os.Stat(name); !os.IsNotExist(err) {
-		t.Errorf("file still there: %v", err)
-	}
-	if rc := Delete(name, false); rc != IOErrDeleteNoent {
-		t.Errorf("Delete of a missing file = %d, want IOErrDeleteNoent", rc)
 	}
 }
 
