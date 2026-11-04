@@ -65,4 +65,4 @@ Plans, experiment notes and raw measurements go in the repository draft folder `
 - `make check` before every commit (see [docs/testing.md](docs/testing.md)), and `make test-gen` after a change to the generator. Commit rules are in [docs/commit.md](docs/commit.md).
 - For new behavior, write a failing test first. For a bug, find the root cause before changing code, and do not hide it with fallback values.
 - Tools are Go programs or short shell scripts. Do not add Python.
-- Ask the user before creating or pushing a tag, and never push `main` on your own.
+- Once a branch is tested (`make check`) and reviewed, merge it into `main` and push. Ask the user before creating or pushing a tag.
