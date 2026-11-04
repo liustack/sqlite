@@ -64,7 +64,7 @@
 go get github.com/liustack/sqlite
 ```
 
-需要 Go 1.27 或更新。支持 linux 和 darwin，amd64 和 arm64。
+需要 Go 1.27 或更新。支持 linux 和 darwin 的 amd64、arm64，以及 windows 的 amd64。
 
 ## 使用
 
@@ -115,7 +115,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 - **C 是 SQLite 原版，一个字没改。** `engine/` 放的是 3.54.1 发布版的合并源码，按哈希核对（`engine/vendor.sh --verify`）。编译选项集中在一个文件里，每条都写了理由。
 - **Go 汇编是生成的，从不手写。** LLVM 编译 C，生成器把 LLVM 的输出改写成 Go 汇编。遇到没有规则的东西就停下，还会核对链接后的二进制。仓库里的汇编和生成器按 `engine/` 现在生成的不一致时，`make check-gen` 会失败。
 - **数字里留着输掉的地方。** 上面的表保留了别的驱动更快的行，[docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md) 写明了每次怎么测的、测的时候机器上还跑着什么。
-- **每次推送都测**，linux/amd64、linux/arm64、darwin/arm64，开着竞态检测。
+- **每次推送都测**，linux/amd64、linux/arm64、darwin/arm64、windows/amd64（除 windows 外开着竞态检测），还测 sqlite3 命令行同时写同一个库，以及写到一半杀掉进程。
 
 ## 还没有的
 
@@ -123,7 +123,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 - 没有共享缓存：`cache=shared` 会报错。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
 - 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。
 - SQLite 用过的内存留着复用，进程运行期间不还给系统。
-- windows 和其他平台构建不了。
+- windows/arm64 和其他平台构建不了。
 
 ## 文档
 
