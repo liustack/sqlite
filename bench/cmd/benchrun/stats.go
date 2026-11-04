@@ -109,7 +109,12 @@ func summarizePrefix(dir, prefix string) (*Set, error) {
 	type key struct{ bench, unit string }
 	var order []key
 	values := map[key]map[string][]float64{}
-	for _, d := range drivers {
+	// Only the drivers of this run: the files of others in dir are older.
+	ran := drivers
+	if ds := s.Meta.Get("drivers"); ds != "" {
+		ran = strings.Split(ds, ",")
+	}
+	for _, d := range ran {
 		f, err := os.Open(filepath.Join(dir, prefix+d+".txt"))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
