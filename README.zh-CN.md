@@ -93,7 +93,7 @@ db := sql.OpenDB(c)
 
 `sqlite.Register` 把它们交给之后 `sql.Open` 创建的每个 connector。函数或虚拟表出错、panic 只让它所在的语句失败，连接不受影响。
 
-常用函数在 `ext/` 下的包里现成可用：[`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp)（`REGEXP` 运算符、`regexp_like`、`regexp_substr`、`regexp_replace`）、[`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid)、[`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash)（md5、sha1、sha256、sha512、crc32）、[`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats)（方差和标准差）、[`unicode`](https://pkg.go.dev/github.com/liustack/sqlite/ext/unicode)（任何文字的大小写转换，和不分大小写的排序规则）、[`csv`](https://pkg.go.dev/github.com/liustack/sqlite/ext/csv)（把 CSV 文件当表查）和 [`series`](https://pkg.go.dev/github.com/liustack/sqlite/ext/series)（`generate_series`）。每个包是一个 option，`sqlite.Join` 能把几个合成一个交出去：
+常用函数在 `ext/` 下的包里现成可用：[`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp)（`REGEXP` 运算符、`regexp_like`、`regexp_substr`、`regexp_replace`）、[`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid)、[`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash)（md5、sha1、sha256、sha512、crc32）、[`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats)（方差和标准差）、[`unicode`](https://pkg.go.dev/github.com/liustack/sqlite/ext/unicode)（任何文字的大小写转换，和不分大小写的排序规则）、[`csv`](https://pkg.go.dev/github.com/liustack/sqlite/ext/csv)（把 CSV 文件当表查）、[`series`](https://pkg.go.dev/github.com/liustack/sqlite/ext/series)（`generate_series`）和 [`vec`](https://pkg.go.dev/github.com/liustack/sqlite/ext/vec)（向量距离，找出和一个 embedding 最近的行）。每个包是一个 option，`sqlite.Join` 能把几个合成一个交出去：
 
 ```go
 sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))

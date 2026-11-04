@@ -152,6 +152,24 @@ func TestFunctionArgumentsAreCopies(t *testing.T) {
 	}
 }
 
+// With FuncBorrowBlobs a function reads its BLOB arguments in place: they
+// are right during the call, and returning one gives SQLite a copy.
+func TestFunctionBorrowBlobs(t *testing.T) {
+	c := open(t, ":memory:")
+	if err := c.CreateFunction("echo", 1, FuncDeterministic|FuncBorrowBlobs, func(args []driver.Value) (driver.Value, error) {
+		return args[0], nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustOne(t, c, `SELECT hex(echo(x'010203')) || hex(echo(zeroblob(0))) || echo('t') || typeof(echo(NULL))`); got != "010203tnull" {
+		t.Errorf("echo = %s", got)
+	}
+	if got := mustOne(t, c, `WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i+1 FROM n WHERE i < 99)
+		SELECT count(DISTINCT echo(randomblob(64))) FROM n`); got != "100" {
+		t.Errorf("%s distinct blobs of 100", got)
+	}
+}
+
 func TestFunctionError(t *testing.T) {
 	c := open(t, ":memory:")
 	if err := c.CreateFunction("fail", 0, 0, func([]driver.Value) (driver.Value, error) {

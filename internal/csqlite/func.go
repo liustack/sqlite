@@ -27,6 +27,13 @@ const (
 	FuncInnocuous     = 0x000200000
 )
 
+// FuncBorrowBlobs is a flag of CreateFunction that is not SQLite's: the
+// function gets its BLOB arguments in place, in SQLite's memory, without a
+// copy. They hold until the function returns, and it must not keep them.
+// Only functions of this module use it (ext/vec), where copying two
+// vectors per row costs more than the work.
+const FuncBorrowBlobs = 1 << 30
+
 const utf8 = 1 // SQLITE_UTF8
 
 // Agg is the state of one group of an aggregate function written in Go:
@@ -42,6 +49,7 @@ type Agg interface {
 type funcEntry struct {
 	fn     Func
 	newAgg func() Agg
+	borrow bool // FuncBorrowBlobs
 }
 
 // funcs holds the functions SQLite knows by handle. SQLite gives a handle
@@ -58,7 +66,8 @@ var collations table[func(a, b string) int]
 // CreateFunction makes f the SQL function name of nArg arguments (-1 for any
 // number) on the connection, in place of one of the same name and nArg.
 func (c *Conn) CreateFunction(name string, nArg int, flags int, f Func) error {
-	return c.createFunc(name, nArg, flags, funcEntry{fn: f}, go_create_function)
+	borrow := flags&FuncBorrowBlobs != 0
+	return c.createFunc(name, nArg, flags&^FuncBorrowBlobs, funcEntry{fn: f, borrow: borrow}, go_create_function)
 }
 
 // CreateAggregate makes an aggregate function name: newAgg makes the state
@@ -127,8 +136,9 @@ func (c *Conn) CreateCollation(name string, cmp func(a, b string) int) error {
 // written from sp, above the frames of the C that called it.
 func host_func(sp, ctx, argc, argv uintptr) {
 	defer failQuiet(sp)
-	f := funcs.get(sqlite3_user_data(sp, ctx)).fn
-	args := values(sp, argc, argv)
+	e := funcs.get(sqlite3_user_data(sp, ctx))
+	f := e.fn
+	args := values(sp, argc, argv, e.borrow)
 	v, err := safely(func() (driver.Value, error) { return f(args) })
 	if err == nil {
 		err = result(sp, ctx, v)
@@ -145,7 +155,7 @@ func host_step(sp, ctx, argc, argv uintptr) {
 	if !ok {
 		return
 	}
-	args := values(sp, argc, argv)
+	args := values(sp, argc, argv, false)
 	if _, err := safely(func() (driver.Value, error) { return nil, a.Step(args) }); err != nil {
 		resultError(sp, ctx, err)
 	}
@@ -176,7 +186,7 @@ func host_inverse(sp, ctx, argc, argv uintptr) {
 	if !ok {
 		return
 	}
-	args := values(sp, argc, argv)
+	args := values(sp, argc, argv, false)
 	if _, err := safely(func() (driver.Value, error) { return nil, a.(WindowAgg).Inverse(args) }); err != nil {
 		resultError(sp, ctx, err)
 	}
@@ -271,11 +281,12 @@ func host_collate_destroy(sp, h uintptr) {
 	collations.remove(h)
 }
 
-// values copies the arguments of a call into Go.
-func values(sp, argc, argv uintptr) []driver.Value {
+// values copies the arguments of a call into Go, but for BLOBs when borrow
+// says the function reads them in place (FuncBorrowBlobs).
+func values(sp, argc, argv uintptr, borrow bool) []driver.Value {
 	args := make([]driver.Value, int(int32(argc)))
 	for i := range args {
-		args[i] = value(sp, *(*uintptr)(at(argv + uintptr(i)*8)))
+		args[i] = value(sp, *(*uintptr)(at(argv + uintptr(i)*8)), borrow)
 	}
 	return args
 }
@@ -300,8 +311,8 @@ const (
 	typeNull    = 5
 )
 
-// value copies a sqlite3_value into Go.
-func value(sp, v uintptr) driver.Value {
+// value copies a sqlite3_value into Go, but for a BLOB when borrow is set.
+func value(sp, v uintptr, borrow bool) driver.Value {
 	switch int32(sqlite3_value_type(sp, v)) {
 	case typeInteger:
 		return int64(sqlite3_value_int64(sp, v))
@@ -317,6 +328,9 @@ func value(sp, v uintptr) driver.Value {
 	case typeBlob:
 		p := sqlite3_value_blob(sp, v)
 		n := int(int32(sqlite3_value_bytes(sp, v)))
+		if borrow && n > 0 {
+			return bytesAt(p, n)
+		}
 		b := make([]byte, n)
 		if n > 0 {
 			copy(b, bytesAt(p, n))
