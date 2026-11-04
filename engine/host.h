@@ -33,6 +33,13 @@ long long host_now_ms(void); /* Unix time in milliseconds */
    and summer time (0 or 1) into out[0..8]. */
 void host_localtime(long long t, int *out);
 
+/* Functions written in Go. A function is a handle of the Go table, the user
+   data of its sqlite3_create_function_v2. host_func runs it: it reads the
+   arguments and sets the result through the C API, from the shadow pointer
+   it was called with. */
+void host_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void host_func_destroy(long h);
+
 int host_close(long f);
 int host_read(long f, void *buf, int n, long long off);
 int host_write(long f, const void *buf, int n, long long off);

@@ -51,6 +51,18 @@ struct tm *localtime_r(const time_t *t, struct tm *tm) {
   return tm;
 }
 
+/* ---- functions written in Go ---- */
+
+static void goFunc(sqlite3_context *ctx, int argc, sqlite3_value **argv) { host_func(ctx, argc, argv); }
+static void goFuncDestroy(void *p) { host_func_destroy((long)p); }
+
+/* go_create_function makes the Go function of handle h the SQL function
+   name. SQLite calls host_func_destroy when it is replaced or the connection
+   closes, and also when the call fails. */
+int go_create_function(sqlite3 *db, const char *name, int nArg, int flags, long h) {
+  return sqlite3_create_function_v2(db, name, nArg, flags, (void *)h, goFunc, 0, 0, goFuncDestroy);
+}
+
 /* ---- statements for group commit ---- */
 
 /* goClassify is the authorizer the host installs on every connection. As a
