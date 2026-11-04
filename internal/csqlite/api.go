@@ -173,6 +173,9 @@ func Open(name string, flags int, vfs string) (*Conn, error) {
 	if r == OK {
 		r = int32(go_classify(c.sp, c.db, c.classifyWord()))
 	}
+	if r == OK {
+		r = int32(go_count_rollbacks(c.sp, c.db, c.st.base+rollbackOffset))
+	}
 	if r != OK {
 		err := c.err(int(r))
 		if c.db != 0 {
@@ -294,8 +297,19 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	if p == 0 {
 		return nil, tail, nil
 	}
-	return &Stmt{c: c, p: p, kind: kind}, tail, nil
+	writes := int32(sqlite3_stmt_readonly(a.top, p)) == 0
+	return &Stmt{c: c, p: p, kind: kind, writes: writes}, tail, nil
 }
+
+// rollbacks is how many transactions SQLite has rolled back on the
+// connection (go_count_rollbacks).
+func (c *Conn) rollbacks() uint32 { return *(*uint32)(at(c.st.base + rollbackOffset)) }
+
+// ErrRolledBack is the error of a statement that wrote, at its end, when
+// SQLite rolled back its transaction while it ran: another statement of the
+// connection failed in a way that ends the transaction (out of memory, an
+// I/O error, a full disk, a panic in a Go collation), or ROLLBACK ran.
+var ErrRolledBack = errors.New("sqlite: the transaction of the statement was rolled back while it ran: what it wrote is gone")
 
 // Changes is the number of rows the last statement changed.
 func (c *Conn) Changes() int64 { return int64(sqlite3_changes64(c.sp, c.db)) }
@@ -337,6 +351,25 @@ type Stmt struct {
 	c    *Conn
 	p    uintptr
 	kind int32 // what goClassify saw as it was prepared
+	// writes says the statement is not read-only. running says it has
+	// stepped since its last end, when the connection had rolled back
+	// rollbacks transactions.
+	writes    bool
+	running   bool
+	rollbacks uint32
+}
+
+// lost ends a run of the statement: ErrRolledBack when it writes and a
+// transaction was rolled back since it started.
+func (s *Stmt) lost() error {
+	if !s.running {
+		return nil
+	}
+	s.running = false
+	if s.writes && s.c.rollbacks() != s.rollbacks {
+		return ErrRolledBack
+	}
+	return nil
 }
 
 // Mergeable says the statement changes tables of the main database and
@@ -371,7 +404,12 @@ func (s *Stmt) Reset() error {
 	if err := s.c.brokenErr(); err != nil {
 		return err
 	}
-	return s.err(sqlite3_reset(s.c.sp, s.p))
+	// A statement stopped before its end finishes its write here.
+	err := s.err(sqlite3_reset(s.c.sp, s.p))
+	if lost := s.lost(); err == nil {
+		err = lost
+	}
+	return err
 }
 
 // ClearBindings sets every parameter to NULL.
@@ -387,6 +425,9 @@ func (s *Stmt) Step() (bool, error) {
 	if err := s.c.brokenErr(); err != nil {
 		return false, err
 	}
+	if !s.running {
+		s.running, s.rollbacks = true, s.c.rollbacks()
+	}
 	r := int32(sqlite3_step(s.c.sp, s.p))
 	// A callback that panicked during the step leaves no trace in r: the
 	// row it gave, or its end, may be wrong.
@@ -397,8 +438,9 @@ func (s *Stmt) Step() (bool, error) {
 	case Row:
 		return true, nil
 	case Done:
-		return false, nil
+		return false, s.lost()
 	default:
+		s.running = false
 		return false, s.c.err(int(r))
 	}
 }

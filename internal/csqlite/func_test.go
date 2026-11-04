@@ -549,10 +549,20 @@ func TestCollationPanic(t *testing.T) {
 			t.Fatalf("first row: %v %v", more, err)
 		}
 		isPanic("insert", c.Exec(`INSERT INTO t VALUES ('zz')`))
+		var end error
 		for {
-			if more, err := s.Step(); err != nil || !more {
+			more, err := s.Step()
+			if err != nil || !more {
+				end = err
 				break
 			}
+		}
+		want := "2"
+		if end != nil {
+			want = "0"
+		}
+		if v := mustOne(t, other, "SELECT count(*) FROM r"); v != want {
+			t.Fatalf("r has %s rows after %v", v, end)
 		}
 		if v := rows("t"); v != "a,m,y" {
 			t.Fatalf("t: %s", v)

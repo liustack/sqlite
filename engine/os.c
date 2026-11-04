@@ -172,6 +172,17 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
 /* go_classify installs goClassify on db with the word it writes to. */
 int go_classify(sqlite3 *db, int *flags) { return sqlite3_set_authorizer(db, goClassify, flags); }
 
+/* goRollbackHook counts the transactions SQLite rolls back on db, in the word
+   go_count_rollbacks gives it: a statement that writes and was running when
+   one ended learns it lost what it wrote (Stmt.Step). */
+static void goRollbackHook(void *n) { ++*(volatile unsigned *)n; }
+
+/* go_count_rollbacks installs goRollbackHook on db with the word it counts in. */
+int go_count_rollbacks(sqlite3 *db, unsigned *n) {
+  sqlite3_rollback_hook(db, goRollbackHook, n);
+  return SQLITE_OK;
+}
+
 /* go_collate_failed records the panic of a Go collation on db the way SQLite
    records an allocation that failed: the comparisons after the panic gave 0,
    so the statement must not finish. SQLite stops it with SQLITE_NOMEM and

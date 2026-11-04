@@ -30,6 +30,9 @@ const (
 	// classifyOffset is the word of the header goClassify (engine/os.c)
 	// writes the kind of a statement to as it is prepared.
 	classifyOffset = 64
+	// rollbackOffset is the word go_count_rollbacks (engine/os.c) counts
+	// the rolled back transactions of the connection in.
+	rollbackOffset = 128
 	// pollInterval is how many ticks of the code run between two calls of
 	// host_poll.
 	pollInterval = 10000
@@ -47,8 +50,8 @@ func init() {
 	if pollCounterOffset+8 > stackHeader {
 		panic("csqlite: the poll counter is outside the host's header")
 	}
-	if classifyOffset+8 > pollCounterOffset {
-		panic("csqlite: the word of goClassify meets the poll counter")
+	if classifyOffset+8 > rollbackOffset || rollbackOffset+8 > pollCounterOffset {
+		panic("csqlite: the words of the host's header meet")
 	}
 }
 
