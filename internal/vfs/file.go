@@ -25,6 +25,13 @@
 // byte ranges are those of os_unix, so the locks also work against SQLite
 // built from C, as long as that SQLite runs in another process.
 //
+// One more difference: when the last reader of the process leaves one of the
+// WAL read slots, the process keeps its lock on the slot for about a
+// millisecond, so that the next reader needs no system call. Another process
+// may see the slot locked for that long after the last reader here, as if
+// that reader were still in its transaction: its checkpoint or log restart
+// waits or skips, and it never reads wrong data (see shmReadSlots).
+//
 // Results are SQLite result codes, with the values of sqlite3.h.
 //
 // One File is used by one goroutine at a time. Different Files, also of the

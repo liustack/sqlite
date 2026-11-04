@@ -301,14 +301,14 @@ func TestLockInProcessNoFcntl(t *testing.T) {
 	calls := countFcntl(t)
 
 	lockT(t, "a SHARED", a.Lock(LockShared), OK)
-	first := *calls
+	first := calls.Load()
 	lockT(t, "b SHARED", b.Lock(LockShared), OK)
-	if *calls != first {
-		t.Errorf("second SHARED made %d fcntl calls, want 0", *calls-first)
+	if calls.Load() != first {
+		t.Errorf("second SHARED made %d fcntl calls, want 0", calls.Load()-first)
 	}
 
 	lockT(t, "a RESERVED", a.Lock(LockReserved), OK)
-	*calls = 0
+	calls.Reset()
 	// Conflicts with another File of the process are found without the
 	// kernel.
 	lockT(t, "b RESERVED", b.Lock(LockReserved), Busy)
@@ -316,8 +316,8 @@ func TestLockInProcessNoFcntl(t *testing.T) {
 	if r, rc := b.CheckReservedLock(); rc != OK || !r {
 		t.Errorf("b CheckReservedLock = %v, %d, want true", r, rc)
 	}
-	if *calls != 0 {
-		t.Errorf("in-process conflicts made %d fcntl calls, want 0", *calls)
+	if calls.Load() != 0 {
+		t.Errorf("in-process conflicts made %d fcntl calls, want 0", calls.Load())
 	}
 
 	// a reaches PENDING, then b's SHARED keeps it from EXCLUSIVE.
@@ -325,17 +325,17 @@ func TestLockInProcessNoFcntl(t *testing.T) {
 	if a.LockState() != LockPending {
 		t.Errorf("a LockState = %d, want PENDING", a.LockState())
 	}
-	*calls = 0
+	calls.Reset()
 	lockT(t, "c SHARED under PENDING", c.Lock(LockShared), Busy)
 	lockT(t, "b unlock", b.Unlock(LockNone), OK)
-	if *calls != 0 {
-		t.Errorf("refused SHARED and a shared unlock made %d fcntl calls, want 0", *calls)
+	if calls.Load() != 0 {
+		t.Errorf("refused SHARED and a shared unlock made %d fcntl calls, want 0", calls.Load())
 	}
 	lockT(t, "a EXCLUSIVE", a.Lock(LockExclusive), OK)
-	*calls = 0
+	calls.Reset()
 	lockT(t, "b SHARED under EXCLUSIVE", b.Lock(LockShared), Busy)
-	if *calls != 0 {
-		t.Errorf("refused SHARED made %d fcntl calls, want 0", *calls)
+	if calls.Load() != 0 {
+		t.Errorf("refused SHARED made %d fcntl calls, want 0", calls.Load())
 	}
 }
 

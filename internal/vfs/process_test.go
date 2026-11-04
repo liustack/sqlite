@@ -22,6 +22,7 @@ import (
 const helperEnv = "VFS_TEST_HELPER_DB"
 
 func TestMain(m *testing.M) {
+	fcntlHook = func() { fcntlTotal.Add(1) }
 	if name := os.Getenv(helperEnv); name != "" {
 		os.Exit(helper(name))
 	}
