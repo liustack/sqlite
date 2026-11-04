@@ -295,21 +295,28 @@ func TestMergeDeferredForeignKey(t *testing.T) {
 	mExec(t, db, `CREATE TABLE p(id INTEGER PRIMARY KEY)`)
 	mExec(t, db, `CREATE TABLE c(pid REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED)`)
 	mExec(t, db, `CREATE TABLE ok(x)`)
-	var bad, good error
-	err := behind(t, db, func() error {
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() { defer wg.Done(); _, bad = db.Exec(`INSERT INTO c VALUES (7)`) }()
-		for waiting() == 0 {
-			time.Sleep(time.Millisecond)
-		}
-		go func() { defer wg.Done(); _, good = db.Exec(`INSERT INTO ok VALUES (1)`) }()
-		wg.Wait()
-		return nil
-	})
+	// The holder keeps the lock until both inserts wait in the queue, so
+	// they run as one batch.
+	tx, err := db.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mExec(t, tx, `INSERT INTO h VALUES (1)`)
+	var bad, good error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); _, bad = db.Exec(`INSERT INTO c VALUES (7)`) }()
+	for waiting() < 1 {
+		time.Sleep(time.Millisecond)
+	}
+	go func() { defer wg.Done(); _, good = db.Exec(`INSERT INTO ok VALUES (1)`) }()
+	for waiting() < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
 	if bad == nil || !strings.Contains(bad.Error(), "FOREIGN KEY") {
 		t.Fatalf("the orphan insert got %v, want a foreign key error", bad)
 	}
