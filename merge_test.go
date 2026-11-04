@@ -734,3 +734,34 @@ func TestHandedRequestLeadsBatch(t *testing.T) {
 		t.Fatalf("%d rows, want %d", c, n)
 	}
 }
+
+// When SQLite rolls back a transaction itself (here RAISE(ROLLBACK) in a
+// trigger), the statements after it in the sql.Tx fail: none of them may
+// run on its own and commit, and Commit fails.
+func TestTxEndedBySQLite(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	mExec(t, db, `CREATE TABLE t(x); CREATE TABLE stop(x);
+		CREATE TRIGGER stop_all BEFORE INSERT ON stop BEGIN SELECT RAISE(ROLLBACK, 'stopped'); END`)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, tx, `INSERT INTO t VALUES ('a')`)
+	if _, err := tx.Exec(`INSERT INTO stop VALUES (1)`); err == nil || !strings.Contains(err.Error(), "stopped") {
+		t.Fatalf("the trigger: %v", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO t VALUES ('b')`); err == nil {
+		t.Error("an insert after the rollback ran")
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT count(*) FROM t`).Scan(&n); err == nil {
+		t.Error("a query after the rollback ran")
+	}
+	if err := tx.Commit(); err == nil {
+		t.Error("Commit after the rollback succeeded")
+	}
+	if n := mCount(t, db, `SELECT count(*) FROM t`); n != 0 {
+		t.Fatalf("t has %d rows", n)
+	}
+	mExec(t, db, `INSERT INTO t VALUES ('c')`)
+}

@@ -110,6 +110,9 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	if c.c.Broken() {
 		return nil, driver.ErrBadConn
 	}
+	if err := c.txEnded(); err != nil {
+		return nil, err
+	}
 	if s.mergeable && c.wl != nil && !c.writing && !c.private && c.c.AutoCommit() {
 		return c.wl.submit(ctx, c, s, args)
 	}
@@ -165,6 +168,9 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, erro
 	c := s.c
 	if c.c.Broken() {
 		return nil, driver.ErrBadConn
+	}
+	if err := c.txEnded(); err != nil {
+		return nil, err
 	}
 	if s.busy {
 		return nil, errors.New("sqlite: the rows of the statement are still open")
