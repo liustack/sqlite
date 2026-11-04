@@ -13,6 +13,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/liustack/sqlite/internal/csqlite"
@@ -41,6 +42,18 @@ type writeLock struct {
 	waiters []chan struct{} // writers that wait for the lock, in order
 	queue   []*request      // statements to merge, in order
 	refs    int             // connections of the file
+	stats   batchStats
+}
+
+// batchStats counts what group commit does on one file, for the benchmarks
+// that decide whether waiting a little before a batch would pay.
+type batchStats struct {
+	batches atomic.Int64 // batches taken from the queue
+	full    atomic.Int64 // batches that took maxBatch statements
+	commits atomic.Int64 // batches committed
+	merged  atomic.Int64 // statements committed by those
+	// commitTime is the time spent in the COMMIT of those, in nanoseconds.
+	commitTime atomic.Int64
 }
 
 // A request is one statement of the queue.
@@ -153,6 +166,10 @@ func (l *writeLock) release(c *conn) {
 			}
 		}
 		if len(batch) > 0 {
+			l.stats.batches.Add(1)
+			if len(batch) == maxBatch {
+				l.stats.full.Add(1)
+			}
 			l.queue = rest
 			l.mu.Unlock()
 			back := c.runBatch(batch)
@@ -334,10 +351,14 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 		if lost {
 			continue
 		}
+		start := time.Now()
 		if err := c.execCached("COMMIT"); err != nil {
 			answer(ok, c.abandon(err))
 			return back
 		}
+		c.wl.stats.commits.Add(1)
+		c.wl.stats.commitTime.Add(int64(time.Since(start)))
+		c.wl.stats.merged.Add(int64(len(ok)))
 		answer(ok, nil)
 		return back
 	}
