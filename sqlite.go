@@ -72,14 +72,21 @@ type Connector struct {
 	name    string // what SQLite opens
 	pragmas []string
 	begin   string
+	opts    options // what Register and NewConnector gave
 	// key is the same for connectors that open a file the same way: group
 	// commit merges statements only between connections of one key.
 	key string
 }
 
-// NewConnector parses dsn, for sql.OpenDB.
-func NewConnector(dsn string) (*Connector, error) {
+// NewConnector parses dsn, for sql.OpenDB. Its connections get what
+// Register gave, then opts.
+func NewConnector(dsn string, opts ...Option) (*Connector, error) {
 	c := &Connector{begin: "BEGIN"}
+	o, setKey, err := applyOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	c.opts = o
 	name, query, _ := strings.Cut(dsn, "?")
 	q, err := url.ParseQuery(query)
 	if err != nil {
@@ -121,7 +128,7 @@ func NewConnector(dsn string) (*Connector, error) {
 		return nil, fmt.Errorf("sqlite: data source name %q: SQLite reads parameters only from a file: URI", dsn)
 	}
 	c.name = name
-	c.key = name + "\x00" + strings.Join(c.pragmas, "\x00")
+	c.key = name + "\x00" + strings.Join(c.pragmas, "\x00") + "\x00" + setKey
 	return c, nil
 }
 
@@ -132,6 +139,10 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 	conn := &conn{c: cc, begin: c.begin, key: c.key}
+	if err := c.opts.setUp(cc); err != nil {
+		cc.Close()
+		return nil, err
+	}
 	if err := cc.BusyTimeout(5000); err != nil {
 		cc.Close()
 		return nil, err

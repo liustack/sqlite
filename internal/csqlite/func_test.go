@@ -9,6 +9,7 @@ package csqlite
 
 import (
 	"bytes"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strings"
@@ -44,7 +45,7 @@ func mustOne(t *testing.T, c *Conn, sql string) string {
 	return v
 }
 
-func add1(args []any) (any, error) { return args[0].(int64) + 1, nil }
+func add1(args []driver.Value) (driver.Value, error) { return args[0].(int64) + 1, nil }
 
 func TestFunctionScalar(t *testing.T) {
 	c := open(t, ":memory:")
@@ -63,8 +64,8 @@ func TestFunctionScalar(t *testing.T) {
 
 func TestFunctionValues(t *testing.T) {
 	c := open(t, ":memory:")
-	var got []any
-	err := c.CreateFunction("echo", -1, 0, func(args []any) (any, error) {
+	var got []driver.Value
+	err := c.CreateFunction("echo", -1, 0, func(args []driver.Value) (driver.Value, error) {
 		got = args
 		return args[len(args)-1], nil
 	})
@@ -74,7 +75,7 @@ func TestFunctionValues(t *testing.T) {
 	if v := mustOne(t, c, "SELECT typeof(echo(1, 2.5, 'é', x'00ff', NULL))"); v != "null" {
 		t.Fatalf("NULL came back as %s", v)
 	}
-	want := []any{int64(1), 2.5, "é", []byte{0, 0xff}, nil}
+	want := []driver.Value{int64(1), 2.5, "é", []byte{0, 0xff}, nil}
 	if fmt.Sprintf("%#v", got) != fmt.Sprintf("%#v", want) {
 		t.Fatalf("arguments %#v, want %#v", got, want)
 	}
@@ -91,7 +92,7 @@ func TestFunctionValues(t *testing.T) {
 			t.Errorf("%s = %q, want %q", sql, v, want)
 		}
 	}
-	if err := c.CreateFunction("kinds", 1, 0, func(args []any) (any, error) {
+	if err := c.CreateFunction("kinds", 1, 0, func(args []driver.Value) (driver.Value, error) {
 		switch args[0].(int64) {
 		case 0:
 			return true, nil
@@ -124,7 +125,7 @@ func TestFunctionArgumentsAreCopies(t *testing.T) {
 	c := open(t, ":memory:")
 	var kept [][]byte
 	var keptText []string
-	err := c.CreateFunction("keep", 2, 0, func(args []any) (any, error) {
+	err := c.CreateFunction("keep", 2, 0, func(args []driver.Value) (driver.Value, error) {
 		kept = append(kept, args[0].([]byte))
 		keptText = append(keptText, args[1].(string))
 		return nil, nil
@@ -152,7 +153,7 @@ func TestFunctionArgumentsAreCopies(t *testing.T) {
 
 func TestFunctionError(t *testing.T) {
 	c := open(t, ":memory:")
-	if err := c.CreateFunction("fail", 0, 0, func([]any) (any, error) {
+	if err := c.CreateFunction("fail", 0, 0, func([]driver.Value) (driver.Value, error) {
 		return nil, errors.New("no luck")
 	}); err != nil {
 		t.Fatal(err)
@@ -169,7 +170,7 @@ func TestFunctionError(t *testing.T) {
 
 func TestFunctionPanicFailsOnlyItsStatement(t *testing.T) {
 	c := open(t, ":memory:")
-	if err := c.CreateFunction("boom", 0, 0, func([]any) (any, error) {
+	if err := c.CreateFunction("boom", 0, 0, func([]driver.Value) (driver.Value, error) {
 		panic("kaboom")
 	}); err != nil {
 		t.Fatal(err)
@@ -199,7 +200,7 @@ func TestFunctionLargeResult(t *testing.T) {
 	c := open(t, ":memory:")
 	text := strings.Repeat("abcdefgh", (3*big)/8)
 	blob := bytes.Repeat([]byte{1, 2, 3, 4}, big)
-	if err := c.CreateFunction("large", 1, 0, func(args []any) (any, error) {
+	if err := c.CreateFunction("large", 1, 0, func(args []driver.Value) (driver.Value, error) {
 		if args[0].(int64) == 0 {
 			return text, nil
 		}
@@ -220,7 +221,7 @@ func TestFunctionLargeResult(t *testing.T) {
 // under it. Writing from the connection's own pointer would overwrite them.
 func TestFunctionDeepInTriggers(t *testing.T) {
 	c := open(t, ":memory:")
-	if err := c.CreateFunction("pad", 2, FuncDeterministic, func(args []any) (any, error) {
+	if err := c.CreateFunction("pad", 2, FuncDeterministic, func(args []driver.Value) (driver.Value, error) {
 		return strings.Repeat(args[1].(string), int(args[0].(int64))), nil
 	}); err != nil {
 		t.Fatal(err)
@@ -276,7 +277,7 @@ func TestFunctionHandlesFreed(t *testing.T) {
 	}
 	for range 3 {
 		// Each replaces the one before it, which SQLite then destroys.
-		if err := c.CreateFunction("f", 0, 0, func([]any) (any, error) { return 1, nil }); err != nil {
+		if err := c.CreateFunction("f", 0, 0, func([]driver.Value) (driver.Value, error) { return 1, nil }); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -310,7 +311,7 @@ func TestFunctionConcurrent(t *testing.T) {
 				return
 			}
 			defer c.Close()
-			if err := c.CreateFunction("who", 1, 0, func(args []any) (any, error) {
+			if err := c.CreateFunction("who", 1, 0, func(args []driver.Value) (driver.Value, error) {
 				return fmt.Sprintf("%d:%s", g, args[0]), nil
 			}); err != nil {
 				t.Error(err)
@@ -333,7 +334,7 @@ func TestFunctionConcurrent(t *testing.T) {
 // overwrite the statements still to come.
 func TestFunctionKeepsCallerFrames(t *testing.T) {
 	c := open(t, ":memory:")
-	if err := c.CreateFunction("fill", 1, 0, func(args []any) (any, error) {
+	if err := c.CreateFunction("fill", 1, 0, func(args []driver.Value) (driver.Value, error) {
 		return strings.Repeat("\xff", int(args[0].(int64))), nil
 	}); err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@
 package csqlite
 
 import (
+	"database/sql/driver"
 	"fmt"
 	"math"
 	"unsafe"
@@ -17,7 +18,7 @@ import (
 // types int64, float64, string, []byte and nil. It returns one of those, an
 // int or a bool, or an error that becomes the error of the statement. A
 // panic in it is recovered and becomes the error of the statement too.
-type Func func(args []any) (any, error)
+type Func func(args []driver.Value) (driver.Value, error)
 
 // Flags of CreateFunction (sqlite3.h).
 const (
@@ -53,7 +54,7 @@ func (c *Conn) CreateFunction(name string, nArg int, flags int, f Func) error {
 func host_func(sp, ctx, argc, argv uintptr) {
 	defer failQuiet(sp)
 	f := *funcs.get(sqlite3_user_data(sp, ctx))
-	args := make([]any, int(int32(argc)))
+	args := make([]driver.Value, int(int32(argc)))
 	for i := range args {
 		args[i] = value(sp, *(*uintptr)(at(argv + uintptr(i)*8)))
 	}
@@ -73,7 +74,7 @@ func host_func_destroy(sp, h uintptr) {
 
 // call runs f and turns a panic in it into an error: the panic is the user's,
 // and the C under host_func is still whole.
-func call(f Func, args []any) (v any, err error) {
+func call(f Func, args []driver.Value) (v driver.Value, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			v, err = nil, fmt.Errorf("panic in a Go function: %v", e)
@@ -92,7 +93,7 @@ const (
 )
 
 // value copies a sqlite3_value into Go.
-func value(sp, v uintptr) any {
+func value(sp, v uintptr) driver.Value {
 	switch int32(sqlite3_value_type(sp, v)) {
 	case typeInteger:
 		return int64(sqlite3_value_int64(sp, v))
@@ -118,7 +119,7 @@ func value(sp, v uintptr) any {
 }
 
 // result sets the result of a call to v.
-func result(sp, ctx uintptr, v any) error {
+func result(sp, ctx uintptr, v driver.Value) error {
 	switch v := v.(type) {
 	case nil:
 		sqlite3_result_null(sp, ctx)
