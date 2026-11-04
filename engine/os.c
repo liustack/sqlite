@@ -232,6 +232,7 @@ typedef struct GoFile {
   long h;        /* the Go handle */
   int persistWal; /* SQLITE_FCNTL_PERSIST_WAL */
   int psow;       /* SQLITE_FCNTL_POWERSAFE_OVERWRITE */
+  int iocap;      /* the rest of the SQLITE_IOCAP_* bits, from the Go side */
 } GoFile;
 
 #define FH(f) (((GoFile *)(f))->h)
@@ -302,7 +303,8 @@ static int goSectorSize(sqlite3_file *f) {
 }
 
 static int goDeviceCharacteristics(sqlite3_file *f) {
-  return ((GoFile *)f)->psow ? SQLITE_IOCAP_POWERSAFE_OVERWRITE : 0;
+  GoFile *g = (GoFile *)f;
+  return g->iocap | (g->psow ? SQLITE_IOCAP_POWERSAFE_OVERWRITE : 0);
 }
 
 static int goShmMap(sqlite3_file *f, int region, int size, int extend, void volatile **p) {
@@ -334,6 +336,7 @@ _Static_assert(__builtin_offsetof(struct host_open_args, modeof) == 0, "host_ope
 _Static_assert(__builtin_offsetof(struct host_open_args, handle) == 8, "host_open_args.handle");
 _Static_assert(__builtin_offsetof(struct host_open_args, readonly_shm) == 16, "host_open_args.readonly_shm");
 _Static_assert(__builtin_offsetof(struct host_open_args, out_flags) == 20, "host_open_args.out_flags");
+_Static_assert(__builtin_offsetof(struct host_open_args, iocap) == 24, "host_open_args.iocap");
 
 static int goOpen(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *f, int flags, int *outFlags) {
   GoFile *g = (GoFile *)f;
@@ -351,6 +354,7 @@ static int goOpen(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *f, int 
   if (rc != SQLITE_OK) return rc;
   out = a.out_flags;
   g->h = a.handle;
+  g->iocap = a.iocap;
   /* Powersafe overwrite is on unless the URI turns it off, as in os_unix. */
   g->psow = sqlite3_uri_boolean(name, "psow", SQLITE_POWERSAFE_OVERWRITE);
   g->base.pMethods = &goIoMethods;

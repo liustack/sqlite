@@ -323,10 +323,12 @@ func (f *File) SectorSize() int {
 	return sectorSize
 }
 
-// DeviceCharacteristics is that of os_unix with powersafe overwrite on, the
-// default of SQLite.
+// DeviceCharacteristics gives the SQLITE_IOCAP_* bits of the file as os_win
+// does, but powersafe overwrite: engine/os.c adds that one, which the psow
+// URI parameter turns off. Subpage read lets SQLite read a large value from
+// its overflow pages straight into its buffer.
 func (f *File) DeviceCharacteristics() int {
-	return IOCapPowersafeOverwrite | IOCapSubpageRead
+	return IOCapSubpageRead
 }
 
 // lockFile takes a lock on n bytes from off. It fails at once when another

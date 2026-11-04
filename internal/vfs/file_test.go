@@ -248,7 +248,7 @@ func TestDeviceCharacteristics(t *testing.T) {
 	if got := f.SectorSize(); got != 4096 {
 		t.Errorf("SectorSize = %d", got)
 	}
-	if got := f.DeviceCharacteristics(); got != IOCapPowersafeOverwrite|IOCapSubpageRead {
+	if got := f.DeviceCharacteristics(); got != IOCapSubpageRead {
 		t.Errorf("DeviceCharacteristics = %#x", got)
 	}
 }

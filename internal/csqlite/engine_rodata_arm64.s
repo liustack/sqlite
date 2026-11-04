@@ -9356,7 +9356,7 @@ DATA ·engine_rodata+85152(SB)/8, $0xfffee618fffee602
 DATA ·engine_rodata+85160(SB)/8, $0xfffee56ffffee60d
 DATA ·engine_rodata+85168(SB)/8, $0xfffee624fffee55d
 DATA ·engine_rodata+85176(SB)/8, $0x00006f67fffee6ce
-DATA ·engine_rodata+85184(SB)/8, $0x0000001800000002
+DATA ·engine_rodata+85184(SB)/8, $0x0000002000000002
 DATA ·engine_rodata+85192(SB)/8, $0x0000000000000200
 DATA ·engine_rodata+85208(SB)/8, $·engine_rodata+85180(SB)
 DATA ·engine_rodata+85224(SB)/8, $·goOpen(SB)
