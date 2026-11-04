@@ -302,7 +302,7 @@ func scanItems(st *sql.Stmt) error {
 	if err != nil {
 		return err
 	}
-	n := 0
+	n, sum := 0, int64(0)
 	for rows.Next() {
 		var (
 			id, created int64
@@ -313,13 +313,18 @@ func scanItems(st *sql.Stmt) error {
 			rows.Close()
 			return err
 		}
+		if created != 1_700_000_000+id {
+			rows.Close()
+			return fmt.Errorf("row %d: created %d", id, created)
+		}
 		n++
+		sum += id
 	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	if n != pointRows {
-		return fmt.Errorf("%d rows, want %d", n, pointRows)
+	if n != pointRows || sum != pointRows*(pointRows+1)/2 {
+		return fmt.Errorf("%d rows of ids summing to %d, want %d rows 1 to %[3]d", n, sum, pointRows)
 	}
 	return nil
 }

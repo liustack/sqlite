@@ -130,6 +130,10 @@ func BenchmarkInsertTx(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.StopTimer()
+	if n := count(b, db, "t"); n != b.N*1000 {
+		b.Fatalf("%d rows, want %d", n, b.N*1000)
+	}
 }
 
 // Point: SELECT one row by primary key, one goroutine.
@@ -274,9 +278,13 @@ func BenchmarkPointParallel(b *testing.B) {
 				name        string
 				score       float64
 			)
-			k := next.Add(1)
-			if err := st.QueryRow(k%pointRows+1).Scan(&id, &name, &score, &created); err != nil {
+			k := next.Add(1)%pointRows + 1
+			if err := st.QueryRow(k).Scan(&id, &name, &score, &created); err != nil {
 				b.Error(err)
+				return
+			}
+			if id != k || created != 1_700_000_000+k {
+				b.Errorf("row %d: id %d created %d", k, id, created)
 				return
 			}
 		}
@@ -308,8 +316,12 @@ func insertParallel(b *testing.B, synchronous string) {
 			b.ResetTimer()
 			for w := 0; w < g; w++ {
 				go func() {
-					for left.Add(-1) >= 0 {
-						if _, err := st.Exec("name-0123456789abcd", 1.5, 1); err != nil {
+					for {
+						v := left.Add(-1)
+						if v < 0 {
+							break
+						}
+						if _, err := st.Exec("name-0123456789abcd", 1.5, v); err != nil {
 							left.Store(-1)
 							errc <- err
 							return
@@ -322,6 +334,15 @@ func insertParallel(b *testing.B, synchronous string) {
 				if err := <-errc; err != nil {
 					b.Fatal(err)
 				}
+			}
+			b.StopTimer()
+			// Every insert landed once: created runs over 0 to b.N-1.
+			var n, distinct, lo, hi int
+			if err := db.QueryRow(`SELECT count(*), count(DISTINCT created), min(created), max(created) FROM t`).Scan(&n, &distinct, &lo, &hi); err != nil {
+				b.Fatal(err)
+			}
+			if n != b.N || distinct != b.N || lo != 0 || hi != b.N-1 {
+				b.Fatalf("%d rows, %d distinct, from %d to %d, want %d from 0", n, distinct, lo, hi, b.N)
 			}
 		})
 	}
