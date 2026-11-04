@@ -9,20 +9,33 @@ Compares SQLite drivers for Go's `database/sql` on the same workloads and the sa
 | `modernc` | modernc.org/sqlite              | C translated to Go |
 | `ncruces` | github.com/ncruces/go-sqlite3   | wasm translated to Go (wasm2go) |
 
-Several of these register the driver name `sqlite` or `sqlite3`, so only one can be linked into a binary. A build tag picks the driver (`driver_<tag>.go`). Each file gives `DriverName`, `DriverTag` and `DSN(path)`. To add a driver, add a file with the same three things.
+Several of these register the driver name `sqlite` or `sqlite3`, so only one can be linked into a binary. A build tag picks the driver (`driver_<tag>.go`). Each file gives `DriverName`, `DriverTag` and `DSN(path, synchronous)`. To add a driver, add a file with the same three things.
 
 ## Run
 
 ```sh
-bench/run.sh                              # all drivers, COUNT=6 BENCHTIME=1s
-COUNT=1 BENCHTIME=100x bench/run.sh       # quick check that everything runs
-bench/run.sh modernc ncruces              # some drivers only
-BENCH='^BenchmarkPoint$' bench/run.sh     # some workloads only
+make bench                                            # all drivers, 6 rounds, -benchtime 1s
+make bench ARGS="-count 2 -benchtime 100ms -drivers liustack,mattn"   # a quick look
+make bench ARGS="-bench '^BenchmarkPoint$'"           # some workloads only
 ```
 
-`run.sh` builds one test binary per driver (cgo on only for `mattn`) and checks its settings with `TestPragmas`. Then the drivers take turns, one run of every benchmark each, `COUNT` times, so that other load on the machine falls on all of them alike. It writes `results/<goos>-<goarch>/<tag>.txt` and `header.txt` (Go version, CPU, OS, driver versions), then prints a [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) table with one column per driver. The first driver is the base, and the other columns show the change against it. `results/` is not checked in.
+`make bench` runs `go run ./cmd/benchrun run` in `bench/`. It builds one test binary per driver (cgo on only for `mattn`) and checks its settings with `TestPragmas`. Then the drivers take turns, one run of every benchmark each, `-count` times, each round starting with the next driver, so that other load on the machine falls on all of them alike. It writes `results/<goos>-<goarch>/<tag>.txt` (the format of `go test`, so `benchstat` reads it too) and `meta.json` (date, commit, Go, CPU, OS, threads, `GOMAXPROCS`, driver versions, load average before and after), then prints the tables. `results/` is not checked in.
+
+To run on one core, start it with the CPUs and `GOMAXPROCS` it should have, for example `taskset -c 0,4 env GOMAXPROCS=1 make bench`.
 
 By hand: `cd bench && CGO_ENABLED=0 go test -tags modernc -run '^$' -bench . -benchmem`.
+
+## Publish
+
+The tables of [docs/benchmarks.md](../docs/benchmarks.md) and of the READMEs are written by `benchrun` from `published/*.json`, never by hand:
+
+```sh
+cd bench
+go run ./cmd/benchrun publish -from results/linux-amd64 -name linux-amd64-1thread
+cd .. && make bench-docs
+```
+
+`publish` keeps the median of each benchmark and its 95% confidence interval (as benchstat computes them) and what `meta.json` says about the run. `-set key=value` adds to it, for example `-set note="on a busy machine"` (and `note_zh` for the Chinese side). A table in a doc sits between `<!-- bench:NAME -->` and `<!-- /bench:NAME -->`, where NAME is a set, or `readme-<platform>` for the short README table whose rows `cmd/benchrun/docs.go` lists. `make check` fails when a table is not what `published/` gives.
 
 ## Same settings everywhere
 
@@ -36,7 +49,7 @@ With WAL and `synchronous=NORMAL`, a commit is written to the WAL file but not f
 
 ## Workloads
 
-Each benchmark uses a fresh database file in `b.TempDir()` and one `*sql.DB`. Schema and data are made before the timer starts.
+Each benchmark uses its own database file in `b.TempDir()` and one `*sql.DB`. The tables that reads start from are made once per process and copied for each benchmark (`fixture_test.go`), so `testing.B` calling a benchmark again with a larger `b.N` does not fill them again. Every workload checks what it reads, so a driver that returns wrong data fails the run.
 
 | Name             | One op is                                                                                          |
 | ---------------- | -------------------------------------------------------------------------------------------------- |
@@ -48,9 +61,17 @@ Each benchmark uses a fresh database file in `b.TempDir()` and one `*sql.DB`. Sc
 | `PointParallel`  | `Point` from `b.RunParallel` (GOMAXPROCS goroutines) on a pool of GOMAXPROCS*2 connections         |
 | `InsertParallel` | One autocommit `INSERT`, from exactly `g=1`, `g=8` or `g=64` goroutines, pool capped at `g` connections |
 | `InsertParallelFull` | `InsertParallel` with `synchronous=FULL`: every commit syncs the WAL to the disk (on macOS without `fullfsync`, so the disk cache may still hold it) |
+| `Real/insert`    | One user with 20 articles and 400 comments, in one transaction (the schema of go-sqlite-bench, with its indexes) |
+| `Real/query`     | One user found by email with its articles and comments: two `LEFT JOIN`s, 400 rows                 |
+| `Many`           | All rows of a table of `n=10`, `100` or `1000` users: the cost of one query and of each row        |
+| `Large`          | All 100 rows of a table whose text is 50 or 200 KB. `MB/s` is the rate of text read                 |
+| `Readers`        | One scan of all 100k items, from `g=2`, `4` or `8` goroutines at once on `g` connections          |
+| `ReadWrite`      | One `Point`, from 8 goroutines while one more inserts without pause. `writes/s` is the writer's rate |
 
-In `InsertParallel`, `ns/op` is wall time divided by total inserts, so a lower number at `g=64` than at `g=1` means the driver gets more inserts done per second. Every insert is a separate autocommit and returns only after its commit.
+`Real`, `Many`, `Large` and `Readers` follow [cvilsmeier/go-sqlite-bench](https://github.com/cvilsmeier/go-sqlite-bench) (real, many, large, concurrent) at smaller sizes, so that six rounds of four drivers take minutes and not hours. `ReadWrite` is the mix of readers and writers of modernc's `BenchmarkConcurrent`.
 
-## Reading the table
+In `InsertParallel`, `Readers` and `ReadWrite`, `ns/op` is wall time divided by all the ops of all goroutines, so a lower number with more goroutines means the driver gets more done per second. Every insert is a separate autocommit and returns only after its commit.
 
-`sec/op` is time per op, `B/op` and `allocs/op` are Go heap use per op. Lower is better. A `~` means benchstat sees no real difference. With `COUNT=1` benchstat cannot say anything about noise, so use at least 6 runs for numbers you publish, on a quiet machine, and keep `header.txt` with them.
+## Reading the tables
+
+Time per op and allocations per op are lower is better. `MB/s` and `writes/s` are higher is better. Each cell is the median of the rounds, and `±` is its 95% confidence interval (benchstat's), shown from 6 rounds up. The best of each row is in bold. Use at least 6 rounds on a quiet machine for numbers you publish.

@@ -8,10 +8,12 @@ require (
 	github.com/liustack/sqlite v0.0.0-00010101000000-000000000000
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/ncruces/go-sqlite3 v0.36.0
+	golang.org/x/perf v0.0.0-20261009192801-be2c69fb417e
 	modernc.org/sqlite v1.61.1
 )
 
 require (
+	github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
