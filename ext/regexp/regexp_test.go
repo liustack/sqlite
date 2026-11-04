@@ -31,11 +31,14 @@ func TestRegexp(t *testing.T) {
 		`SELECT regexp_replace('a1b22', '[0-9]+', '<$0>')`:                              "a<1>b<22>",
 		`SELECT regexp_replace('2026-11-04', '(\d+)-(\d+)-(\d+)', '$3.$2.$1')`:          "04.11.2026",
 		`SELECT regexp_replace(NULL, 'a', 'b')`:                                         "NULL",
+		`SELECT regexp_replace('abc', '(b)', '${1}x')`:                                  "abxc",
+		`SELECT regexp_replace('a.b', '[.]', '$$')`:                                     "a$b",
 		`SELECT count(*) FROM (VALUES ('ab'), ('b'), ('ba')) WHERE column1 REGEXP '^b'`: "2",
 	})
 	sqltest.Fails(t, db, map[string]string{
 		`SELECT 'a' REGEXP '('`:   "missing closing )",
 		`SELECT 1.5 REGEXP '1'`:   "CAST(x AS TEXT)",
+		`SELECT 1.5 REGEXP 'a'`:   "regexp: argument 2 is a REAL",
 		`SELECT regexp_like('a')`: "wrong number of arguments",
 	})
 }

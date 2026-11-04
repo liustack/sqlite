@@ -13,10 +13,16 @@
 //	x REGEXP pattern                       1 if pattern matches somewhere in x, else 0
 //	regexp_like(x, pattern)                the same
 //	regexp_substr(x, pattern)              the first match, or NULL
-//	regexp_replace(x, pattern, repl)       x with every match replaced, $1 and ${name} expanded
+//	regexp_replace(x, pattern, repl)       x with every match replaced
 //
-// A NULL argument gives NULL. A pattern that does not compile is the error
-// of the statement.
+// repl takes Go's syntax, not \1: $1 or ${1} is a group by number, ${name} a
+// group by name, and $$ a dollar. A name runs as far as letters, digits and _
+// go, so write ${1}x, not $1x (a group named 1x). A group that is not there
+// gives the empty text.
+//
+// A NULL argument gives NULL. A REAL argument is an error: write
+// CAST(x AS TEXT). A pattern that does not compile is the error of the
+// statement.
 package regexp
 
 import (
@@ -33,18 +39,18 @@ func Option() sqlite.Option {
 	return sqlite.Join(
 		sqlite.WithFunction("regexp", 2, func(a []driver.Value) (driver.Value, error) {
 			// x REGEXP y calls regexp(y, x).
-			return like("regexp", a[1], a[0])
+			return like("regexp", a[1], 1, a[0], 0)
 		}, sqlite.Deterministic, sqlite.Innocuous),
 		sqlite.WithFunction("regexp_like", 2, func(a []driver.Value) (driver.Value, error) {
-			return like("regexp_like", a[0], a[1])
+			return like("regexp_like", a[0], 0, a[1], 1)
 		}, sqlite.Deterministic, sqlite.Innocuous),
 		sqlite.WithFunction("regexp_substr", 2, substr, sqlite.Deterministic, sqlite.Innocuous),
 		sqlite.WithFunction("regexp_replace", 3, replace, sqlite.Deterministic, sqlite.Innocuous),
 	)
 }
 
-func like(fn string, x, pattern driver.Value) (driver.Value, error) {
-	s, re, null, err := textAndPattern(fn, x, pattern)
+func like(fn string, x driver.Value, xi int, pattern driver.Value, pi int) (driver.Value, error) {
+	s, re, null, err := textAndPattern(fn, x, xi, pattern, pi)
 	if null || err != nil {
 		return nil, err
 	}
@@ -52,7 +58,7 @@ func like(fn string, x, pattern driver.Value) (driver.Value, error) {
 }
 
 func substr(a []driver.Value) (driver.Value, error) {
-	s, re, null, err := textAndPattern("regexp_substr", a[0], a[1])
+	s, re, null, err := textAndPattern("regexp_substr", a[0], 0, a[1], 1)
 	if null || err != nil {
 		return nil, err
 	}
@@ -64,7 +70,7 @@ func substr(a []driver.Value) (driver.Value, error) {
 }
 
 func replace(a []driver.Value) (driver.Value, error) {
-	s, re, null, err := textAndPattern("regexp_replace", a[0], a[1])
+	s, re, null, err := textAndPattern("regexp_replace", a[0], 0, a[1], 1)
 	if null || err != nil {
 		return nil, err
 	}
@@ -75,12 +81,14 @@ func replace(a []driver.Value) (driver.Value, error) {
 	return re.ReplaceAllString(s, repl), nil
 }
 
-func textAndPattern(fn string, x, pattern driver.Value) (string, *regexp.Regexp, bool, error) {
-	s, null, err := arg.Text(fn, 0, x)
+// textAndPattern reads the text x and the pattern, arguments xi and pi of fn
+// (from 0).
+func textAndPattern(fn string, x driver.Value, xi int, pattern driver.Value, pi int) (string, *regexp.Regexp, bool, error) {
+	s, null, err := arg.Text(fn, xi, x)
 	if null || err != nil {
 		return "", nil, null, err
 	}
-	p, null, err := arg.Text(fn, 1, pattern)
+	p, null, err := arg.Text(fn, pi, pattern)
 	if null || err != nil {
 		return "", nil, null, err
 	}
