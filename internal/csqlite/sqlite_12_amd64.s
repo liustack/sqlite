@@ -18157,7 +18157,7 @@ TEXT ·sqlite3RunVacuum(SB), $256-48
 	BYTE $0x48
 	BYTE $0x8b
 	BYTE $0x08
-	CMPQ CX, ·engine_rodata+99488(SB)
+	CMPQ CX, ·engine_rodata+99888(SB)
 	QUAD $0x8b48fffff8f0840f
 	QUAD $0xdb8548000000d898
 	QUAD $0x11e9fffff8e0850f

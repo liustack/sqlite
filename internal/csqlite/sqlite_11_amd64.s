@@ -12654,7 +12654,7 @@ TEXT ·sqlite3VdbeExec(SB), $432-24
 	LEAQ ·engine_rodata+10927(SB), R13
 	QUAD $0x8b48137500137a80
 	BYTE $0x02
-	CMPQ AX, ·engine_rodata+99488(SB)
+	CMPQ AX, ·engine_rodata+99888(SB)
 	QUAD $0x0000d8aa8b4c0774
 	QUAD $0x008e850f05ff8300
 	QUAD $0x0fed854df0890000

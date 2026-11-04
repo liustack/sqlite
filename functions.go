@@ -71,6 +71,7 @@ type Option struct {
 type options struct {
 	funcs      []function
 	collations []collation
+	modules    []module
 }
 
 type function struct {
@@ -257,7 +258,8 @@ func applyOptions(own []Option) (options, string, error) {
 	return o, "", nil
 }
 
-// setUp gives a new connection the functions and collations of the options.
+// setUp gives a new connection the functions, collations and modules of the
+// options.
 func (o *options) setUp(c *csqlite.Conn) error {
 	for _, f := range o.funcs {
 		var err error
@@ -273,6 +275,11 @@ func (o *options) setUp(c *csqlite.Conn) error {
 	for _, cl := range o.collations {
 		if err := c.CreateCollation(cl.name, cl.cmp); err != nil {
 			return fmt.Errorf("sqlite: collation %s: %w", cl.name, err)
+		}
+	}
+	for _, m := range o.modules {
+		if err := c.CreateModule(m.name, m.connect, m.flags); err != nil {
+			return fmt.Errorf("sqlite: module %s: %w", m.name, err)
 		}
 	}
 	return nil

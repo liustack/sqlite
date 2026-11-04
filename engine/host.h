@@ -58,6 +58,35 @@ void host_func_destroy(long h);
 int host_collate(long h, int n1, const void *p1, int n2, const void *p2);
 void host_collate_destroy(long h);
 
+/* Virtual tables written in Go. A module is a handle of the Go table, the
+   user data of its sqlite3_create_module_v2. host_vtab_connect reads db,
+   module, argv and argc, and writes the handle of the table, the
+   GO_VTAB_* configuration of it, or an error from sqlite3_malloc. The other
+   methods take the table or the cursor (os.c's GoVcursor) and report an
+   error in the table's zErrMsg. host_vtab_filter and host_vtab_next write
+   the cursor's eof. */
+#define GO_VTAB_DIRECTONLY 1
+#define GO_VTAB_INNOCUOUS 2
+struct host_vtab_connect_args {
+  sqlite3 *db;             /* 0 */
+  long module;             /* 8 */
+  const char *const *argv; /* 16 */
+  int argc;                /* 24 */
+  int config;              /* 28: out */
+  long table;              /* 32: out */
+  char *err;               /* 40: out */
+};
+int host_vtab_connect(struct host_vtab_connect_args *a);
+int host_vtab_best_index(sqlite3_vtab *v, long table, sqlite3_index_info *info);
+int host_vtab_disconnect(long table);
+int host_vtab_open(sqlite3_vtab *v, long table, long *cursor);
+int host_vtab_close(long cursor);
+int host_vtab_filter(sqlite3_vtab_cursor *c, int idxNum, const char *idxStr, int argc, sqlite3_value **argv);
+int host_vtab_next(sqlite3_vtab_cursor *c);
+int host_vtab_column(sqlite3_vtab_cursor *c, sqlite3_context *ctx, int i);
+int host_vtab_rowid(sqlite3_vtab_cursor *c, sqlite3_int64 *rowid);
+void host_module_destroy(long h);
+
 int host_close(long f);
 int host_read(long f, void *buf, int n, long long off);
 int host_write(long f, const void *buf, int n, long long off);
