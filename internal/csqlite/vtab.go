@@ -61,6 +61,9 @@ const (
 	ModDirectOnly
 	// ModInnocuous: its tables are safe wherever SQL comes from.
 	ModInnocuous
+	// ModWritable: its tables take INSERT, UPDATE and DELETE when they are
+	// VUpdaters, and those statements never merge. Not with ModEponymousOnly.
+	ModWritable
 )
 
 // ErrConstraint is what BestIndex returns for a plan that cannot work.
@@ -149,11 +152,21 @@ func (c *Conn) CreateModule(name string, m Module, flags int) error {
 		// first.
 		return &Error{Code: 21, Msg: "a module cannot be both DirectOnly and Innocuous"}
 	}
+	if flags&ModEponymousOnly != 0 && flags&ModWritable != 0 {
+		return &Error{Code: 21, Msg: "a module cannot be both EponymousOnly and writable"}
+	}
 	h := modules.add(&moduleEntry{m, flags})
 	a := c.args()
 	z := a.str(name)
 	// SQLite gives h to host_module_destroy when this fails as well.
-	return c.err(int(int32(go_create_module(a.top, c.db, z, h, uintptr(flags&ModEponymousOnly)))))
+	kind := uintptr(0) // GO_MODULE_PLAIN
+	switch {
+	case flags&ModEponymousOnly != 0:
+		kind = 1 // GO_MODULE_EPONYMOUS
+	case flags&ModWritable != 0:
+		kind = 2 // GO_MODULE_WRITABLE
+	}
+	return c.err(int(int32(go_create_module(a.top, c.db, z, h, kind))))
 }
 
 const (
@@ -474,4 +487,115 @@ func host_vtab_rowid(sp, c, out uintptr) (ret uintptr) {
 func host_module_destroy(sp, h uintptr) {
 	defer failQuiet(sp)
 	modules.remove(h)
+}
+
+// VUpdater is a VTable that takes writes, made by a module with ModWritable.
+// A rowid is an int64, or the PRIMARY KEY of a WITHOUT ROWID table.
+type VUpdater interface {
+	// Insert adds a row of the values cols. rowid is nil when the statement
+	// gave none, and Insert chooses it. It returns the rowid of the row.
+	Insert(rowid driver.Value, cols []driver.Value) (int64, error)
+	// Update changes the row oldRowid to newRowid and cols.
+	Update(oldRowid, newRowid driver.Value, cols []driver.Value) error
+	Delete(rowid driver.Value) error
+}
+
+// VTransactor is a VUpdater that takes part in the transactions of its
+// connection: Begin before the first write of a transaction and as the
+// table is made (goWritableCreate), Sync and Commit at its commit, Rollback
+// at its rollback.
+type VTransactor interface {
+	Begin() error
+	Sync() error
+	Commit() error
+	Rollback() error
+}
+
+// VSavepointer is a VTransactor that keeps savepoints, so that a statement
+// that fails inside a transaction is undone: Savepoint(n) marks the state,
+// RollbackTo(n) goes back to the state at savepoint n (at Begin when the
+// table joined after n), Release(n) forgets the marks from n on.
+type VSavepointer interface {
+	Savepoint(n int) error
+	Release(n int) error
+	RollbackTo(n int) error
+}
+
+// host_vtab_update runs a write on the table h of v: a delete when argc is
+// 1, an insert when argv[0] is NULL, an update when not.
+func host_vtab_update(sp, v, h, argc, argv, rowid uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteError)
+	t := *vtables.get(h)
+	u, ok := t.(VUpdater)
+	if !ok {
+		return vtabError(sp, v, errors.New("the table takes no writes"))
+	}
+	vals := values(sp, argc, argv)
+	err := run(func() error {
+		switch {
+		case len(vals) == 1:
+			return u.Delete(vals[0])
+		case vals[0] == nil:
+			id, err := u.Insert(vals[1], vals[2:])
+			if err == nil {
+				*(*int64)(at(rowid)) = id
+			}
+			return err
+		}
+		return u.Update(vals[0], vals[1], vals[2:])
+	})
+	if err != nil {
+		return vtabError(sp, v, err)
+	}
+	return OK
+}
+
+// The transaction methods of host_vtab_tx (engine/host.h).
+const (
+	txBegin = iota
+	txSync
+	txCommit
+	txRollback
+	txSavepoint
+	txRelease
+	txRollbackTo
+)
+
+// host_vtab_tx runs a transaction method on the table h of v, when it has
+// one.
+func host_vtab_tx(sp, v, h, op, n uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, sqliteError)
+	t := *vtables.get(h)
+	var f func() error
+	if x, ok := t.(VTransactor); ok {
+		switch op {
+		case txBegin:
+			f = x.Begin
+		case txSync:
+			f = x.Sync
+		case txCommit:
+			f = x.Commit
+		case txRollback:
+			f = x.Rollback
+		}
+	}
+	if x, ok := t.(VSavepointer); ok {
+		k := int(int32(n))
+		switch op {
+		case txSavepoint:
+			f = func() error { return x.Savepoint(k) }
+		case txRelease:
+			f = func() error { return x.Release(k) }
+		case txRollbackTo:
+			f = func() error { return x.RollbackTo(k) }
+		}
+	}
+	var err error
+	if f != nil {
+		err = run(f)
+	}
+	if err != nil {
+		return vtabError(sp, v, err)
+	}
+	return OK
 }

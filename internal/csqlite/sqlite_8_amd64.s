@@ -17366,7 +17366,7 @@ TEXT ·sqlite3Pragma(SB), $384-48
 	BYTE $0xf9
 	LEAQ ·engine_rodata+42870(SB), SI
 	QUAD $0xf3b60f0e7703fb80
-	LEAQ ·engine_rodata+86576(SB), R8
+	LEAQ ·engine_rodata+86776(SB), R8
 	QUAD $0x59b60f41f0348b49
 	BYTE $0x2d
 	BYTE $0x80
@@ -17375,7 +17375,7 @@ TEXT ·sqlite3Pragma(SB), $384-48
 	LEAQ ·engine_rodata+42870(SB), R8
 	QUAD $0xb60f440f7703fb80
 	BYTE $0xc3
-	LEAQ ·engine_rodata+86576(SB), R9
+	LEAQ ·engine_rodata+86776(SB), R9
 	QUAD $0xff5a8d41c1048b4f
 	QUAD $0x00000150248c8b44
 	QUAD $0x8948085f890f8944

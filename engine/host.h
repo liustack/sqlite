@@ -87,6 +87,18 @@ int host_vtab_filter(sqlite3_vtab_cursor *c, int idxNum, const char *idxStr, int
 int host_vtab_next(sqlite3_vtab_cursor *c);
 int host_vtab_column(sqlite3_vtab_cursor *c, sqlite3_context *ctx, int i);
 int host_vtab_rowid(sqlite3_vtab_cursor *c, sqlite3_int64 *rowid);
+int host_vtab_update(sqlite3_vtab *v, long table, int argc, sqlite3_value **argv, sqlite3_int64 *rowid);
+#define GO_MODULE_PLAIN 0
+#define GO_MODULE_EPONYMOUS 1
+#define GO_MODULE_WRITABLE 2
+#define GO_TX_BEGIN 0
+#define GO_TX_SYNC 1
+#define GO_TX_COMMIT 2
+#define GO_TX_ROLLBACK 3
+#define GO_TX_SAVEPOINT 4
+#define GO_TX_RELEASE 5
+#define GO_TX_ROLLBACK_TO 6
+int host_vtab_tx(sqlite3_vtab *v, long table, int op, int n);
 void host_module_destroy(long h);
 
 int host_close(long f);
