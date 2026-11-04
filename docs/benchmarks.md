@@ -28,44 +28,44 @@ A Google Cloud VM, AMD EPYC 7B13, 4 cores and 8 threads. System calls are slow o
 `GOMAXPROCS=1`, pinned to one core and its sibling thread. The goroutines of the parallel workloads take turns on it.
 
 <!-- bench:linux-amd64-1thread -->
-Commit `647fec3`, Go 1.27.2, AMD EPYC 7B13, Linux 7.3.0-1003-gcp x86_64, GOMAXPROCS 1 of 2 threads, 2026-11-04. The median of 6 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.10 1.06 1.14, after: 1.22 1.44 1.50.
+Commit `cc1ede5`, Go 1.27.2, AMD EPYC 7B13, Linux 7.3.0-1003-gcp x86_64, GOMAXPROCS 1 of 2 threads, 2026-11-04. The median of 6 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.27 1.12 1.10, after: 2.21 2.20 1.83.
 
 Time per op, lower is better:
 
 | Benchmark | this driver | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert | **18.6 µs** ±3% | 19.5 µs ±21% | 23.1 µs ±3% | 21.2 µs ±6% |
-| InsertTx | **1.30 ms** ±1% | 1.47 ms ±2% | 1.95 ms ±2% | 1.66 ms ±2% |
-| Point | **3.64 µs** ±2% | 6.75 µs ±2% | 8.33 µs ±3% | 6.54 µs ±1% |
-| Scan | **35.4 ms** ±2% | 72.7 ms ±2% | 78.0 ms ±4% | 50.3 ms ±2% |
-| Aggregate | 2.88 ms ±1% | **2.61 ms** ±0% | 4.50 ms ±1% | 4.36 ms ±1% |
-| PointParallel | **3.60 µs** ±2% | 6.62 µs ±2% | 8.22 µs ±4% | 6.53 µs ±2% |
-| InsertParallel/g=1 | 18.6 µs ±5% | 19.6 µs ±2% | 23.1 µs ±1% | 21.1 µs ±5% |
-| InsertParallel/g=8 | **18.7 µs** ±2% | 23.2 µs ±4% | 25.1 µs ±4% | 20.7 µs ±5% |
-| InsertParallel/g=64 | **17.3 µs** ±4% | 23.1 µs ±4% | 44.1 µs ±15% | 24.4 µs ±3% |
-| InsertParallelFull/g=1 | 857 µs ±6% | 918 µs ±5% | 947 µs ±16% | 874 µs ±15% |
-| InsertParallelFull/g=8 | **195 µs** ±15% | 2.63 ms ±24% | 2.67 ms ±27% | 991 µs ±15% |
-| InsertParallelFull/g=64 | **20.9 µs** ±6% | 2.99 ms ±25% | 6.03 ms ±77% | 1.10 ms ±9% |
-| Real/insert | **1.41 ms** ±2% | 1.51 ms ±1% | 1.99 ms ±2% | 1.89 ms ±2% |
-| Real/query | **511 µs** ±12% | 844 µs ±1% | 1.02 ms ±1% | 762 µs ±1% |
-| Many/n=10 | **8.60 µs** ±2% | 15.1 µs ±2% | 16.6 µs ±2% | 13.4 µs ±1% |
-| Many/n=100 | **59.0 µs** ±4% | 101 µs ±1% | 100 µs ±1% | 78.7 µs ±1% |
-| Many/n=1000 | **609 µs** ±1% | 969 µs ±2% | 940 µs ±1% | 745 µs ±1% |
-| Large/size=50k | 1.87 ms ±2% | **1.80 ms** ±1% | 2.12 ms ±1% | 2.03 ms ±2% |
-| Large/size=200k | 7.20 ms ±5% | 6.77 ms ±11% | 7.96 ms ±5% | 7.95 ms ±4% |
-| Readers/g=2 | **35.7 ms** ±2% | 74.3 ms ±2% | 78.5 ms ±1% | 51.9 ms ±3% |
-| Readers/g=4 | **35.6 ms** ±2% | 74.5 ms ±1% | 78.7 ms ±1% | 51.9 ms ±2% |
-| Readers/g=8 | **36.0 ms** ±1% | 75.5 ms ±2% | 79.4 ms ±3% | 51.9 ms ±1% |
-| ReadWrite | **2.78 µs** ±8% | 4.18 µs ±7% | 5.69 µs ±12% | 7.54 µs ±2% |
-| geomean | 284 µs | 541 µs | 657 µs | 487 µs |
+| Insert | **18.7 µs** ±3% | 19.6 µs ±2% | 23.4 µs ±3% | 21.5 µs ±3% |
+| InsertTx | **1.30 ms** ±2% | 1.47 ms ±2% | 1.94 ms ±1% | 1.67 ms ±1% |
+| Point | **3.58 µs** ±1% | 6.70 µs ±2% | 8.45 µs ±1% | 6.54 µs ±1% |
+| Scan | **34.9 ms** ±1% | 73.4 ms ±3% | 76.4 ms ±4% | 50.2 ms ±1% |
+| Aggregate | 2.87 ms ±1% | **2.63 ms** ±1% | 4.51 ms ±0% | 4.37 ms ±1% |
+| PointParallel | **3.59 µs** ±2% | 6.66 µs ±1% | 8.36 µs ±2% | 6.59 µs ±1% |
+| InsertParallel/g=1 | 18.7 µs ±2% | 19.5 µs ±3% | 23.0 µs ±3% | 21.1 µs ±2% |
+| InsertParallel/g=8 | **18.5 µs** ±1% | 22.8 µs ±8% | 24.3 µs ±12% | 20.5 µs ±2% |
+| InsertParallel/g=64 | **17.4 µs** ±1% | 23.6 µs ±5% | 41.0 µs ±10% | 24.5 µs ±6% |
+| InsertParallelFull/g=1 | 842 µs ±8% | 974 µs ±6% | 947 µs ±13% | 888 µs ±15% |
+| InsertParallelFull/g=8 | **188 µs** ±18% | 2.53 ms ±12% | 2.26 ms ±15% | 937 µs ±9% |
+| InsertParallelFull/g=64 | **21.0 µs** ±7% | 2.48 ms ±23% | 5.31 ms ±23% | 1.12 ms ±8% |
+| Real/insert | **1.41 ms** ±1% | 1.54 ms ±2% | 2.00 ms ±2% | 1.90 ms ±0% |
+| Real/query | **509 µs** ±1% | 830 µs ±1% | 1.05 ms ±2% | 762 µs ±1% |
+| Many/n=10 | **8.70 µs** ±1% | 15.2 µs ±1% | 16.7 µs ±1% | 13.5 µs ±0% |
+| Many/n=100 | **58.3 µs** ±1% | 101 µs ±2% | 100 µs ±1% | 78.3 µs ±1% |
+| Many/n=1000 | **584 µs** ±3% | 970 µs ±1% | 945 µs ±1% | 744 µs ±1% |
+| Large/size=50k | 2.24 ms ±4% | 1.84 ms ±10% | 2.13 ms ±5% | 2.03 ms ±5% |
+| Large/size=200k | 8.85 ms ±5% | **6.99 ms** ±7% | 8.13 ms ±4% | 8.02 ms ±5% |
+| Readers/g=2 | **34.8 ms** ±1% | 74.3 ms ±2% | 77.9 ms ±1% | 51.5 ms ±2% |
+| Readers/g=4 | **35.2 ms** ±2% | 74.0 ms ±2% | 77.9 ms ±1% | 51.6 ms ±1% |
+| Readers/g=8 | **35.3 ms** ±1% | 75.1 ms ±1% | 79.6 ms ±2% | 52.1 ms ±1% |
+| ReadWrite | **2.65 µs** ±7% | 4.07 µs ±10% | 5.78 µs ±10% | 7.60 µs ±2% |
+| geomean | 286 µs | 539 µs | 648 µs | 487 µs |
 
 Rates, higher is better:
 
 | Benchmark | this driver | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Large/size=50k | 2678 MB/s ±2% | **2770 MB/s** ±1% | 2357 MB/s ±1% | 2458 MB/s ±2% |
-| Large/size=200k | 2779 MB/s ±5% | 2953 MB/s ±10% | 2512 MB/s ±5% | 2517 MB/s ±4% |
-| ReadWrite | 6275 writes/s ±60% | 5108 writes/s ±38% | 7345 writes/s ±58% | 5921 writes/s ±9% |
+| Large/size=50k | 2233 MB/s ±4% | 2716 MB/s ±9% | 2344 MB/s ±4% | 2461 MB/s ±5% |
+| Large/size=200k | 2260 MB/s ±5% | **2859 MB/s** ±7% | 2459 MB/s ±4% | 2493 MB/s ±5% |
+| ReadWrite | 6516 writes/s ±35% | 5947 writes/s ±33% | 6367 writes/s ±27% | 6205 writes/s ±18% |
 
 Allocations per op, lower is better:
 
@@ -78,11 +78,11 @@ Allocations per op, lower is better:
 | Aggregate | **1.01k** | 2.00k | 2.01k | **1.01k** |
 | PointParallel | **13** | 18 | 30 | 18 |
 | InsertParallel/g=1 | **4** | 5 | 6 | 5 |
-| InsertParallel/g=8 | **5** | 6 | 7 | 6 |
-| InsertParallel/g=64 | **5** | 6 | 7 | 6 |
+| InsertParallel/g=8 | **4** | 5 | 6 | 5 |
+| InsertParallel/g=64 | **4** | 5 | 6 | 5 |
 | InsertParallelFull/g=1 | **4** | 5 | 6 | 5 |
-| InsertParallelFull/g=8 | 10 | **6** | 7 | 14 |
-| InsertParallelFull/g=64 | **10** | 16 | 31 | 84 |
+| InsertParallelFull/g=8 | 9 | **6** | 7 | 13 |
+| InsertParallelFull/g=64 | **9** | 14 | 28 | 85 |
 | Real/insert | 4.21k | 4.64k | 5.04k | **2.96k** |
 | Real/query | **4.44k** | 7.90k | 7.93k | **4.44k** |
 | Many/n=10 | **57** | 78 | 90 | 67 |
@@ -219,12 +219,12 @@ Allocations per op, lower is better:
 
 ## What the numbers say
 
-- **Reads** are faster than with cgo: one row by key in about half the time (3.64 µs against 6.54 to 8.33 µs on linux), 100k rows in 35 ms against 50 to 78 ms, a user with its 400 comments in 511 µs against 762 µs to 1.02 ms. A call into the engine is a plain Go call, with no cgo crossing, and a read transaction takes no lock in the kernel when another read of the process is running or just ended (see `internal/vfs`).
+- **Reads** are faster than with cgo: one row by key in about half the time (3.58 µs against 6.54 to 8.45 µs on linux), 100k rows in 35 ms against 50 to 76 ms, a user with its 400 comments in 509 µs against 762 µs to 1.05 ms. A call into the engine is a plain Go call, with no cgo crossing, and a read transaction takes no lock in the kernel when another read of the process is running or just ended (see `internal/vfs`).
 - **Many writers** are where group commit shows: from 8 writers up, one commit carries many inserts. At 64 writers an insert costs 3.40 µs against 20 to 27 µs with the other drivers (8 threads). With `synchronous=FULL` the gap grows with the cost of a commit: at 64 writers an insert costs 19 to 21 µs against 0.94 to 33 ms. On the busy Mac, modernc at 64 writers spends its time in SQLite's busy handler, whose sleeps grow while the writer that holds the lock waits for a thread.
 - **Readers next to a writer** (ReadWrite, 8 threads): this driver serves the readers fastest (2.59 µs a read against 3.34 to 5.85 µs), and ncruces lets the writer do the most (28.8k writes a second against 18.0k).
 - **One writer** (Insert) is close to mattn on both machines. The time goes to the WAL write and the locks SQLite's protocol asks for, the same system calls for every driver.
-- **Join and group** (Aggregate), which is all work inside the engine, is 10% (linux) to 31% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
-- **Large text values** are read about as fast as with cgo: 100 rows of 200 KB take 7.20 ms against 6.77 ms with mattn and 7.95 to 7.96 ms with the others on linux. SQLite reads a value that spans several pages straight from the file, past its page cache, because the VFS says it can read part of a page (`SQLITE_IOCAP_SUBPAGE_READ`).
+- **Join and group** (Aggregate), which is all work inside the engine, is 9% (linux) to 31% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
+- **Large text values** are read slower than with every other driver: 100 rows of 200 KB take 8.85 ms against 6.99 to 8.13 ms on linux. Where that time goes is not measured yet.
 - **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`, Go 1.27), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
 - **Point on linux** includes one `fstat` per query, for every driver: when the WAL is empty, as it is in a fresh copy of the fixture, SQLite reads the size of the database file at the start of each read. A system call costs about 0.8 µs on this VM, which is most of the gap between linux and darwin in that row.
 
