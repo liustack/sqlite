@@ -14,16 +14,20 @@ import (
 // malloc, realloc and free of the C. SQLite's memory is mmap memory, which
 // the Go garbage collector does not see: the C keeps pointers to it in it.
 //
-// A block of up to 64 KiB is taken from a size class: each class keeps a list
-// of its free blocks, threaded through them, and cuts new ones from 4 MiB
-// arenas. A larger block is a mapping of its own, given back when freed. Each
+// A block of up to 256 KiB is taken from a size class: each class keeps a
+// list of its free blocks, threaded through them, and cuts new ones from
+// 4 MiB arenas. A larger block is a mapping of its own, given back when
+// freed. The classes go past 64 KiB because SQLite keeps a statement journal
+// in memory in chunks of 64 KiB and a little more, one for each SAVEPOINT that
+// writes: as mappings, that was an mmap and a munmap per statement. glibc
+// also serves blocks of up to 128 KiB or more from its heap. Each
 // block starts with a header of 16 bytes (the C asks for 8-byte alignment,
 // and gets 16).
 const (
 	header     = 16
 	arenaSize  = 4 << 20
-	largeLimit = 64 << 10 // the largest class, header included
-	refill     = 64 << 10 // the bytes a class cuts from an arena at once
+	largeLimit = 256 << 10 // the largest class, header included
+	refill     = 64 << 10  // the bytes a class cuts from an arena at once
 	magic      = 0x51_4c_69_74
 )
 
@@ -31,6 +35,7 @@ var classSizes = [...]uint32{
 	32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 640, 768, 896, 1024,
 	1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 4352, 5120, 6144, 7168, 8192, 8448,
 	10240, 12288, 14336, 16384, 20480, 24576, 28672, 32768, 40960, 49152, 57344, 65536,
+	69632, 81920, 98304, 114688, 131072, 163840, 196608, 229376, 262144,
 }
 
 // classOf[i] is the class of a block of up to 16*i bytes, header included.
