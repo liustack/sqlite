@@ -68,7 +68,7 @@ SQLite 有 31 个可写的全局变量：它的配置、分配器和页缓存的
 
 许多 goroutine 各自在 autocommit 模式下写一行，每个都要付一次提交的代价，而 SQLite 同一时刻只有一个写入者，它们还要互相等。驱动把许多调用者的 autocommit DML 收到一起，放进一个事务里执行，只提交一次。规则写在 [AGENTS.md](../AGENTS.md#hard-constraints)：只合并主数据库上的 autocommit DML，每条语句一个 SAVEPOINT，每个调用者拿到自己的结果，调用要等提交之后才返回。
 
-做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间（失败时用 `ROLLBACK TO`，它的调用者拿到错误），再 `COMMIT`，这时每个调用者才拿到结果。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
+做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间，再 `COMMIT`，这时每个调用者才拿到结果。失败的语句保留 SQLite 替它保留的东西，和它单独执行时一样（什么都不留，或者 `OR FAIL` 时留下失败之前的行），它的调用者拿到错误。留下未解决的延迟外键的语句用 `ROLLBACK TO` 撤销，它的调用者拿到它自己 `COMMIT` 时会得到的错误。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。轮到之前 context 就已结束的调用者拿到 context 的错误，它的语句不会执行。一批跑完，锁交给下一个在等锁的连接，没有的话交给队列里第一条语句，它在自己的连接上执行：谁都不会在队列后面等太久。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
 
 ```mermaid
 sequenceDiagram
@@ -88,6 +88,10 @@ sequenceDiagram
 ```
 
 哪些语句可以加入：驱动在 C 里装了一个 authorizer（`engine/os.c` 里的 `goClassify`），语句在准备时它就能看到。只有同时满足这些条件，语句才能加入：它写的是主数据库的表，且不碰只属于自己这个连接的东西。具体是：不涉及其他 schema（temp、attached），不由触发器写入（那可能是临时触发器），不用 `last_insert_rowid()`、`changes()` 或 `total_changes()`，也不是非 DML 的语句。只有 `Exec` 会合并。事务里的语句从不合并。
+
+哪些连接可以互相执行对方的语句：只有同一个 connector 的连接（同一个 DSN，所以 `_pragma` 设置相同），而且双方打开之后都没有改过自己。改自己指的是执行设置值的 PRAGMA、`ATTACH`、`DETACH`，或者建临时表、视图、索引、触发器，authorizer 在语句准备时就会标记这个连接。只读打开的连接，以及处在只读事务里的连接，也都不合并。从那以后这个连接只自己写，照旧拿文件的写锁。
+
+和单独执行相比有一处不同：合并的语句是在别的连接上跑的，所以调用者连接上的 `changes()` 和 `total_changes()` 不算它，而是算在执行它的那个连接上。`LastInsertId` 和 `RowsAffected` 是对的，调用者连接上的 `last_insert_rowid()` 也是对的。
 
 在 Apple M4 上（WAL，`synchronous=NORMAL`，每次调用一条 autocommit `INSERT`，`bench/`），每次插入的耗时：
 
