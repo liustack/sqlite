@@ -298,7 +298,11 @@ func (f *File) ShmLock(offset, n, flags int) int {
 	node := s.node
 	h := s.h
 	if node.shared {
+		// One handle for the process: what the other Files hold, the
+		// lock on the handle and this File's bits change together.
 		h = node.h
+		node.mu.Lock()
+		defer node.mu.Unlock()
 	}
 	if unlock {
 		if node.shared && !excl && node.otherReads(s, mask) {
@@ -316,17 +320,14 @@ func (f *File) ShmLock(offset, n, flags int) int {
 		return OK
 	}
 	if node.shared {
-		node.mu.Lock()
 		for _, o := range node.users {
 			if excl && (o.shared|o.excl)&mask != 0 || !excl && o.excl&mask != 0 {
-				node.mu.Unlock()
 				return Busy
 			}
 			if !excl && o.shared&mask != 0 {
 				h = windows.InvalidHandle
 			}
 		}
-		node.mu.Unlock()
 	}
 	if h != windows.InvalidHandle {
 		lf := uint32(windows.LOCKFILE_FAIL_IMMEDIATELY)
@@ -348,10 +349,8 @@ func (f *File) ShmLock(offset, n, flags int) int {
 }
 
 // otherReads tells whether a File of the node other than s holds a slot of
-// mask shared.
+// mask shared. node.mu is held.
 func (node *shmNode) otherReads(s *shm, mask uint16) bool {
-	node.mu.Lock()
-	defer node.mu.Unlock()
 	for _, o := range node.users {
 		if o != s && o.shared&mask != 0 {
 			return true
@@ -388,7 +387,6 @@ func (f *File) ShmUnmap(remove bool) int {
 	}
 
 	shmNodes.Lock()
-	defer shmNodes.Unlock()
 	node.mu.Lock()
 	for i, o := range node.users {
 		if o == s {
@@ -399,6 +397,7 @@ func (f *File) ShmUnmap(remove bool) int {
 	node.mu.Unlock()
 	node.nRef--
 	if node.nRef > 0 {
+		shmNodes.Unlock()
 		return OK
 	}
 	delete(shmNodes.m, node.key)
@@ -412,6 +411,9 @@ func (f *File) ShmUnmap(remove bool) int {
 		windows.UnlockFileEx(node.h, 0, 1, 0, &node.ov)
 	}
 	windows.CloseHandle(node.h)
+	shmNodes.Unlock()
+	// Delete can wait for a virus scanner: not with every open and close
+	// of the process held up.
 	if remove {
 		Delete(node.path, false)
 	}
