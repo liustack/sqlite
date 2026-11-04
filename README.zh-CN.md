@@ -123,7 +123,6 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 - 没有可加载扩展：SQLite 编译时去掉了 `load_extension`。
 - 没有共享缓存：`cache=shared` 会报错。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
 - 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。
-- SQLite 用过的内存留着复用，进程运行期间不还给系统。
 - windows/arm64 和其他平台构建不了。
 
 ## 文档

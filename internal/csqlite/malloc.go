@@ -9,25 +9,33 @@ package csqlite
 
 import (
 	"sync"
+	"sync/atomic"
+	"unsafe"
 )
 
 // malloc, realloc and free of the C. SQLite's memory is mmap memory, which
 // the Go garbage collector does not see: the C keeps pointers to it in it.
 //
-// A block of up to 256 KiB is taken from a size class: each class keeps a
-// list of its free blocks, threaded through them, and cuts new ones from
-// 4 MiB arenas. A larger block is a mapping of its own, given back when
-// freed. The classes go past 64 KiB because SQLite keeps a statement journal
-// in memory in chunks of 64 KiB and a little more, one for each SAVEPOINT that
-// writes: as mappings, that was an mmap and a munmap per statement. glibc
-// also serves blocks of up to 128 KiB or more from its heap. Each
-// block starts with a header of 16 bytes (the C asks for 8-byte alignment,
-// and gets 16).
+// A block of up to 256 KiB is taken from a size class. Each class has spans:
+// a span is a mapping of its own, of about 256 KiB, cut into blocks of the
+// class, with its own list of free blocks threaded through them and a count
+// of the blocks in use. A span whose blocks are all free again is unmapped,
+// but for a few per class (keepEmpty), kept for the next blocks: memory
+// taken at a peak goes back to the system when the peak is over, and a
+// block taken and given back over and over does not map and unmap a span
+// each time. A use of a class block after it is freed, a bug in the C, can
+// fault the process when its span is gone, as it can for a larger block. A
+// larger block is a mapping of its own, given back when freed. The classes
+// go past 64 KiB because SQLite keeps a statement journal in memory in
+// chunks of 64 KiB and a little more, one for each SAVEPOINT that writes:
+// as mappings, that was an mmap and a munmap per statement. glibc also
+// serves blocks of up to 128 KiB or more from its heap. Each block starts
+// with a header of 16 bytes (the C asks for 8-byte alignment, and gets 16).
 const (
 	header     = 16
-	arenaSize  = 4 << 20
 	largeLimit = 256 << 10 // the largest class, header included
-	refill     = 64 << 10  // the bytes a class cuts from an arena at once
+	spanTarget = 256 << 10 // about the size of a span
+	spanHeader = 64        // the span struct at the start of a span
 	magic      = 0x51_4c_69_74
 )
 
@@ -41,6 +49,16 @@ var classSizes = [...]uint32{
 // classOf[i] is the class of a block of up to 16*i bytes, header included.
 var classOf [largeLimit/16 + 1]uint8
 
+// spanBytes[c] is the size of a span of class c: as many blocks as fit in
+// about spanTarget, at least one, rounded up to whole pages.
+var spanBytes [len(classSizes)]uintptr
+
+// keepEmpty[c] is how many spans of class c are kept with no block in use:
+// enough for 4 blocks, so that a few connections taking a large block in
+// turn do not map and unmap a span each time. Only the classes past 64 KiB
+// keep more than one.
+var keepEmpty [len(classSizes)]int
+
 func init() {
 	c := 0
 	for i := range classOf {
@@ -49,23 +67,52 @@ func init() {
 		}
 		classOf[i] = uint8(c)
 	}
+	for c, size := range classSizes {
+		k := max((spanTarget-spanHeader)/uintptr(size), 1)
+		spanBytes[c] = roundUp(spanHeader+k*uintptr(size), pageSize)
+		keepEmpty[c] = int((4 + k - 1) / k)
+	}
 }
 
+// A span is at the start of its mapping. Its blocks follow the struct: the
+// free ones are on free, and the ones never taken start at fresh.
+type span struct {
+	free       uintptr // the first free block (its header), 0 for none
+	fresh, end uintptr // the blocks never taken: fresh up to end
+	used       uintptr // the blocks in use
+	prev, next uintptr // in the class's list of spans with a free block
+	listed     bool
+}
+
+// The span struct fits in spanHeader, which keeps the blocks 16-byte aligned.
+var _ [spanHeader - unsafe.Sizeof(span{})]byte
+
+func spanAt(s uintptr) *span { return (*span)(at(s)) }
+
+// hasFree says whether the span can give a block.
+func (s *span) hasFree(size uintptr) bool { return s.free != 0 || s.fresh+size <= s.end }
+
 type sizeClass struct {
-	mu   sync.Mutex
-	free uintptr // the first free block (its header)
-	_    [40]byte
+	mu    sync.Mutex
+	spans uintptr // the first span with a free block
+	empty int     // spans of the class with no block in use, up to keepEmpty
+	_     [40]byte
 }
 
 var heap struct {
 	classes [len(classSizes)]sizeClass
-	mu      sync.Mutex // the arena
-	next    uintptr
-	end     uintptr
 }
 
+// mappedSpans is the bytes of the spans mapped now, and spanMaps the spans
+// mapped so far.
+var (
+	mappedSpans atomic.Int64
+	spanMaps    atomic.Int64
+)
+
 // blockHeader is at the start of each block: its class plus one (0 for a
-// mapping of its own), a check word, and the length of a mapping.
+// mapping of its own), a check word, and the length of a mapping or the
+// span of a class block.
 type blockHeader struct {
 	class uint32
 	check uint32
@@ -120,51 +167,76 @@ func alloc(n uintptr) uintptr {
 		return allocLarge(t)
 	}
 	ci := classOf[(t+15)/16]
+	size := uintptr(classSizes[ci])
 	c := &heap.classes[ci]
 	c.mu.Lock()
-	b := c.free
-	if b == 0 {
-		b = c.cut(int(ci))
-		if b == 0 {
+	sb := c.spans
+	if sb == 0 {
+		if sb = newSpan(ci); sb == 0 {
 			c.mu.Unlock()
 			return 0
 		}
+		c.push(sb)
+		c.empty++
 	}
-	c.free = *(*uintptr)(at(b + header))
+	s := spanAt(sb)
+	b := s.free
+	if b != 0 {
+		s.free = *(*uintptr)(at(b + header))
+	} else {
+		b = s.fresh
+		s.fresh += size
+	}
+	if s.used == 0 {
+		c.empty--
+	}
+	s.used++
+	if !s.hasFree(size) {
+		c.unlink(sb)
+	}
 	c.mu.Unlock()
 	h := (*blockHeader)(at(b))
 	h.class = uint32(ci) + 1
 	h.check = magic
+	h.size = uint64(sb)
 	return b + header
 }
 
-// cut threads a run of new blocks of the class onto its free list, with c.mu
-// held, and returns the first.
-func (c *sizeClass) cut(ci int) uintptr {
-	size := uintptr(classSizes[ci])
-	run := max(refill/size, 1) * size
-	heap.mu.Lock()
-	if heap.end-heap.next < run {
-		m, err := mmap(arenaSize)
-		if err != nil {
-			heap.mu.Unlock()
-			return 0
-		}
-		heap.next = uintptr(m)
-		heap.end = heap.next + arenaSize
+// newSpan maps a span of class ci, with all its blocks fresh.
+func newSpan(ci uint8) uintptr {
+	m, err := mmap(spanBytes[ci])
+	if err != nil {
+		return 0
 	}
-	start := heap.next
-	heap.next += run
-	heap.mu.Unlock()
-	for b := start; b < start+run; b += size {
-		next := b + size
-		if next >= start+run {
-			next = 0
-		}
-		*(*uintptr)(at(b + header)) = next
+	mappedSpans.Add(int64(spanBytes[ci]))
+	spanMaps.Add(1)
+	sb := uintptr(m)
+	*spanAt(sb) = span{fresh: sb + spanHeader, end: sb + spanBytes[ci]}
+	return sb
+}
+
+// push puts the span sb first in the class's list, with c.mu held.
+func (c *sizeClass) push(sb uintptr) {
+	s := spanAt(sb)
+	s.prev, s.next, s.listed = 0, c.spans, true
+	if c.spans != 0 {
+		spanAt(c.spans).prev = sb
 	}
-	c.free = start
-	return start
+	c.spans = sb
+}
+
+// unlink takes the span sb out of the class's list, with c.mu held.
+func (c *sizeClass) unlink(sb uintptr) {
+	s := spanAt(sb)
+	if s.prev != 0 {
+		spanAt(s.prev).next = s.next
+	} else {
+		c.spans = s.next
+	}
+	if s.next != 0 {
+		spanAt(s.next).prev = s.prev
+	}
+	s.prev, s.next, s.listed = 0, 0, false
 }
 
 func allocLarge(t uintptr) uintptr {
@@ -194,10 +266,29 @@ func release(p uintptr) {
 		munmap(b, uintptr(h.size))
 		return
 	}
-	c := &heap.classes[h.class-1]
+	ci := h.class - 1
+	c := &heap.classes[ci]
+	sb := uintptr(h.size)
 	h.check = 0
 	c.mu.Lock()
-	*(*uintptr)(at(p)) = c.free
-	c.free = b
+	s := spanAt(sb)
+	*(*uintptr)(at(p)) = s.free
+	s.free = b
+	s.used--
+	if !s.listed {
+		c.push(sb)
+	}
+	if s.used > 0 {
+		c.mu.Unlock()
+		return
+	}
+	if c.empty < keepEmpty[ci] {
+		c.empty++ // kept for the next blocks of the class
+		c.mu.Unlock()
+		return
+	}
+	c.unlink(sb)
 	c.mu.Unlock()
+	munmap(sb, spanBytes[ci])
+	mappedSpans.Add(-int64(spanBytes[ci]))
 }
