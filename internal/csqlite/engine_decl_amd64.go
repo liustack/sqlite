@@ -546,9 +546,11 @@ func goSync(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goTruncate(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goUnlock(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goValue(a0 uintptr, a1 uintptr)
+func goVtabBegin(a0 uintptr, a1 uintptr) uintptr
 func goVtabBestIndex(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goVtabClose(a0 uintptr, a1 uintptr) uintptr
 func goVtabColumn(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func goVtabCommit(a0 uintptr, a1 uintptr) uintptr
 func goVtabConnect(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr
 func goVtabCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr
 func goVtabDisconnect(a0 uintptr, a1 uintptr) uintptr
@@ -556,7 +558,14 @@ func goVtabEof(a0 uintptr, a1 uintptr) uintptr
 func goVtabFilter(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func goVtabNext(a0 uintptr, a1 uintptr) uintptr
 func goVtabOpen(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func goVtabRelease(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func goVtabRollback(a0 uintptr, a1 uintptr) uintptr
+func goVtabRollbackTo(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goVtabRowid(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func goVtabSavepoint(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func goVtabSync(a0 uintptr, a1 uintptr) uintptr
+func goVtabUpdate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func goWritableCreate(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) uintptr
 func goWrite(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func go_classify(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func go_collate_failed(a0 uintptr, a1 uintptr)
@@ -1995,6 +2004,8 @@ var missingNames = []string{}
 //   host_vtab_next ii>i
 //   host_vtab_open iiii>i
 //   host_vtab_rowid iii>i
+//   host_vtab_tx iiiii>i
+//   host_vtab_update iiiiii>i
 //   host_write iiiii>i
 //   malloc ii>i
 //   realloc iii>i

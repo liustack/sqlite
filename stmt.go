@@ -24,9 +24,6 @@ type stmt struct {
 	s       *csqlite.Stmt
 	sql     string
 	nparams int
-	// mergeable says the statement may join the queue of group commit
-	// (writer.go).
-	mergeable bool
 	// readOnly says the statement writes nothing (sqlite3_stmt_readonly).
 	readOnly bool
 	// changesConn says the statement changes its connection (a PRAGMA that
@@ -112,7 +109,7 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	if err := c.txEnded(); err != nil {
 		return nil, err
 	}
-	if s.mergeable && c.wl != nil && !c.writing && !c.private && c.c.AutoCommit() {
+	if c.wl != nil && !c.writing && !c.private && c.c.AutoCommit() && s.s.Mergeable() {
 		return c.wl.submit(ctx, c, s, args)
 	}
 	if err := c.beginWrite(ctx, s.readOnly); err != nil {

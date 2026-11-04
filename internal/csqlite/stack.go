@@ -27,7 +27,8 @@ const (
 	stackHeader = 4096
 	// classifyOffset is the struct goClassifyWord of the header (engine/os.c):
 	// the int goClassify writes the kind of a statement to as it is
-	// prepared, then the connection.
+	// prepared, the int that says the connection merges (SetMerging), then
+	// the connection.
 	classifyOffset = 64
 	classifySize   = 16
 	// rollbackOffset is the word go_count_rollbacks (engine/os.c) counts

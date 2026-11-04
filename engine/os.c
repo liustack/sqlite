@@ -227,10 +227,63 @@ static int goVtabCreate(sqlite3 *db, void *module, int argc, const char *const *
   return goVtabConnect(db, module, argc, argv, pp, pzErr);
 }
 
+static int goVtabBegin(sqlite3_vtab *v);
+static int goVtabRollback(sqlite3_vtab *v);
+static int goVtabSavepoint(sqlite3_vtab *v, int n);
+
+/* goWritableCreate also begins the new table's transaction: SQLite puts a
+   table it creates in the transaction without calling xBegin, and calls its
+   xSync and xCommit, or xRollback, when the transaction ends. Inside a
+   savepoint it also does what sqlite3VtabBegin does: it marks the table as
+   part of the savepoints open now and calls xSavepoint. Without that,
+   ROLLBACK TO would not reach the table, and its writes would be committed
+   after the savepoint that made it was rolled back. db->pVtabCtx is
+   SQLite's own, as Parse is (goNested). */
+static int goWritableCreate(sqlite3 *db, void *module, int argc, const char *const *argv, sqlite3_vtab **pp,
+                            char **pzErr) {
+  int rc = goVtabConnect(db, module, argc, argv, pp, pzErr);
+  int n = db->nStatement + db->nSavepoint;
+  if (rc != SQLITE_OK) return rc;
+  rc = goVtabBegin(*pp);
+  if (rc == SQLITE_OK && n) {
+    db->pVtabCtx->pVTable->iSavepoint = n;
+    rc = goVtabSavepoint(*pp, n - 1);
+    if (rc != SQLITE_OK) {
+      char *msg = (*pp)->zErrMsg;
+      (*pp)->zErrMsg = 0;
+      goVtabRollback(*pp);
+      sqlite3_free((*pp)->zErrMsg);
+      (*pp)->zErrMsg = msg;
+    }
+  }
+  if (rc != SQLITE_OK) {
+    *pzErr = (*pp)->zErrMsg;
+    (*pp)->zErrMsg = 0;
+    goVtabDisconnect(*pp);
+    *pp = 0;
+  }
+  return rc;
+}
+
+static int goVtabUpdate(sqlite3_vtab *v, int argc, sqlite3_value **argv, sqlite3_int64 *rowid) {
+  return host_vtab_update(v, ((GoVtab *)v)->h, argc, argv, rowid);
+}
+
+static int goVtabBegin(sqlite3_vtab *v) { return host_vtab_tx(v, ((GoVtab *)v)->h, GO_TX_BEGIN, 0); }
+static int goVtabSync(sqlite3_vtab *v) { return host_vtab_tx(v, ((GoVtab *)v)->h, GO_TX_SYNC, 0); }
+static int goVtabCommit(sqlite3_vtab *v) { return host_vtab_tx(v, ((GoVtab *)v)->h, GO_TX_COMMIT, 0); }
+static int goVtabRollback(sqlite3_vtab *v) { return host_vtab_tx(v, ((GoVtab *)v)->h, GO_TX_ROLLBACK, 0); }
+static int goVtabSavepoint(sqlite3_vtab *v, int n) { return host_vtab_tx(v, ((GoVtab *)v)->h, GO_TX_SAVEPOINT, n); }
+static int goVtabRelease(sqlite3_vtab *v, int n) { return host_vtab_tx(v, ((GoVtab *)v)->h, GO_TX_RELEASE, n); }
+static int goVtabRollbackTo(sqlite3_vtab *v, int n) {
+  return host_vtab_tx(v, ((GoVtab *)v)->h, GO_TX_ROLLBACK_TO, n);
+}
+
 /* goModule serves CREATE VIRTUAL TABLE. goEponymousModule serves only the
    name of the module used as a table (a table-valued function): it has no
-   xCreate. Neither writes: no xUpdate,
-   so SQLite refuses INSERT, UPDATE and DELETE on their tables. */
+   xCreate. Neither writes: no xUpdate, so SQLite refuses INSERT, UPDATE and
+   DELETE on their tables. goWritableModule is goModule with writes and the
+   transaction methods, and goClassify keeps its writes out of group commit. */
 static const sqlite3_module goModule = {
     0, goVtabCreate, goVtabConnect, goVtabBestIndex, goVtabDisconnect, goVtabDisconnect,
     goVtabOpen, goVtabClose, goVtabFilter, goVtabNext, goVtabEof, goVtabColumn, goVtabRowid,
@@ -241,13 +294,36 @@ static const sqlite3_module goEponymousModule = {
     goVtabOpen, goVtabClose, goVtabFilter, goVtabNext, goVtabEof, goVtabColumn, goVtabRowid,
 };
 
+static const sqlite3_module goWritableModule = {
+    2,           goWritableCreate, goVtabConnect,  goVtabBestIndex, goVtabDisconnect, goVtabDisconnect,
+    goVtabOpen,  goVtabClose,     goVtabFilter,   goVtabNext,      goVtabEof,        goVtabColumn,
+    goVtabRowid, goVtabUpdate,    goVtabBegin,    goVtabSync,      goVtabCommit,     goVtabRollback,
+    0,           0,               goVtabSavepoint, goVtabRelease,  goVtabRollbackTo,
+};
+
+/* goWritesGoTable says whether table of schema is a table of the writable
+   Go module on db. It reads SQLite's own structs (Table, Module), as this
+   file is compiled with sqlite3.c. */
+static int goWritesGoTable(sqlite3 *db, const char *table, const char *schema) {
+  Table *t;
+  Module *m;
+  if (!table) return 0;
+  t = sqlite3FindTable(db, table, schema);
+  if (!t || !IsVirtual(t) || t->u.vtab.nArg < 1) return 0;
+  m = (Module *)sqlite3HashFind(&db->aModule, t->u.vtab.azArg[0]);
+  return m && m->pModule == &goWritableModule;
+}
+
 static void goModuleDestroy(void *h) { host_module_destroy((long)h); }
 
 /* go_create_module makes the Go module of handle h the module name. SQLite
    calls host_module_destroy when it is replaced or the connection closes,
    and also when the call fails. */
-int go_create_module(sqlite3 *db, const char *name, long h, int eponymousOnly) {
-  return sqlite3_create_module_v2(db, name, eponymousOnly ? &goEponymousModule : &goModule, (void *)h,
+int go_create_module(sqlite3 *db, const char *name, long h, int kind) {
+  const sqlite3_module *m = kind == GO_MODULE_EPONYMOUS ? &goEponymousModule
+                            : kind == GO_MODULE_WRITABLE ? &goWritableModule
+                                                         : &goModule;
+  return sqlite3_create_module_v2(db, name, m, (void *)h,
                                   goModuleDestroy);
 }
 
@@ -299,11 +375,18 @@ static int infoPragma(const char *name) {
 }
 
 /* goClassifyWord is the word of the host's header goClassify writes to,
-   with the connection it is installed on. */
+   with the connection it is installed on. merging is GO_MERGING while the
+   connection runs a statement of another connection's caller, and
+   goClassify makes it GO_REFUSED when it refuses one (goClassify). */
 struct goClassifyWord {
   int flags;
+  int merging;
   sqlite3 *db;
 };
+_Static_assert(__builtin_offsetof(struct goClassifyWord, merging) == 4, "goClassifyWord.merging");
+_Static_assert(__builtin_offsetof(struct goClassifyWord, db) == 8, "goClassifyWord.db");
+#define GO_MERGING 1
+#define GO_REFUSED 2
 
 /* goNested says the statement being parsed on db is one SQLite prepares
    while it prepares another. The body of a trigger is coded in a Parse of
@@ -315,10 +398,21 @@ static int goNested(sqlite3 *db) {
   return p->pOuterParse != 0;
 }
 
+/* goReprepare says the statement being parsed on db, or the one it is
+   parsed for, is one SQLite prepares again in sqlite3_step after a change
+   of the schema (sqlite3Reprepare). */
+static int goReprepare(sqlite3 *db) {
+  Parse *p = db->pParse;
+  for (;;) {
+    if (p->pToplevel) p = p->pToplevel;
+    if (!p->pOuterParse) return p->pReprepare != 0;
+    p = p->pOuterParse;
+  }
+}
+
 static int goClassify(void *p, int op, const char *a, const char *b, const char *db, const char *trigger) {
   struct goClassifyWord *w = (struct goClassifyWord *)p;
   int f = 0, *flags = &f;
-  (void)a;
   switch (op) {
   case SQLITE_INSERT:
   case SQLITE_UPDATE:
@@ -326,7 +420,9 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     /* trigger names the trigger a write comes from, which may be a
        temporary one. For a read it names a view or a common table
        expression. */
-    *flags |= isMain(db) && !trigger ? GO_WRITES_MAIN : GO_PRIVATE;
+    /* A write to a table of the writable Go module never merges: its
+       transaction methods run in Go, outside what a batch can undo. */
+    *flags |= isMain(db) && !trigger && !goWritesGoTable(w->db, a, db) ? GO_WRITES_MAIN : GO_PRIVATE;
     break;
   case SQLITE_READ:
     /* A read of a common table expression or a subquery has no schema. */
@@ -367,6 +463,16 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     *flags |= GO_PRIVATE;
   }
   if (goNested(w->db)) f &= ~GO_WRITES_MAIN;
+  /* A statement the driver sorted as mergeable is prepared again when the
+     schema changed after it was prepared, and may be no longer mergeable.
+     sqlite3_step finds the change before the statement does anything, so
+     while the connection runs another caller's statement, the new program is
+     refused: the step fails with nothing done, and the driver runs the
+     statement on its caller's connection. */
+  if (w->merging && (f & (GO_PRIVATE | GO_STATE)) && goReprepare(w->db)) {
+    w->merging = GO_REFUSED;
+    return SQLITE_DENY;
+  }
   w->flags |= f;
   return SQLITE_OK;
 }

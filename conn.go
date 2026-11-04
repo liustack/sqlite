@@ -100,7 +100,7 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 }
 
 func newStmt(c *conn, s *csqlite.Stmt, sql string, once bool) *stmt {
-	st := &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), mergeable: s.Mergeable(), changesConn: s.ChangesConn(), once: once}
+	st := &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), changesConn: s.ChangesConn(), once: once}
 	if st.changesConn {
 		// From here on the connection may run differently from the others
 		// of its key. Marked as the statement is prepared, before it runs.

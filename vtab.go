@@ -17,7 +17,8 @@ import (
 )
 
 // VTable is a table of a virtual table module, written in Go, on one
-// connection. It only reads: INSERT, UPDATE and DELETE on it fail.
+// connection. It only reads, unless its module is ModuleWritable and it is
+// also a VUpdater.
 //
 // Each connection connects a table of its own, and uses it from one
 // goroutine at a time. Something the tables of several connections share is
@@ -154,6 +155,11 @@ const (
 	// ModuleInnocuous: the module has no side effects and reveals nothing,
 	// so its tables are safe wherever SQL comes from.
 	ModuleInnocuous ModuleFlag = csqlite.ModInnocuous
+	// ModuleWritable: its tables take INSERT, UPDATE and DELETE when they are
+	// VUpdaters. Those statements never merge with others in group commit:
+	// the table's own transaction is outside what a merged batch can undo.
+	// It cannot go with EponymousOnly.
+	ModuleWritable ModuleFlag = csqlite.ModWritable
 )
 
 type module struct {
@@ -183,7 +189,7 @@ func WithModule(name string, connect func(args []string) (VTable, error), flags 
 		m := module{name: name}
 		for _, f := range flags {
 			switch f {
-			case EponymousOnly, ModuleDirectOnly, ModuleInnocuous:
+			case EponymousOnly, ModuleDirectOnly, ModuleInnocuous, ModuleWritable:
 				m.flags |= int(f)
 			default:
 				return fmt.Errorf("sqlite: module %s: unknown flag %#x", name, int(f))
@@ -191,6 +197,9 @@ func WithModule(name string, connect func(args []string) (VTable, error), flags 
 		}
 		if m.flags&int(ModuleDirectOnly) != 0 && m.flags&int(ModuleInnocuous) != 0 {
 			return fmt.Errorf("sqlite: module %s: ModuleDirectOnly and ModuleInnocuous together", name)
+		}
+		if m.flags&int(EponymousOnly) != 0 && m.flags&int(ModuleWritable) != 0 {
+			return fmt.Errorf("sqlite: module %s: EponymousOnly and ModuleWritable together", name)
 		}
 		m.connect = func(args []string) (csqlite.VTable, error) {
 			t, err := connect(args)
@@ -266,4 +275,103 @@ func (c vcursor) Column(i int) (driver.Value, error) {
 		return nil, err
 	}
 	return resultValue(v)
+}
+
+// VUpdater is a VTable that takes INSERT, UPDATE and DELETE, of a module
+// made with ModuleWritable. A rowid is an int64, or in a table declared
+// WITHOUT ROWID the value of its PRIMARY KEY. Column values come as a Func's
+// arguments. The table does not learn the statement's ON CONFLICT clause:
+// an error fails the statement, also in INSERT OR IGNORE.
+type VUpdater interface {
+	// Insert adds a row of the values cols. rowid is nil when the
+	// statement gave none, and Insert chooses one. It returns the rowid of
+	// the row, which last_insert_rowid() and LastInsertId give. In a table
+	// declared WITHOUT ROWID, rowid is always nil, the key is in cols, and
+	// the number returned only goes to last_insert_rowid().
+	Insert(rowid driver.Value, cols []driver.Value) (int64, error)
+	// Update changes the row oldRowid to newRowid and cols.
+	Update(oldRowid, newRowid driver.Value, cols []driver.Value) error
+	Delete(rowid driver.Value) error
+}
+
+// VTransactor is a VUpdater that takes part in the transactions of its
+// connection. Begin runs before the first write of the table in a
+// transaction, and as CREATE VIRTUAL TABLE makes the table. Sync, then
+// Commit, run at the commit, or Rollback at the rollback. A failed Sync fails
+// the commit. Commit runs after the database committed, so its error is
+// lost: write what must last in Sync. Without VTransactor, a statement that
+// fails leaves what it wrote to the table.
+type VTransactor interface {
+	Begin() error
+	Sync() error
+	Commit() error
+	Rollback() error
+}
+
+// VSavepointer is a VTransactor that keeps savepoints, so that a statement
+// that fails inside a transaction is undone in the table too: Savepoint(n)
+// marks the state, RollbackTo(n) goes back to the state at savepoint n, and
+// Release(n) forgets the marks from n on. A table that joined the
+// transaction after savepoint n was opened has no mark for it: RollbackTo(n)
+// then goes back to the state at Begin.
+type VSavepointer interface {
+	Savepoint(n int) error
+	Release(n int) error
+	RollbackTo(n int) error
+}
+
+var errNoWrites = errors.New("sqlite: the virtual table takes no writes")
+
+func (t vtable) Insert(rowid driver.Value, cols []driver.Value) (int64, error) {
+	if u, ok := t.VTable.(VUpdater); ok {
+		return u.Insert(rowid, cols)
+	}
+	return 0, errNoWrites
+}
+
+func (t vtable) Update(oldRowid, newRowid driver.Value, cols []driver.Value) error {
+	if u, ok := t.VTable.(VUpdater); ok {
+		return u.Update(oldRowid, newRowid, cols)
+	}
+	return errNoWrites
+}
+
+func (t vtable) Delete(rowid driver.Value) error {
+	if u, ok := t.VTable.(VUpdater); ok {
+		return u.Delete(rowid)
+	}
+	return errNoWrites
+}
+
+// tx runs a method of VTransactor when the table has it.
+func (t vtable) tx(f func(VTransactor) error) error {
+	if x, ok := t.VTable.(VTransactor); ok {
+		return f(x)
+	}
+	return nil
+}
+
+func (t vtable) Begin() error    { return t.tx(VTransactor.Begin) }
+func (t vtable) Sync() error     { return t.tx(VTransactor.Sync) }
+func (t vtable) Commit() error   { return t.tx(VTransactor.Commit) }
+func (t vtable) Rollback() error { return t.tx(VTransactor.Rollback) }
+
+// sp runs a method of VSavepointer when the table has it.
+func (t vtable) sp(f func(VSavepointer) error) error {
+	if x, ok := t.VTable.(VSavepointer); ok {
+		return f(x)
+	}
+	return nil
+}
+
+func (t vtable) Savepoint(n int) error {
+	return t.sp(func(x VSavepointer) error { return x.Savepoint(n) })
+}
+
+func (t vtable) Release(n int) error {
+	return t.sp(func(x VSavepointer) error { return x.Release(n) })
+}
+
+func (t vtable) RollbackTo(n int) error {
+	return t.sp(func(x VSavepointer) error { return x.RollbackTo(n) })
 }

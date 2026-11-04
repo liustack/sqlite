@@ -194,6 +194,28 @@ func Open(name string, flags int, vfs string) (*Conn, error) {
 // prepared.
 func (c *Conn) classifyWord() uintptr { return c.st.base + classifyOffset }
 
+// The values of goClassifyWord.merging (engine/os.c).
+const (
+	merging = 1
+	refused = 2
+)
+
+// SetMerging says whether the connection runs statements of other
+// connections' callers (group commit). While it does, a statement that
+// SQLite prepares again after a change of the schema and that is no longer
+// mergeable fails before it does anything. Turned off, SetMerging reports
+// whether that happened since it was turned on: the statement must run on
+// its caller's connection, and Reclassify sorts it again.
+func (c *Conn) SetMerging(on bool) (wasRefused bool) {
+	w := (*int32)(at(c.classifyWord() + 4))
+	wasRefused = *w == refused
+	*w = 0
+	if on {
+		*w = merging
+	}
+	return wasRefused
+}
+
 // The bits goClassify writes (engine/os.c).
 const (
 	writesMain  = 1
@@ -358,6 +380,9 @@ type Stmt struct {
 	c    *Conn
 	p    uintptr
 	kind int32 // what goClassify saw as it was prepared
+	// sorted is the count of Reprepares when kind was read, or -1 when the
+	// statement must be sorted again.
+	sorted int
 	// writes says the statement is not read-only. paused says it stopped
 	// at a row, when the connection had rolled back rollbacks
 	// transactions.
@@ -378,8 +403,32 @@ func (s *Stmt) lost() bool {
 
 // Mergeable says the statement changes tables of the main database and
 // touches nothing only its connection has: run on another connection of
-// the same file, it does the same.
-func (s *Stmt) Mergeable() bool { return s.kind == writesMain }
+// the same file, it does the same. After SQLite prepared the statement again
+// (a change of the schema can add a trigger or make a table a virtual one),
+// it is sorted again first.
+func (s *Stmt) Mergeable() bool {
+	if p := s.Reprepares(); p != s.sorted {
+		s.kind, s.sorted = s.classify(), p
+	}
+	return s.kind == writesMain
+}
+
+// Reclassify makes the next Mergeable sort the statement again: SQLite
+// failed to prepare it again while the connection merged (SetMerging).
+func (s *Stmt) Reclassify() { s.sorted = -1 }
+
+// classify prepares the SQL of the statement once more and gives what
+// goClassify sees now. SQLite prepares it again in sqlite3_step from the
+// same SQL and the same schema. A statement that no longer prepares is not
+// mergeable: run on its own connection, it gives its own error.
+func (s *Stmt) classify() int32 {
+	t, _, err := s.c.Prepare(cstring(sqlite3_sql(s.c.sp, s.p)))
+	if err != nil || t == nil {
+		return private
+	}
+	defer t.Finalize()
+	return t.kind
+}
 
 // ChangesConn says the statement changes the connection itself: a PRAGMA
 // that sets something, ATTACH, DETACH, or a temporary table, index, view or
