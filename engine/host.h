@@ -51,6 +51,8 @@ void host_localtime(long long t, int *out);
 void host_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void host_step(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void host_final(sqlite3_context *ctx);
+void host_value(sqlite3_context *ctx);
+void host_inverse(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 void host_func_destroy(long h);
 
 /* Collations written in Go: host_collate compares with the Go function of
