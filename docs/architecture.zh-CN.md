@@ -58,7 +58,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 
 - **影子栈。** 每个连接有一块 32 MiB 的区域，按自身大小对齐，后面跟一个保护页，用 mmap 映射，C 用到哪里才碰到哪里。Windows 没有不预留内存的映射，所以在 windows 上用 `VirtualAlloc` 保留并提交整块：它计入提交上限，但 C 碰到哪里才真正占用内存。调用 C 时传入指向它的指针。调用的字符串和输出参数也写在这里，所以一次调用不分配任何内存。
 - **Poll。** C 的循环每走 10000 个 tick 调用一次 `host_poll`。它的栈检查就是 Go 运行时能中止这个 goroutine 的地方。
-- **内存。** `malloc`、`realloc` 和 `free` 都是 Go 写的：256 KiB 以内的大小分档，从 4 MiB 的 mmap 区域里切，超过的各自单独映射。垃圾回收器看不到 SQLite 的内存。
+- **内存。** `malloc`、`realloc` 和 `free` 都是 Go 写的：256 KiB 以内的大小分档，每档从约 256 KiB 的 mmap 区块里切，超过的各自单独映射。块全部释放的区块还给系统，每档只留几个空区块备用。垃圾回收器看不到 SQLite 的内存。
 - **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
 - **文件。** `engine/os.c` 就是 VFS（名字叫 `go`）。它的每个方法都调用 `internal/vfs`。
 - **本地时间。** `localtime` 和 `utc` 修饰符调用 `engine/os.c` 里的 `localtime_r`，它去问 Go：时区就是 `time.Local`（`TZ` 环境变量，或者 `/etc/localtime`）。镜像里没有时区文件时得到 UTC，除非程序 import 了 `time/tzdata`。
