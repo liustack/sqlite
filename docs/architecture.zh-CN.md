@@ -90,7 +90,7 @@ sequenceDiagram
 
 哪些语句可以加入：驱动在 C 里装了一个 authorizer（`engine/os.c` 里的 `goClassify`），语句在准备时它就能看到。只有同时满足这些条件，语句才能加入：它写的是主数据库的表，且不碰只属于自己这个连接的东西。具体是：不涉及其他 schema（temp、attached），不由触发器写入（那可能是临时触发器），不用 `last_insert_rowid()`、`changes()` 或 `total_changes()`，也不是非 DML 的语句。只有 `Exec` 会合并。事务里的语句从不合并。
 
-哪些连接可以互相执行对方的语句：只有同一个 connector 的连接（同一个 DSN，所以 `_pragma` 设置相同），而且双方打开之后都没有改过自己。改自己指的是执行设置值的 PRAGMA、`ATTACH`、`DETACH`，或者建临时表、视图、索引、触发器，authorizer 在语句准备时就会标记这个连接。只读打开的连接，以及处在只读事务里的连接，也都不合并。从那以后这个连接只自己写，照旧拿文件的写锁。
+哪些连接可以互相执行对方的语句：只有同一个 connector 的连接（同一个 DSN，所以 `_pragma` 设置相同），而且双方打开之后都没有改过自己。改自己指的是执行设置值的 PRAGMA、`ATTACH`、`DETACH`，或者建临时表、视图、索引、触发器，authorizer 在语句准备时就会标记这个连接。只读打开的连接，以及处在只读事务里的连接，也都不合并。从那以后这个连接只自己写，照旧拿文件的写锁。Go 写的函数、聚合函数和排序规则属于 connector：带自己选项创建的 connector（`NewConnector(dsn, opts...)`）有一个别的 connector 都不共用的 key，同一批 `Register` 之后创建的 connector 共用一个。所以执行合并语句的连接，一定有调用方连接上的那些函数。
 
 和单独执行相比有一处不同：合并的语句是在别的连接上跑的，所以调用者连接上的 `changes()` 和 `total_changes()` 不算它，而是算在执行它的那个连接上。`LastInsertId` 和 `RowsAffected` 是对的，调用者连接上的 `last_insert_rowid()` 也是对的。
 

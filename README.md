@@ -80,6 +80,18 @@ db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=syn
 
 The name is a file, `:memory:` or a [SQLite URI](https://sqlite.org/uri.html). `_pragma=name(value)` runs a PRAGMA on every new connection, and `_txlock=immediate` makes `BEGIN` take the write lock at once. A connection waits 5 seconds for a lock unless `busy_timeout` says otherwise. The rest is on [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite).
 
+SQL functions, aggregates and collations written in Go go on the connector, so that every connection of the pool has them:
+
+```go
+c, err := sqlite.NewConnector("file:app.db",
+	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
+	sqlite.WithAggregate("median", 1, newMedian),
+	sqlite.WithCollation("fold", fold))
+db := sql.OpenDB(c)
+```
+
+`sqlite.Register` gives them to every connector `sql.Open` makes after it. An error or a panic in a function fails its statement, not the connection.
+
 The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite do, so a program that imports one of them as well panics at start. Open the database with `sql.OpenDB(sqlite.NewConnector(dsn))` then.
 
 ## What changes for you
