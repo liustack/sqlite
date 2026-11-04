@@ -78,8 +78,9 @@ type function struct {
 	name   string
 	nArg   int
 	flags  int
-	fn     csqlite.Func       // a scalar function, or
-	newAgg func() csqlite.Agg // the states of an aggregate
+	fn     csqlite.Func             // a scalar function, or
+	newAgg func() csqlite.Agg       // the states of an aggregate, or
+	newWin func() csqlite.WindowAgg // of an aggregate window function
 }
 
 type collation struct {
@@ -137,6 +138,56 @@ func WithAggregate(name string, nArg int, newAggregate func() Aggregate, flags .
 		return nil
 	}}
 }
+
+// Window is the state of one partition of an aggregate window function
+// written in Go, used with OVER. As the frame moves, Step adds a row that
+// came into it and Inverse takes out a row that left it, with the arguments
+// Step had for that row. Value gives the result for the rows in the frame,
+// and may be asked when the frame has no rows. Final runs once at the end of
+// the partition, and gives the result when the function is used without
+// OVER.
+type Window interface {
+	Aggregate
+	Value() (driver.Value, error)
+	Inverse(args []driver.Value) error
+}
+
+// WithWindow makes an aggregate window function name of nArg arguments,
+// which also works as an aggregate without OVER: for each partition or
+// group, newWindow makes a state.
+func WithWindow(name string, nArg int, newWindow func() Window, flags ...FuncFlag) Option {
+	return Option{func(o *options) error {
+		f, err := newFunction(name, nArg, newWindow == nil, flags)
+		if err != nil {
+			return err
+		}
+		f.newWin = func() csqlite.WindowAgg {
+			w := newWindow()
+			if w == nil {
+				return nil
+			}
+			return winResult{aggResult{w}, w}
+		}
+		o.funcs = append(o.funcs, f)
+		return nil
+	}}
+}
+
+// winResult gives Value's result the conversions of a bound argument.
+type winResult struct {
+	aggResult
+	w Window
+}
+
+func (w winResult) Value() (driver.Value, error) {
+	v, err := w.w.Value()
+	if err != nil {
+		return nil, err
+	}
+	return resultValue(v)
+}
+
+func (w winResult) Inverse(args []driver.Value) error { return w.w.Inverse(args) }
 
 // aggResult gives Final's result the conversions of a bound argument.
 type aggResult struct{ Aggregate }
@@ -263,9 +314,12 @@ func applyOptions(own []Option) (options, string, error) {
 func (o *options) setUp(c *csqlite.Conn) error {
 	for _, f := range o.funcs {
 		var err error
-		if f.newAgg != nil {
+		switch {
+		case f.newWin != nil:
+			err = c.CreateWindow(f.name, f.nArg, f.flags, f.newWin)
+		case f.newAgg != nil:
 			err = c.CreateAggregate(f.name, f.nArg, f.flags, f.newAgg)
-		} else {
+		default:
 			err = c.CreateFunction(f.name, f.nArg, f.flags, f.fn)
 		}
 		if err != nil {

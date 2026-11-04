@@ -343,6 +343,8 @@ func TestOptionsRefused(t *testing.T) {
 		"aggregate without a name": WithAggregate("", 1, newMedian),
 		"nil aggregate":            WithAggregate("m", 1, nil),
 		"aggregate nArg -2":        WithAggregate("m", -2, newMedian),
+		"nil window":               WithWindow("w", 1, nil),
+		"window without a name":    WithWindow("", 1, func() Window { return &movingSum{} }),
 		"collation without a name": WithCollation("", strings.Compare),
 		"nil collation":            WithCollation("c", nil),
 		"zero Option":              {},
@@ -527,5 +529,100 @@ func TestJoin(t *testing.T) {
 		if _, err := NewConnector(":memory:", opt); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+// movingSum is a sum a window frame moves over. It gives its result as an
+// int, which comes back as an INTEGER.
+type movingSum struct{ n int }
+
+func (s *movingSum) Step(a []driver.Value) error    { s.n += int(a[0].(int64)); return nil }
+func (s *movingSum) Inverse(a []driver.Value) error { s.n -= int(a[0].(int64)); return nil }
+func (s *movingSum) Value() (driver.Value, error)   { return s.n, nil }
+func (s *movingSum) Final() (driver.Value, error)   { return s.n, nil }
+
+func withMovingSum() Option {
+	return WithWindow("msum", 1, func() Window { return &movingSum{} }, Deterministic)
+}
+
+func TestWithWindow(t *testing.T) {
+	db := fOpen(t, ":memory:", withMovingSum())
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(x INTEGER); INSERT INTO t SELECT value FROM json_each('[1,2,3,4,5,6]')`)
+	// The same as SQLite's own sum over the same frames.
+	for _, frame := range []string{
+		"ORDER BY x ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING",
+		"ORDER BY x ROWS BETWEEN 2 PRECEDING AND 1 PRECEDING",
+		"ORDER BY x RANGE BETWEEN 2 PRECEDING AND CURRENT ROW",
+		"PARTITION BY x % 3 ORDER BY x GROUPS UNBOUNDED PRECEDING",
+		"ORDER BY x ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING EXCLUDE CURRENT ROW",
+	} {
+		q := `SELECT group_concat(a || ':' || typeof(a) || ':' || coalesce(b, 0), ' ') FROM (SELECT msum(x) OVER w AS a, sum(x) OVER w AS b FROM t WINDOW w AS (` + frame + `) ORDER BY x)`
+		got := fString(t, db, q)
+		for _, p := range strings.Fields(got) {
+			f := strings.Split(p, ":")
+			if f[0] != f[2] || f[1] != "integer" {
+				t.Errorf("%s: %s", frame, got)
+				break
+			}
+		}
+	}
+	if got := fString(t, db, `SELECT msum(x) FROM t`); got != "21" {
+		t.Errorf("msum as an aggregate = %s", got)
+	}
+}
+
+// An INSERT that runs a window function merges with others.
+func TestMergeWithWindow(t *testing.T) {
+	p := mPath(t)
+	db := fOpen(t, "file:"+p, withMovingSum())
+	db.SetMaxOpenConns(8)
+	mExec(t, db, `CREATE TABLE h(x); CREATE TABLE src(x INTEGER); CREATE TABLE t(g, s);
+		INSERT INTO src VALUES (1), (2), (3), (4)`)
+	other := mOpen(t, "file:"+p)
+	sc, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wl *writeLock
+	sc.Raw(func(dc any) error { wl = dc.(*conn).wl; return nil })
+	sc.Close()
+	commits0, merged0 := wl.stats.commits.Load(), wl.stats.merged.Load()
+	const n = 6
+	errs := make(chan error, n)
+	tx, err := other.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, tx, `INSERT INTO h VALUES (1)`)
+	for i := range n {
+		go func() {
+			_, err := db.Exec(`INSERT INTO t SELECT ?, msum(x) OVER (ORDER BY x ROWS 1 PRECEDING) FROM src`, i)
+			errs <- err
+		}()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for waiting() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d of %d inserts wait", waiting(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for range n {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+	if c, m := wl.stats.commits.Load()-commits0, wl.stats.merged.Load()-merged0; c != 1 || m != n {
+		t.Errorf("%d batch commits of %d statements, want 1 of %d", c, m, n)
+	}
+	if got := fString(t, db, `SELECT group_concat(s) FROM (SELECT s FROM t WHERE g = 3 ORDER BY rowid)`); got != "1,3,5,7" {
+		t.Errorf("caller 3's rows: %s", got)
+	}
+	if got := mCount(t, db, `SELECT count(*) FROM t`); got != 4*n {
+		t.Errorf("%d rows, want %d", got, 4*n)
 	}
 }
