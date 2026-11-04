@@ -376,13 +376,7 @@ func (s *Stmt) lost() bool {
 // Mergeable says the statement changes tables of the main database and
 // touches nothing only its connection has: run on another connection of
 // the same file, it does the same.
-//
-// goClassify also sees the statements SQLite prepares while it prepares
-// this one: R*Tree prepares writes of its shadow tables when the connection
-// first uses one of its tables. They can only add to the kind, so they make
-// a statement private, which is safe, or make a read look like a write,
-// which SQLite's own sqlite3_stmt_readonly rules out here.
-func (s *Stmt) Mergeable() bool { return s.kind == writesMain && s.writes }
+func (s *Stmt) Mergeable() bool { return s.kind == writesMain }
 
 // ChangesConn says the statement changes the connection itself: a PRAGMA
 // that sets something, ATTACH, DETACH, or a temporary table, index, view or

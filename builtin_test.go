@@ -355,7 +355,7 @@ func TestMergeVirtualTables(t *testing.T) {
 // uses an R*Tree table makes SQLite connect the table, which prepares
 // statements of its own that write. They are not the statement's, so a read
 // stays a read: it never merges, and Exec of it does not wait for the write
-// lock.
+// lock. Nor does VACUUM INTO, which the authorizer sees nothing of.
 func TestVirtualTableReadNotMerged(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p)
@@ -368,6 +368,7 @@ func TestVirtualTableReadNotMerged(t *testing.T) {
 		{`SELECT count(*) FROM ft`, false},
 		{`INSERT INTO rt VALUES (1, 0, 1)`, true},
 		{`INSERT INTO ft VALUES ('x')`, true},
+		{`VACUUM INTO 'v.db' || coalesce((SELECT 'x' FROM rt WHERE 0), '')`, false},
 	} {
 		fresh := mOpen(t, "file:"+p)
 		c0, err := fresh.Conn(t.Context())
@@ -416,6 +417,14 @@ func TestMergeFTS5FlushFails(t *testing.T) {
 	p := setup(t)
 	db = mOpen(t, "file:"+p)
 	db.SetMaxOpenConns(8)
+	sc, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wl *writeLock
+	sc.Raw(func(dc any) error { wl = dc.(*conn).wl; return nil })
+	sc.Close()
+	commits0, merged0 := wl.stats.commits.Load(), wl.stats.merged.Load()
 	other := mOpen(t, "file:"+p)
 	tx, err := other.Begin()
 	if err != nil {
@@ -445,7 +454,13 @@ func TestMergeFTS5FlushFails(t *testing.T) {
 	if err := <-errs[plainInsert]; err != nil {
 		t.Errorf("merged after the FTS5 insert, %s: %v", plainInsert, err)
 	}
+	if c, m := wl.stats.commits.Load()-commits0, wl.stats.merged.Load()-merged0; c != 1 || m != 1 {
+		t.Errorf("%d batch commits of %d statements, want 1 of 1", c, m)
+	}
 	if got := fRow(t, db, `SELECT count(*) FROM plain`); got != "1" {
 		t.Errorf("%s rows in plain, want 1", got)
+	}
+	if got := fRow(t, db, `SELECT group_concat(c0) FROM ft_content`); got != "seed words here" {
+		t.Errorf("ft_content holds %s, want only the seed", got)
 	}
 }

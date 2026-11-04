@@ -445,17 +445,23 @@ func (c *conn) runOne(r *request) error {
 	if err == nil && c.c.DeferredFKs() {
 		err, undo = errForeignKey, true
 	}
-	if err == nil && c.c.VirtualTablesInTx() {
+	if c.c.VirtualTablesInTx() {
 		// FTS5 writes the terms of an INSERT to its index only at the next
 		// SAVEPOINT or at COMMIT, so a failure to write them (a broken
 		// index, a full disk) would fall on the next statement of the batch
 		// or on all of them. A SAVEPOINT of its own writes them now, inside
-		// the statement's SAVEPOINT.
-		err = c.flushVirtualTables()
-		if c.c.AutoCommit() {
-			return err // the failure ended the transaction
+		// the statement's SAVEPOINT, also after the statement failed, which
+		// may leave terms. When it fails, the statement is undone: alone, its
+		// COMMIT would have failed.
+		if ferr := c.flushVirtualTables(); ferr != nil {
+			if err == nil {
+				err = ferr
+			}
+			if c.c.AutoCommit() {
+				return err // the failure ended the transaction
+			}
+			undo = true
 		}
-		undo = err != nil
 	}
 	if undo {
 		if e := c.execCached("ROLLBACK TO merge"); e != nil {

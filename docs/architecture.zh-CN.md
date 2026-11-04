@@ -62,7 +62,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 - **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
 - **文件。** `engine/os.c` 就是 VFS（名字叫 `go`）。它的每个方法都调用 `internal/vfs`。
 - **本地时间。** `localtime` 和 `utc` 修饰符调用 `engine/os.c` 里的 `localtime_r`，它去问 Go：时区就是 `time.Local`（`TZ` 环境变量，或者 `/etc/localtime`）。镜像里没有时区文件时得到 UTC，除非程序 import 了 `time/tzdata`。
-- **Go 代码 panic。** 函数或聚合 panic 时，和返回错误一样，让它所在的语句失败。排序规则没有办法报错，所以 panic 时 `engine/os.c` 调用 `sqlite3OomFault`，这是 SQLite 自己记录内存分配失败的函数：SQLite 以 `SQLITE_NOMEM` 中止语句，回滚这条语句或整个事务，走的是它对每次内存分配都测过的错误路径。宿主另外还读 SQLite 的一个内部字段 `db->nVTrans`（见下文），在和 `sqlite3.c` 一起编译的 `engine/os.c` 里。一条写语句正在执行时，如果别的语句出错把它的事务回滚了，它结束时报错，不报成功（用回滚钩子计数）。
+- **Go 代码 panic。** 函数或聚合 panic 时，和返回错误一样，让它所在的语句失败。排序规则没有办法报错，所以 panic 时 `engine/os.c` 调用 `sqlite3OomFault`，这是 SQLite 自己记录内存分配失败的函数：SQLite 以 `SQLITE_NOMEM` 中止语句，回滚这条语句或整个事务，走的是它对每次内存分配都测过的错误路径。宿主另外还读 SQLite 的两处内部实现（见下文），在和 `sqlite3.c` 一起编译的 `engine/os.c` 里：`db->nVTrans`，以及 `Parse` 指向它所属语句的链接。一条写语句正在执行时，如果别的语句出错把它的事务回滚了，它结束时报错，不报成功（用回滚钩子计数）。
 
 ## 每个文件一个写入者
 
@@ -72,7 +72,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 
 许多 goroutine 各自在 autocommit 模式下写一行，每个都要付一次提交的代价，而 SQLite 同一时刻只有一个写入者，它们还要互相等。驱动把许多调用者的 autocommit DML 收到一起，放进一个事务里执行，只提交一次。规则写在 [AGENTS.md](../AGENTS.md#hard-constraints)：只合并主数据库上的 autocommit DML，每条语句一个 SAVEPOINT，每个调用者拿到自己的结果，调用要等提交之后才返回。
 
-做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间，再 `COMMIT`，这时每个调用者才拿到结果。失败的语句保留 SQLite 替它保留的东西，和它单独执行时一样（什么都不留，或者 `OR FAIL` 时留下失败之前的行），它的调用者拿到错误。留下未解决的延迟外键的语句用 `ROLLBACK TO` 撤销，它的调用者拿到它自己 `COMMIT` 时会得到的错误。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。FTS5 要到下一个 `SAVEPOINT` 或 `COMMIT` 才把 `INSERT` 的词写进索引，所以一旦有虚表加入事务（`db->nVTrans`），成功的语句后面会在它自己的 `SAVEPOINT` 里再跑一对 `SAVEPOINT` 和 `RELEASE`：写索引失败（索引坏了、磁盘满了）就算这条语句的，和它单独执行时一样，不会落到下一条头上。语句在准备时由一个授权回调分类（`engine/os.c` 的 `goClassify`），它也会看到 SQLite 在这期间准备的其他语句：连接第一次用到 R*Tree 表时，R*Tree 会准备写它影子表的语句。这些语句只会往标记上加东西，所以要么让一条语句不能合并（这是安全的），要么让读语句看起来像写，而 SQLite 的 `sqlite3_stmt_readonly` 会排除这种情况：只有真正写的语句才合并。轮到之前 context 就已结束的调用者拿到 context 的错误，它的语句不会执行。一批跑完，锁交给下一个在等锁的连接，没有的话交给队列里第一条语句，它在自己的连接上执行：谁都不会在队列后面等太久。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
+做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间，再 `COMMIT`，这时每个调用者才拿到结果。失败的语句保留 SQLite 替它保留的东西，和它单独执行时一样（什么都不留，或者 `OR FAIL` 时留下失败之前的行），它的调用者拿到错误。留下未解决的延迟外键的语句用 `ROLLBACK TO` 撤销，它的调用者拿到它自己 `COMMIT` 时会得到的错误。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。FTS5 要到下一个 `SAVEPOINT` 或 `COMMIT` 才把 `INSERT` 的词写进索引，所以一旦有虚表加入事务（`db->nVTrans`），每条语句后面会在它自己的 `SAVEPOINT` 里再跑一对 `SAVEPOINT` 和 `RELEASE`：写索引失败（索引坏了、磁盘满了）就算这条语句的，和它单独执行时一样，不会落到下一条头上，这条语句也被撤销。语句在准备时由一个授权回调分类（`engine/os.c` 的 `goClassify`），它也会看到 SQLite 在这期间准备的其他语句：连接第一次用到 R*Tree 表时，R*Tree 会准备写它影子表的语句。它们做的事不算这条语句的：永远不会把它标成写 main 库。它们仍可以让语句不能合并，这只会慢一些。触发器的语句体也在自己的 `Parse` 里编译，它的 `pToplevel` 指向所属的语句，所以要算进来：一个 `Parse` 顶层那条语句有 `pOuterParse` 时，它才算嵌套。轮到之前 context 就已结束的调用者拿到 context 的错误，它的语句不会执行。一批跑完，锁交给下一个在等锁的连接，没有的话交给队列里第一条语句，它在自己的连接上执行：谁都不会在队列后面等太久。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
 
 ```mermaid
 sequenceDiagram

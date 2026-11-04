@@ -19373,6 +19373,7 @@ TEXT ·go_classify(SB), $56-32
 	WORD $0xaa1503eb
 	WORD $0xf9400eb5
 	MOVD $·engine_rodata+3600(SB), R10
+	WORD $0xf90006cb
 	WORD $0xb4000195
 	WORD $0xf9404148
 	WORD $0xf9001ff4
