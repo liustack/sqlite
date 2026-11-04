@@ -157,20 +157,7 @@ func (l *writeLock) acquire(ctx context.Context, timeout time.Duration) error {
 func (l *writeLock) release(c *conn) {
 	l.mu.Lock()
 	if c.canMerge() {
-		var batch, rest []*request
-		for _, r := range l.queue {
-			if r.key == c.key && len(batch) < maxBatch {
-				batch = append(batch, r)
-			} else {
-				rest = append(rest, r)
-			}
-		}
-		if len(batch) > 0 {
-			l.stats.batches.Add(1)
-			if len(batch) == maxBatch {
-				l.stats.full.Add(1)
-			}
-			l.queue = rest
+		if batch := l.take(c, nil); len(batch) > 0 {
 			l.mu.Unlock()
 			back := c.runBatch(batch)
 			l.mu.Lock()
@@ -191,6 +178,66 @@ func (l *writeLock) release(c *conn) {
 		l.held = false
 	}
 	l.mu.Unlock()
+}
+
+// take moves the requests of the queue that c can run, after batch, into
+// batch, up to maxBatch. l.mu is held.
+func (l *writeLock) take(c *conn, batch []*request) []*request {
+	n := 0
+	for _, r := range l.queue {
+		if r.key == c.key {
+			n++
+		}
+	}
+	if n = min(n, maxBatch-len(batch)); n > 0 {
+		out := make([]*request, len(batch), len(batch)+n)
+		copy(out, batch)
+		rest := l.queue[:0] // in place: it writes behind where it reads
+		for _, r := range l.queue {
+			if r.key == c.key && len(out) < cap(out) {
+				out = append(out, r)
+			} else {
+				rest = append(rest, r)
+			}
+		}
+		clear(l.queue[len(rest):])
+		l.queue = rest
+		batch = out
+	}
+	if len(batch) > 0 {
+		l.stats.batches.Add(1)
+		if len(batch) == maxBatch {
+			l.stats.full.Add(1)
+		}
+	}
+	return batch
+}
+
+// lead runs req, whose connection c has just been handed the lock, as the
+// first of a batch with the requests of the queue c can run: a request
+// handed the lock does not take a commit of its own. It reports false when
+// c cannot run req that way, which then runs alone.
+func (l *writeLock) lead(c *conn, req *request) bool {
+	req.handed = false
+	req.done = make(chan struct{}) // runBatch closes it again
+	l.mu.Lock()
+	batch := l.take(c, []*request{req})
+	l.mu.Unlock()
+	back := c.runBatch(batch)
+	ran := true
+	for i, r := range back {
+		if r == req {
+			back = append(back[:i:i], back[i+1:]...)
+			ran = false
+			break
+		}
+	}
+	if len(back) > 0 {
+		l.mu.Lock()
+		l.queue = append(back, l.queue...)
+		l.mu.Unlock()
+	}
+	return ran
 }
 
 // submit runs a mergeable statement: directly when the lock is free, in the
@@ -250,18 +297,22 @@ func (c *conn) answered(ctx context.Context, s *stmt, req *request) (*result, er
 			c.endWrite()
 			return nil, err
 		}
-		return c.runHeld(ctx, s, req.args)
+		if !c.canMerge() || !c.wl.lead(c, req) {
+			return c.runHeld(ctx, s, req.args)
+		}
+		c.writing = true
+		c.endWrite()
 	}
 	if req.err != nil {
 		return nil, req.err
 	}
-	r := req.res
+	r := &req.res // req is done with: its result is the caller's
 	if req.inserted {
 		c.c.SetLastInsertRowID(r.id)
 	} else {
 		r.id = c.c.LastInsertRowID()
 	}
-	return &r, nil
+	return r, nil
 }
 
 // canMerge says c may run statements of other connections of its key: it
@@ -310,7 +361,7 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 	own := c.c.LastInsertRowID()
 	defer c.c.SetLastInsertRowID(own)
 	for {
-		live := batch[:0:0]
+		live := batch[:0] // in place: batch is runBatch's own
 		for _, r := range batch {
 			if err := r.ctx.Err(); err != nil {
 				r.err = err
@@ -327,7 +378,7 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 			answer(batch, err)
 			return back
 		}
-		var ok []*request
+		ok := make([]*request, 0, len(batch))
 		lost := false
 		for i, r := range batch {
 			err := c.runOne(r)

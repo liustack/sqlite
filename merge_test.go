@@ -669,3 +669,61 @@ func TestNilBytesAreNull(t *testing.T) {
 		t.Fatalf("nil and empty []byte stored as %v, want null and blob", types)
 	}
 }
+
+// TestHandedRequestLeadsBatch: when the lock goes to the first request of
+// the queue, that request runs with the others its connection can run, in
+// one commit, and not in a commit of its own.
+func TestHandedRequestLeadsBatch(t *testing.T) {
+	p := mPath(t)
+	db := mOpen(t, "file:"+p)
+	db.SetMaxOpenConns(4)
+	mExec(t, db, `CREATE TABLE h(x); CREATE TABLE t(x)`)
+	// Another connector: its connection merges nothing of db's.
+	other := mOpen(t, "file:"+p+"?_pragma=cache_size(-1000)")
+	sc, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wl *writeLock
+	sc.Raw(func(dc any) error { wl = dc.(*conn).wl; return nil })
+	sc.Close()
+	commits0, merged0 := wl.stats.commits.Load(), wl.stats.merged.Load()
+
+	tx, err := other.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`INSERT INTO h VALUES (1)`); err != nil {
+		t.Fatal(err)
+	}
+	const n = 3
+	errs := make(chan error, n)
+	for i := range n {
+		go func() {
+			_, err := db.Exec(`INSERT INTO t VALUES (?)`, i)
+			errs <- err
+		}()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for waiting() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d of %d inserts wait", waiting(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for range n {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	commits, merged := wl.stats.commits.Load()-commits0, wl.stats.merged.Load()-merged0
+	if commits != 1 || merged != n {
+		t.Fatalf("%d inserts handed the lock took %d batch commits for %d statements, want 1 for %d", n, commits, merged, n)
+	}
+	if c := mCount(t, db, `SELECT count(*) FROM t`); c != n {
+		t.Fatalf("%d rows, want %d", c, n)
+	}
+}
