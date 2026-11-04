@@ -165,6 +165,9 @@ func Open(name string, flags int, vfs string) (*Conn, error) {
 	if r == OK {
 		r = int32(go_classify(c.sp, c.db, c.classifyWord()))
 	}
+	if r == OK {
+		r = int32(go_guard_commits(c.sp, c.db, c.st.base+pendingOffset))
+	}
 	if r != OK {
 		err := c.err(int(r))
 		if c.db != 0 {
@@ -232,11 +235,39 @@ func (c *Conn) Exec(sql string) error {
 		defer release(p)
 		copy(bytesAt(p, len(sql)), sql)
 		*(*byte)(at(p + uintptr(len(sql)))) = 0
-		return c.err(int(int32(sqlite3_exec(c.sp, c.db, p, 0, 0, 0))))
+		return c.execResult(int(int32(sqlite3_exec(c.sp, c.db, p, 0, 0, 0))))
 	}
 	a := c.args()
 	z := a.str(sql)
-	return c.err(int(int32(sqlite3_exec(a.top, c.db, z, 0, 0, 0))))
+	return c.execResult(int(int32(sqlite3_exec(a.top, c.db, z, 0, 0, 0))))
+}
+
+func (c *Conn) execResult(r int) error {
+	if c.st.collatePanic != "" {
+		return c.endCollatePanic(0)
+	}
+	return c.err(r)
+}
+
+// endCollatePanic ends the statement s (0 for none) in which a Go collation
+// panicked, and gives the panic as its error. The comparisons after the
+// panic returned 0, so what the statement wrote may be out of order: the
+// commit hook has refused every commit since, and here the statement is
+// reset and an open transaction rolled back, so none of it stays. Then the
+// connection is as before the transaction.
+func (c *Conn) endCollatePanic(s uintptr) error {
+	msg := c.st.collatePanic
+	c.st.collatePanic = ""
+	if s != 0 {
+		sqlite3_reset(c.sp, s)
+	}
+	if !c.AutoCommit() {
+		c.Exec("ROLLBACK")
+	}
+	if c.AutoCommit() {
+		*(*int32)(at(c.st.base + pendingOffset)) = 0
+	}
+	return &Error{Code: 1, Msg: "panic in a Go collation: " + msg}
 }
 
 // Prepare compiles the first statement of sql. tail is the rest of sql. A
@@ -367,6 +398,9 @@ func (s *Stmt) Step() (bool, error) {
 		return false, err
 	}
 	r := int32(sqlite3_step(s.c.sp, s.p))
+	if s.c.st.collatePanic != "" {
+		return false, s.c.endCollatePanic(s.p)
+	}
 	// A callback that panicked during the step leaves no trace in r: the
 	// row it gave, or its end, may be wrong.
 	if err := s.c.brokenErr(); err != nil {

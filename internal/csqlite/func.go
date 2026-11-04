@@ -112,7 +112,7 @@ func host_func(sp, ctx, argc, argv uintptr) {
 		err = result(sp, ctx, v)
 	}
 	if err != nil {
-		resultError(sp, ctx, err.Error())
+		resultError(sp, ctx, err)
 	}
 }
 
@@ -128,7 +128,7 @@ func host_step(sp, ctx, argc, argv uintptr) {
 	if *slot == 0 {
 		a, err := newState(sp, ctx)
 		if err != nil {
-			resultError(sp, ctx, err.Error())
+			resultError(sp, ctx, err)
 			return
 		}
 		*slot = aggs.add(&a)
@@ -136,7 +136,7 @@ func host_step(sp, ctx, argc, argv uintptr) {
 	a := *aggs.get(*slot)
 	args := values(sp, argc, argv)
 	if _, err := safely(func() (driver.Value, error) { return nil, a.Step(args) }); err != nil {
-		resultError(sp, ctx, err.Error())
+		resultError(sp, ctx, err)
 	}
 }
 
@@ -154,7 +154,7 @@ func host_final(sp, ctx uintptr) {
 	} else {
 		var err error
 		if a, err = newState(sp, ctx); err != nil {
-			resultError(sp, ctx, err.Error())
+			resultError(sp, ctx, err)
 			return
 		}
 	}
@@ -163,7 +163,7 @@ func host_final(sp, ctx uintptr) {
 		err = result(sp, ctx, v)
 	}
 	if err != nil {
-		resultError(sp, ctx, err.Error())
+		resultError(sp, ctx, err)
 	}
 }
 
@@ -184,13 +184,17 @@ func host_func_destroy(sp, h uintptr) {
 }
 
 // host_collate compares two strings with a Go collation. A comparison has no
-// way to fail, so a panic in one breaks the connection (failWith): Step then
-// returns the error instead of a row ordered by a comparison that did not
-// happen.
+// way to fail: a panic in one is kept on the stack of the connection, the
+// comparison gives 0, and the pending word keeps the transaction from
+// committing until Step or Exec ends it (endCollatePanic).
 func host_collate(sp, h, n1, p1, n2, p2 uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, 0)
 	cmp := *collations.get(h)
-	r := cmp(string(bytesAt(p1, int(int32(n1)))), string(bytesAt(p2, int(int32(n2)))))
+	r, err := compare(cmp, string(bytesAt(p1, int(int32(n1)))), string(bytesAt(p2, int(int32(n2)))))
+	if err != nil {
+		collatePanicked(sp, err)
+		return 0
+	}
 	switch {
 	case r < 0:
 		return ^uintptr(0) // -1
@@ -312,7 +316,8 @@ func result(sp, ctx uintptr, v driver.Value) error {
 }
 
 // resultError makes msg the error of a call. SQLite copies it.
-func resultError(sp, ctx uintptr, msg string) {
+func resultError(sp, ctx uintptr, err error) {
+	msg := errText(err)
 	const most = 1 << 16
 	if len(msg) > most {
 		msg = msg[:most]
@@ -320,4 +325,38 @@ func resultError(sp, ctx uintptr, msg string) {
 	a := args{sp}
 	z := a.str(msg)
 	sqlite3_result_error(a.top, ctx, z, uintptr(len(msg)))
+}
+
+// compare runs a Go collation and turns a panic in it into an error.
+func compare(cmp func(a, b string) int, a, b string) (r int, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+	}()
+	return cmp(a, b), nil
+}
+
+// collatePanicked keeps the first panic of a collation for Step or Exec and
+// sets the word that refuses commits.
+func collatePanicked(sp uintptr, err error) {
+	v, ok := stacks.Load(stackBase(sp))
+	if !ok {
+		panic("csqlite: a collation ran on a stack the host did not make")
+	}
+	s := v.(*stack)
+	if s.collatePanic == "" {
+		s.collatePanic = errText(err)
+	}
+	*(*int32)(at(s.base + pendingOffset)) = 1
+}
+
+// errText is err.Error(), which is user code too.
+func errText(err error) (s string) {
+	defer func() {
+		if e := recover(); e != nil {
+			s = fmt.Sprintf("an error whose Error method panicked: %v", e)
+		}
+	}()
+	return err.Error()
 }

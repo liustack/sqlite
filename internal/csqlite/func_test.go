@@ -12,6 +12,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -463,30 +464,108 @@ func TestCollation(t *testing.T) {
 	}
 }
 
-// A comparison cannot fail in SQLite, so a panic in one breaks the
-// connection: the statement it ran in returns the error, and no row of it.
-func TestCollationPanicBreaksConn(t *testing.T) {
-	c, err := Open(":memory:", OpenReadWrite|OpenCreate, "")
+// A comparison cannot fail in SQLite: after a panic in a collation the
+// statement goes on with comparisons of 0. Nothing it wrote may commit, the
+// statement and its transaction fail with the panic, and the connection and
+// the file stay usable.
+func TestCollationPanic(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "c.db")
+	c := open(t, path)
+	other := open(t, path)
+	pc := func(a, b string) int {
+		if a == "zz" || b == "zz" {
+			panic("cannot compare zz")
+		}
+		return strings.Compare(a, b)
+	}
+	for _, conn := range []*Conn{c, other} {
+		if err := conn.CreateCollation("pc", pc); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.Exec(`PRAGMA journal_mode=WAL; CREATE TABLE t(x TEXT); CREATE INDEX tx ON t(x COLLATE pc);
+		INSERT INTO t VALUES ('a'), ('m'), ('y')`); err != nil {
+		t.Fatal(err)
+	}
+	count := func() string {
+		t.Helper()
+		return mustOne(t, other, "SELECT group_concat(x, ',') FROM (SELECT x FROM t ORDER BY rowid)")
+	}
+	isPanic := func(what string, err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "cannot compare zz") {
+			t.Fatalf("%s: %v, want the panic", what, err)
+		}
+		if c.Broken() {
+			t.Fatalf("%s: the connection is broken", what)
+		}
+		if !c.AutoCommit() {
+			t.Fatalf("%s: a transaction is still open", what)
+		}
+	}
+
+	// An autocommit insert does not commit.
+	s, _, err := c.Prepare(`INSERT INTO t VALUES ('zz')`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { c.Close() })
-	if err := c.CreateCollation("bad", func(a, b string) int { panic("cannot compare") }); err != nil {
+	_, err = s.Step()
+	isPanic("autocommit insert", err)
+	s.Finalize()
+	if v := count(); v != "a,m,y" {
+		t.Fatalf("after the autocommit insert: %s", v)
+	}
+
+	// A transaction is rolled back, with what it wrote before.
+	if err := c.Exec(`BEGIN; INSERT INTO t VALUES ('b')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Exec(`CREATE TABLE t(x TEXT); INSERT INTO t VALUES ('b'), ('a')`); err != nil {
-		t.Fatal(err)
+	isPanic("insert in a transaction", c.Exec(`INSERT INTO t VALUES ('zz')`))
+	if v := count(); v != "a,m,y" {
+		t.Fatalf("after the transaction: %s", v)
 	}
-	s, _, err := c.Prepare("SELECT x FROM t ORDER BY x COLLATE bad")
+
+	// sqlite3_exec stops at the statement, and the ones before it stay.
+	isPanic("exec", c.Exec(`INSERT INTO t VALUES ('c'); INSERT INTO t VALUES ('zz'); INSERT INTO t VALUES ('d')`))
+	if v := count(); v != "a,m,y,c" {
+		t.Fatalf("after exec: %s", v)
+	}
+
+	// A read fails, and holds no lock afterwards.
+	s, _, err = c.Prepare(`SELECT x FROM t ORDER BY x COLLATE pc`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Finalize()
-	row, err := s.Step()
-	if row || err == nil || !strings.Contains(err.Error(), "cannot compare") {
-		t.Fatalf("step: %v %v", row, err)
+	if err := c.Exec(`INSERT INTO t VALUES ('zz')`); err == nil {
+		t.Fatal("no panic") // the index compares 'zz' with what is there
 	}
-	if !c.Broken() {
-		t.Fatal("the connection is not broken")
+	_, err = s.Step()
+	s.Finalize()
+	if err != nil {
+		t.Fatalf("a read with no zz: %v", err)
+	}
+	if err := other.Exec(`CREATE TABLE u(x TEXT); INSERT INTO u VALUES ('zz'), ('a')`); err != nil {
+		t.Fatal(err)
+	}
+	s, _, err = c.Prepare(`SELECT x FROM u ORDER BY x COLLATE pc`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Step()
+	isPanic("read", err)
+	s.Finalize()
+
+	// Both connections write again, and the file is whole.
+	if err := c.Exec(`INSERT INTO t VALUES ('e')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Exec(`INSERT INTO t VALUES ('f')`); err != nil {
+		t.Fatal(err)
+	}
+	if v := mustOne(t, other, "PRAGMA integrity_check"); v != "ok" {
+		t.Fatalf("integrity_check: %s", v)
+	}
+	if v := count(); v != "a,m,y,c,e,f" {
+		t.Fatalf("at the end: %s", v)
 	}
 }

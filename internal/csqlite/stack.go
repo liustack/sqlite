@@ -30,6 +30,9 @@ const (
 	// classifyOffset is the word of the header goClassify (engine/os.c)
 	// writes the kind of a statement to as it is prepared.
 	classifyOffset = 64
+	// pendingOffset is the word of go_guard_commits (engine/os.c): set
+	// while a panicked collation keeps the transaction from committing.
+	pendingOffset = 128
 	// pollInterval is how many ticks of the code run between two calls of
 	// host_poll.
 	pollInterval = 10000
@@ -50,6 +53,9 @@ func init() {
 	if classifyOffset+8 > pollCounterOffset {
 		panic("csqlite: the word of goClassify meets the poll counter")
 	}
+	if classifyOffset+8 > pendingOffset || pendingOffset+8 > pollCounterOffset {
+		panic("csqlite: the pending word meets another word of the header")
+	}
 }
 
 // A stack is the shadow-stack region of one connection. One goroutine at a
@@ -60,6 +66,9 @@ type stack struct {
 	// frames are gone and SQLite may hold locks, so no C runs on it again.
 	broken atomic.Bool
 	cause  atomic.Value // the first panic value, as a string
+	// collatePanic is the panic of a Go collation during the call of C
+	// running now, or "". Only the goroutine that runs the C touches it.
+	collatePanic string
 }
 
 // stacks finds the stack of a shadow pointer, for a callback that must mark
