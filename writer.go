@@ -27,7 +27,7 @@ import (
 // Readers never take it. Other processes still meet SQLite's own locks.
 //
 // Group commit: an autocommit statement that only changes the main database
-// and depends on nothing of its connection (stmt.mergeable) does not wait
+// and depends on nothing of its connection (csqlite.Stmt.Mergeable) does not wait
 // for the lock when another writer holds it. It joins the file's queue. The
 // writer that gives the lock back runs the requests of the queue that its
 // connection can run exactly as their own would (same key, neither
@@ -426,7 +426,7 @@ func (c *conn) runOne(r *request) error {
 	if err != nil {
 		return err
 	}
-	if !s.mergeable {
+	if !s.s.Mergeable() {
 		return errNotHere
 	}
 	if err := c.execCached("SAVEPOINT merge"); err != nil {
@@ -434,7 +434,23 @@ func (c *conn) runOne(r *request) error {
 	}
 	const unset = math.MinInt64 // a rowid no INSERT of the queue gives
 	c.c.SetLastInsertRowID(unset)
+	c.c.SetMerging(true)
 	res, err := s.run(r.ctx, r.args)
+	if c.c.SetMerging(false) {
+		// SQLite prepared the statement again and it is no longer
+		// mergeable: it failed before it did anything. A virtual table
+		// whose own prepare was refused may have hidden the refusal and
+		// let the statement run, so what it did is undone: it runs again
+		// on its caller's connection.
+		s.s.Reclassify()
+		if e := c.execCached("ROLLBACK TO merge"); e != nil {
+			return c.abandon(e)
+		}
+		if e := c.execCached("RELEASE merge"); e != nil {
+			return c.abandon(e)
+		}
+		return errNotHere
+	}
 	if c.c.AutoCommit() {
 		if err == nil {
 			err = errBusy // cannot happen: a statement that succeeds keeps the transaction

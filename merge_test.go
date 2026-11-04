@@ -797,3 +797,92 @@ func TestWriteAfterSchemaChange(t *testing.T) {
 		t.Fatalf("t has %d rows", n)
 	}
 }
+
+// queue runs f(0) to f(n-1) at once while holder holds the write lock in a
+// transaction (which wrote a row of h), and commits once all n wait.
+func queue(t *testing.T, holder *sql.DB, n int, f func(i int) error) {
+	t.Helper()
+	tx, err := holder.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`INSERT INTO h VALUES (1)`); err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, n)
+	for i := range n {
+		go func() { errs <- f(i) }()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for waiting() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d of %d wait for the lock", waiting(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for range n {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// statsOf gives the write lock of db's file.
+func statsOf(t *testing.T, db *sql.DB) *writeLock {
+	t.Helper()
+	sc, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sc.Close()
+	var wl *writeLock
+	sc.Raw(func(dc any) error { wl = dc.(*conn).wl; return nil })
+	return wl
+}
+
+// A prepared statement that SQLite prepares again after a change of the
+// schema is sorted again: one that became unmergeable no longer merges,
+// on the connection of its caller or on the one that runs a batch.
+func TestMergeAfterSchemaChange(t *testing.T) {
+	p := mPath(t)
+	db := mOpen(t, "file:"+p)
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
+	mExec(t, db, `CREATE TABLE h(x); CREATE TABLE t(x); CREATE TABLE log(x)`)
+	other := mOpen(t, "file:"+p)
+	wl := statsOf(t, db)
+	ps, err := db.Prepare(`INSERT INTO t VALUES (?)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps.Close()
+	const n = 8
+	insert := func(i int) error { _, err := ps.Exec(i); return err }
+	m0 := wl.stats.merged.Load()
+	queue(t, other, n, insert)
+	queue(t, other, n, insert)
+	if wl.stats.merged.Load() == m0 {
+		t.Fatal("nothing merged before the change")
+	}
+	// A write from a trigger never merges.
+	mExec(t, other, `CREATE TRIGGER tr AFTER INSERT ON t BEGIN INSERT INTO log VALUES (new.x); END`)
+	m0 = wl.stats.merged.Load()
+	queue(t, other, n, insert)
+	if m := wl.stats.merged.Load() - m0; m != 0 {
+		t.Errorf("%d inserts with a trigger merged", m)
+	}
+	if got := mCount(t, db, `SELECT count(*) FROM log`); got != n {
+		t.Errorf("%d rows in log, want %d", got, n)
+	}
+	// Without it again, they merge again.
+	mExec(t, other, `DROP TRIGGER tr`)
+	m0 = wl.stats.merged.Load()
+	queue(t, other, n, insert)
+	queue(t, other, n, insert)
+	if wl.stats.merged.Load() == m0 {
+		t.Error("nothing merged after the trigger was dropped")
+	}
+}

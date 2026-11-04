@@ -380,7 +380,7 @@ func TestVirtualTableReadNotMerged(t *testing.T) {
 			if err != nil {
 				t.Fatal(c.q, err)
 			}
-			if got := st.(*stmt).mergeable; got != c.mergeable {
+			if got := st.(*stmt).s.Mergeable(); got != c.mergeable {
 				t.Errorf("%s on a new connection: mergeable %v, want %v", c.q, got, c.mergeable)
 			}
 			return st.Close()

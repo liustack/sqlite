@@ -299,11 +299,18 @@ static int infoPragma(const char *name) {
 }
 
 /* goClassifyWord is the word of the host's header goClassify writes to,
-   with the connection it is installed on. */
+   with the connection it is installed on. merging is GO_MERGING while the
+   connection runs a statement of another connection's caller, and
+   goClassify makes it GO_REFUSED when it refuses one (goClassify). */
 struct goClassifyWord {
   int flags;
+  int merging;
   sqlite3 *db;
 };
+_Static_assert(__builtin_offsetof(struct goClassifyWord, merging) == 4, "goClassifyWord.merging");
+_Static_assert(__builtin_offsetof(struct goClassifyWord, db) == 8, "goClassifyWord.db");
+#define GO_MERGING 1
+#define GO_REFUSED 2
 
 /* goNested says the statement being parsed on db is one SQLite prepares
    while it prepares another. The body of a trigger is coded in a Parse of
@@ -313,6 +320,18 @@ static int goNested(sqlite3 *db) {
   Parse *p = db->pParse;
   if (p->pToplevel) p = p->pToplevel;
   return p->pOuterParse != 0;
+}
+
+/* goReprepare says the statement being parsed on db, or the one it is
+   parsed for, is one SQLite prepares again in sqlite3_step after a change
+   of the schema (sqlite3Reprepare). */
+static int goReprepare(sqlite3 *db) {
+  Parse *p = db->pParse;
+  for (;;) {
+    if (p->pToplevel) p = p->pToplevel;
+    if (!p->pOuterParse) return p->pReprepare != 0;
+    p = p->pOuterParse;
+  }
 }
 
 static int goClassify(void *p, int op, const char *a, const char *b, const char *db, const char *trigger) {
@@ -367,6 +386,16 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     *flags |= GO_PRIVATE;
   }
   if (goNested(w->db)) f &= ~GO_WRITES_MAIN;
+  /* A statement the driver sorted as mergeable is prepared again when the
+     schema changed after it was prepared, and may be no longer mergeable.
+     sqlite3_step finds the change before the statement does anything, so
+     while the connection runs another caller's statement, the new program is
+     refused: the step fails with nothing done, and the driver runs the
+     statement on its caller's connection. */
+  if (w->merging && (f & (GO_PRIVATE | GO_STATE)) && goReprepare(w->db)) {
+    w->merging = GO_REFUSED;
+    return SQLITE_DENY;
+  }
   w->flags |= f;
   return SQLITE_OK;
 }
