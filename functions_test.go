@@ -12,6 +12,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -262,5 +263,88 @@ func TestMergeWithFunction(t *testing.T) {
 	}
 	if c := mCount(t, db, `SELECT count(*) FROM t`); c != n-2 {
 		t.Errorf("%d rows, want %d", c, n-2)
+	}
+}
+
+// median collects numbers and gives their median.
+type median struct{ xs []float64 }
+
+func (m *median) Step(args []driver.Value) error {
+	switch v := args[0].(type) {
+	case int64:
+		m.xs = append(m.xs, float64(v))
+	case float64:
+		m.xs = append(m.xs, v)
+	case nil:
+	default:
+		return fmt.Errorf("median of a %T", v)
+	}
+	return nil
+}
+
+func (m *median) Final() (driver.Value, error) {
+	if len(m.xs) == 0 {
+		return nil, nil
+	}
+	slices.Sort(m.xs)
+	n := len(m.xs)
+	if n%2 == 1 {
+		return m.xs[n/2], nil
+	}
+	return (m.xs[n/2-1] + m.xs[n/2]) / 2, nil
+}
+
+func TestWithAggregate(t *testing.T) {
+	db := fOpen(t, ":memory:", WithAggregate("median", 1, func() Aggregate { return &median{} }, Deterministic))
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(g, x); INSERT INTO t VALUES (1, 5), (1, 1), (1, 3), (2, 10), (2, 20), (3, NULL)`)
+	got := fString(t, db, `SELECT group_concat(g || '=' || coalesce(m, 'null'), ' ') FROM (SELECT g, median(x) AS m FROM t GROUP BY g ORDER BY g)`)
+	if got != "1=3.0 2=15.0 3=null" {
+		t.Fatalf("medians: %s", got)
+	}
+	var s any
+	if err := db.QueryRow(`SELECT median('x')`).Scan(&s); err == nil || !strings.Contains(err.Error(), "median of a string") {
+		t.Fatalf("median('x'): %v", err)
+	}
+	// An aggregate in a write merges like any statement of its connector.
+	mExec(t, db, `CREATE TABLE m(g, v); INSERT INTO m SELECT g, median(x) FROM t GROUP BY g`)
+	if got := fString(t, db, `SELECT group_concat(v, ',') FROM m`); got != "3.0,15.0" {
+		t.Fatalf("inserted medians: %s", got)
+	}
+}
+
+func TestWithCollation(t *testing.T) {
+	// Case and accents aside, then the bytes.
+	fold := func(a, b string) int {
+		if c := strings.Compare(strings.ToLower(a), strings.ToLower(b)); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	}
+	db := fOpen(t, ":memory:", WithCollation("fold", fold))
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(x TEXT COLLATE fold); CREATE INDEX tx ON t(x);
+		INSERT INTO t VALUES ('b'), ('B'), ('a'), ('C')`)
+	if got := fString(t, db, `SELECT group_concat(x, ',') FROM (SELECT x FROM t ORDER BY x)`); got != "a,B,b,C" {
+		t.Fatalf("order: %s", got)
+	}
+	if got := fString(t, db, `SELECT count(*) FROM t WHERE x > 'b'`); got != "1" {
+		t.Fatalf("x > 'b': %s rows", got)
+	}
+}
+
+func TestOptionsRefused(t *testing.T) {
+	newMedian := func() Aggregate { return &median{} }
+	for name, opt := range map[string]Option{
+		"aggregate without a name": WithAggregate("", 1, newMedian),
+		"nil aggregate":            WithAggregate("m", 1, nil),
+		"aggregate nArg -2":        WithAggregate("m", -2, newMedian),
+		"collation without a name": WithCollation("", strings.Compare),
+		"nil collation":            WithCollation("c", nil),
+		"zero Option":              {},
+	} {
+		if _, err := NewConnector(":memory:", opt); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }

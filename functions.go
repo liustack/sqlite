@@ -65,14 +65,21 @@ type Option struct {
 }
 
 type options struct {
-	funcs []function
+	funcs      []function
+	collations []collation
 }
 
 type function struct {
-	name  string
-	nArg  int
-	flags int
-	fn    csqlite.Func
+	name   string
+	nArg   int
+	flags  int
+	fn     csqlite.Func       // a scalar function, or
+	newAgg func() csqlite.Agg // the states of an aggregate
+}
+
+type collation struct {
+	name string
+	cmp  func(a, b string) int
 }
 
 // WithFunction makes fn the SQL function name of nArg arguments (-1 for any
@@ -80,24 +87,9 @@ type function struct {
 // name and nArg replaces an earlier one.
 func WithFunction(name string, nArg int, fn Func, flags ...FuncFlag) Option {
 	return Option{func(o *options) error {
-		switch {
-		case name == "":
-			return errors.New("sqlite: a function without a name")
-		case len(name) > maxFuncName:
-			return fmt.Errorf("sqlite: function %.20q...: the name is longer than %d bytes", name, maxFuncName)
-		case fn == nil:
-			return fmt.Errorf("sqlite: function %s is nil", name)
-		case nArg < -1 || nArg > maxFuncArgs:
-			return fmt.Errorf("sqlite: function %s: %d arguments, want -1 to %d", name, nArg, maxFuncArgs)
-		}
-		f := function{name: name, nArg: nArg}
-		for _, fl := range flags {
-			switch fl {
-			case Deterministic, DirectOnly, Innocuous:
-				f.flags |= int(fl)
-			default:
-				return fmt.Errorf("sqlite: function %s: unknown flag %#x", name, int(fl))
-			}
+		f, err := newFunction(name, nArg, fn == nil, flags)
+		if err != nil {
+			return err
 		}
 		f.fn = func(args []driver.Value) (driver.Value, error) {
 			v, err := fn(args)
@@ -107,6 +99,90 @@ func WithFunction(name string, nArg int, fn Func, flags ...FuncFlag) Option {
 			return resultValue(v)
 		}
 		o.funcs = append(o.funcs, f)
+		return nil
+	}}
+}
+
+// Aggregate is the state of one group of an aggregate function written in
+// Go. Step runs for each row of the group, with arguments as a Func gets
+// them, then Final once, with a result as a Func gives it. An error or a
+// panic in either is the error of the statement.
+type Aggregate interface {
+	Step(args []driver.Value) error
+	Final() (driver.Value, error)
+}
+
+// WithAggregate makes an aggregate function name of nArg arguments: for
+// each group, newAggregate makes a state. A group of no rows gets one too,
+// for Final alone.
+func WithAggregate(name string, nArg int, newAggregate func() Aggregate, flags ...FuncFlag) Option {
+	return Option{func(o *options) error {
+		f, err := newFunction(name, nArg, newAggregate == nil, flags)
+		if err != nil {
+			return err
+		}
+		f.newAgg = func() csqlite.Agg {
+			a := newAggregate()
+			if a == nil {
+				return nil
+			}
+			return aggResult{a}
+		}
+		o.funcs = append(o.funcs, f)
+		return nil
+	}}
+}
+
+// aggResult gives Final's result the conversions of a bound argument.
+type aggResult struct{ Aggregate }
+
+func (a aggResult) Final() (driver.Value, error) {
+	v, err := a.Aggregate.Final()
+	if err != nil {
+		return nil, err
+	}
+	return resultValue(v)
+}
+
+// newFunction checks what every function and aggregate takes.
+func newFunction(name string, nArg int, isNil bool, flags []FuncFlag) (function, error) {
+	switch {
+	case name == "":
+		return function{}, errors.New("sqlite: a function without a name")
+	case len(name) > maxFuncName:
+		return function{}, fmt.Errorf("sqlite: function %.20q...: the name is longer than %d bytes", name, maxFuncName)
+	case isNil:
+		return function{}, fmt.Errorf("sqlite: function %s is nil", name)
+	case nArg < -1 || nArg > maxFuncArgs:
+		return function{}, fmt.Errorf("sqlite: function %s: %d arguments, want -1 to %d", name, nArg, maxFuncArgs)
+	}
+	f := function{name: name, nArg: nArg}
+	for _, fl := range flags {
+		switch fl {
+		case Deterministic, DirectOnly, Innocuous:
+			f.flags |= int(fl)
+		default:
+			return function{}, fmt.Errorf("sqlite: function %s: unknown flag %#x", name, int(fl))
+		}
+	}
+	return f, nil
+}
+
+// WithCollation makes cmp the collation name, for COLLATE name in queries
+// and in the schema. cmp returns a negative number, 0 or a positive number
+// as a sorts before, with or after b, and must be a total order. SQLite has
+// no way to fail a comparison, so a panic in cmp breaks the connection it
+// ran on: the statement returns the error, and database/sql drops the
+// connection.
+func WithCollation(name string, cmp func(a, b string) int) Option {
+	return Option{func(o *options) error {
+		switch {
+		case name == "":
+			return errors.New("sqlite: a collation without a name")
+		case cmp == nil:
+			return fmt.Errorf("sqlite: collation %s is nil", name)
+		}
+		o.collations = append(o.collations, collation{name, cmp})
 		return nil
 	}}
 }
@@ -172,11 +248,22 @@ func applyOptions(own []Option) (options, string, error) {
 	return o, "", nil
 }
 
-// setUp gives a new connection the functions of the options.
+// setUp gives a new connection the functions and collations of the options.
 func (o *options) setUp(c *csqlite.Conn) error {
 	for _, f := range o.funcs {
-		if err := c.CreateFunction(f.name, f.nArg, f.flags, f.fn); err != nil {
+		var err error
+		if f.newAgg != nil {
+			err = c.CreateAggregate(f.name, f.nArg, f.flags, f.newAgg)
+		} else {
+			err = c.CreateFunction(f.name, f.nArg, f.flags, f.fn)
+		}
+		if err != nil {
 			return fmt.Errorf("sqlite: function %s: %w", f.name, err)
+		}
+	}
+	for _, cl := range o.collations {
+		if err := c.CreateCollation(cl.name, cl.cmp); err != nil {
+			return fmt.Errorf("sqlite: collation %s: %w", cl.name, err)
 		}
 	}
 	return nil
