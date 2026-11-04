@@ -119,7 +119,6 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 
 ## Not there yet
 
-- No release tag yet. `go get` takes the newest commit of `main`.
 - No loadable extensions: SQLite is built without `load_extension`.
 - No shared cache: `cache=shared` gives an error. For a memory database that all connections of a pool see, use `file:/name?vfs=memdb`.
 - Double-quoted strings are identifiers only (`SQLITE_DQS=0`, as SQLite advises): write string literals in single quotes.

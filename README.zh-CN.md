@@ -119,7 +119,6 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 
 ## 还没有的
 
-- 还没打版本标签，`go get` 拿的是 `main` 上最新的提交。
 - 没有可加载扩展：SQLite 编译时去掉了 `load_extension`。
 - 没有共享缓存：`cache=shared` 会报错。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
 - 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。
