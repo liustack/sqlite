@@ -92,6 +92,12 @@ db := sql.OpenDB(c)
 
 `sqlite.Register` gives them to every connector `sql.Open` makes after it. An error or a panic in a function fails its statement, not the connection.
 
+Common functions come ready in packages under `ext/`: [`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp) (the `REGEXP` operator, `regexp_like`, `regexp_substr`, `regexp_replace`), [`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid), [`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash) (md5, sha1, sha256, sha512, crc32) and [`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats) (variance and standard deviation). Each is one option, and `sqlite.Join` hands several over as one:
+
+```go
+sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
+```
+
 The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite do, so a program that imports one of them as well panics at start. Open the database with `sql.OpenDB(sqlite.NewConnector(dsn))` then.
 
 ## What changes for you

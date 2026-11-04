@@ -512,3 +512,20 @@ func TestCollationPanicInTx(t *testing.T) {
 		t.Fatalf("integrity_check: %s", got)
 	}
 }
+
+// Join hands several options over as one, and fails as the first bad one does.
+func TestJoin(t *testing.T) {
+	two := func([]driver.Value) (driver.Value, error) { return 2, nil }
+	db := fOpen(t, ":memory:", Join(WithFunction("one", 0, func([]driver.Value) (driver.Value, error) { return 1, nil }), WithFunction("two", 0, two)))
+	if got := fString(t, db, `SELECT one() + two()`); got != "3" {
+		t.Fatalf("one() + two() = %s", got)
+	}
+	for name, opt := range map[string]Option{
+		"a bad option inside": Join(WithFunction("ok", 0, two), WithFunction("", 0, two)),
+		"a zero Option":       Join(Option{}),
+	} {
+		if _, err := NewConnector(":memory:", opt); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
