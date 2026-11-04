@@ -32,7 +32,6 @@ const (
 	readOnlyD = OpenReadOnly | OpenMainDB
 )
 
-
 // openT opens name and fails the test unless it opens.
 func openT(t *testing.T, name string, flags int) *File {
 	t.Helper()
@@ -43,7 +42,6 @@ func openT(t *testing.T, name string, flags int) *File {
 	t.Cleanup(func() { f.Close() })
 	return f
 }
-
 
 func TestOpenMissing(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "missing.db")
@@ -58,13 +56,11 @@ func TestOpenMissing(t *testing.T) {
 	}
 }
 
-
 func TestOpenDirectory(t *testing.T) {
 	if _, _, rc := Open(t.TempDir(), mainDB); rc&0xff != CantOpen {
 		t.Errorf("Open of a directory = %d, want CantOpen", rc)
 	}
 }
-
 
 func TestOpenExclusive(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "excl")
@@ -74,7 +70,6 @@ func TestOpenExclusive(t *testing.T) {
 		t.Errorf("second exclusive Open = %d, want CantOpen", rc)
 	}
 }
-
 
 func TestDeleteOnClose(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "doc")
@@ -92,7 +87,6 @@ func TestDeleteOnClose(t *testing.T) {
 		t.Errorf("file still there after Close: %v", err)
 	}
 }
-
 
 func TestShortRead(t *testing.T) {
 	f := openT(t, filepath.Join(t.TempDir(), "short.db"), mainDB)
@@ -117,7 +111,6 @@ func TestShortRead(t *testing.T) {
 	}
 }
 
-
 func TestTruncateAndSize(t *testing.T) {
 	f := openT(t, filepath.Join(t.TempDir(), "trunc.db"), mainDB)
 	if rc := f.WriteAt(make([]byte, 8192), 0); rc != OK {
@@ -138,7 +131,6 @@ func TestTruncateAndSize(t *testing.T) {
 		t.Errorf("Size = %d, want 3000", size)
 	}
 }
-
 
 func TestSizeHint(t *testing.T) {
 	f := openT(t, filepath.Join(t.TempDir(), "hint.db"), mainDB)
@@ -165,7 +157,6 @@ func TestSizeHint(t *testing.T) {
 	}
 }
 
-
 func TestDelete(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "del")
 	os.WriteFile(name, []byte("x"), 0644)
@@ -180,7 +171,6 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-
 // lockT checks the result of a Lock or Unlock call.
 func lockT(t *testing.T, what string, got, want int) {
 	t.Helper()
@@ -189,13 +179,11 @@ func lockT(t *testing.T, what string, got, want int) {
 	}
 }
 
-
 // twoFiles opens the same database twice, as two connections would.
 func twoFiles(t *testing.T) (a, b *File, name string) {
 	name = filepath.Join(t.TempDir(), "lock.db")
 	return openT(t, name, mainDB), openT(t, name, mainDB), name
 }
-
 
 func TestLockSharedShared(t *testing.T) {
 	a, b, _ := twoFiles(t)
@@ -207,7 +195,6 @@ func TestLockSharedShared(t *testing.T) {
 	// Asking for a level already held does nothing.
 	lockT(t, "a SHARED again", a.Lock(LockShared), OK)
 }
-
 
 func TestLockReserved(t *testing.T) {
 	a, b, _ := twoFiles(t)
@@ -239,7 +226,6 @@ func TestLockReserved(t *testing.T) {
 	}
 	lockT(t, "b RESERVED", b.Lock(LockReserved), OK)
 }
-
 
 func TestLockExclusive(t *testing.T) {
 	a, b, name := twoFiles(t)
@@ -289,7 +275,6 @@ func TestLockExclusive(t *testing.T) {
 	}(), OK)
 }
 
-
 func TestLockExclusiveFromShared(t *testing.T) {
 	// A hot journal is rolled back by going from SHARED straight to
 	// EXCLUSIVE.
@@ -304,7 +289,6 @@ func TestLockExclusiveFromShared(t *testing.T) {
 	lockT(t, "a EXCLUSIVE", a.Lock(LockExclusive), OK)
 }
 
-
 func TestUnlockReleasesAll(t *testing.T) {
 	a, b, _ := twoFiles(t)
 	lockT(t, "a SHARED", a.Lock(LockShared), OK)
@@ -318,7 +302,6 @@ func TestUnlockReleasesAll(t *testing.T) {
 	lockT(t, "a unlock again", a.Unlock(LockNone), OK)
 }
 
-
 func TestCloseReleasesLocks(t *testing.T) {
 	a, b, _ := twoFiles(t)
 	lockT(t, "a SHARED", a.Lock(LockShared), OK)
@@ -331,7 +314,6 @@ func TestCloseReleasesLocks(t *testing.T) {
 	lockT(t, "b EXCLUSIVE", b.Lock(LockExclusive), OK)
 }
 
-
 func TestCloseOtherDescriptorKeepsLocks(t *testing.T) {
 	// With POSIX locks, closing any descriptor of a file drops every lock
 	// the process holds on it. Locks on open file descriptions do not.
@@ -343,7 +325,6 @@ func TestCloseOtherDescriptorKeepsLocks(t *testing.T) {
 	lockT(t, "b SHARED", b.Lock(LockShared), OK)
 	lockT(t, "b RESERVED", b.Lock(LockReserved), Busy)
 }
-
 
 func TestNoLockForJournals(t *testing.T) {
 	// As os_unix, only the main database is locked.
@@ -359,7 +340,6 @@ func TestNoLockForJournals(t *testing.T) {
 		t.Errorf("CheckReservedLock = %v, %d", r, rc)
 	}
 }
-
 
 // TestLockCounter has many goroutines, each with its own File, add one to
 // a counter in the database under an EXCLUSIVE lock. A lost update means
@@ -422,7 +402,6 @@ func TestLockCounter(t *testing.T) {
 	}
 }
 
-
 func TestHotPathAllocs(t *testing.T) {
 	a, b, _ := twoFiles(t)
 	buf := make([]byte, 4096)
@@ -452,7 +431,6 @@ func TestHotPathAllocs(t *testing.T) {
 	}
 }
 
-
 // region returns the mapped memory at addr as a byte slice. The memory is
 // not Go memory, so turning the address back into a pointer is safe. It is
 // done through a pointer to the uintptr so that vet does not flag it.
@@ -460,7 +438,6 @@ func region(addr uintptr) []byte {
 	p := *(*unsafe.Pointer)(unsafe.Pointer(&addr))
 	return unsafe.Slice((*byte)(p), shmRegionSize)
 }
-
 
 func shmMapT(t *testing.T, f *File, n int, extend bool) uintptr {
 	t.Helper()
@@ -470,7 +447,6 @@ func shmMapT(t *testing.T, f *File, n int, extend bool) uintptr {
 	}
 	return addr
 }
-
 
 func TestShmMap(t *testing.T) {
 	a, b, name := twoFiles(t)
@@ -516,7 +492,6 @@ func TestShmMap(t *testing.T) {
 	}
 }
 
-
 func TestShmDeadManSwitch(t *testing.T) {
 	a, b, name := twoFiles(t)
 	region(shmMapT(t, a, 0, true))[100] = 42
@@ -555,7 +530,6 @@ func TestShmDeadManSwitch(t *testing.T) {
 		t.Errorf("second ShmUnmap = %d", rc)
 	}
 }
-
 
 func TestShmLock(t *testing.T) {
 	a, b, _ := twoFiles(t)
@@ -606,11 +580,9 @@ func TestShmLock(t *testing.T) {
 	}
 }
 
-
 // The helper process takes the locks named in its environment, says
 // "ready" and holds them until its stdin is closed.
 const helperEnv = "VFS_TEST_HELPER_DB"
-
 
 func helper(name string) int {
 	f, _, rc := Open(name, mainDB)
@@ -647,7 +619,6 @@ func helper(name string) int {
 	io.Copy(io.Discard, os.Stdin)
 	return 0
 }
-
 
 func TestCrossProcess(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "proc.db")
@@ -705,7 +676,6 @@ func TestCrossProcess(t *testing.T) {
 	f.ShmUnmap(false)
 }
 
-
 // startHelper runs the test binary as a helper of kind env on name and
 // waits for it to say "ready". The helper ends when the test does, or
 // when stop is called.
@@ -744,4 +714,3 @@ func startHelper(t *testing.T, env, name string) (stop func()) {
 	}
 	return stop
 }
-

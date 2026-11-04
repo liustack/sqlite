@@ -31,7 +31,7 @@ func TestInteropShell(t *testing.T) {
 	for _, mode := range []string{"delete", "wal"} {
 		t.Run(mode, func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "interop.db")
-			db, err := sql.Open("sqlite", "file:"+name+"?_pragma=busy_timeout(20000)&_pragma=journal_mode("+mode+")")
+			db, err := sql.Open("sqlite", "file:"+name+"?_pragma=busy_timeout(60000)&_pragma=journal_mode("+mode+")")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,9 +40,15 @@ func TestInteropShell(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			const rows, workers = 3000, 4
+			// With the rollback journal a writer that writes without a break
+			// keeps the other out, C or Go: the shell writes for a few
+			// seconds only, less than busy_timeout, even where fsync is slow.
+			rows, workers := 3000, 4
+			if mode == "delete" {
+				rows = 300
+			}
 			var script strings.Builder
-			script.WriteString(".timeout 20000\n")
+			script.WriteString(".timeout 60000\n")
 			for i := range rows {
 				fmt.Fprintf(&script, "INSERT INTO t VALUES('shell', %d);\n", i)
 				if i%50 == 0 {
