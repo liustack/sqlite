@@ -277,3 +277,20 @@ func (o *options) setUp(c *csqlite.Conn) error {
 	}
 	return nil
 }
+
+// Join makes one Option of several, applied in order: how a package of
+// functions hands them over.
+func Join(opts ...Option) Option {
+	opts = slices.Clone(opts)
+	return Option{func(o *options) error {
+		for _, opt := range opts {
+			if opt.apply == nil {
+				return errors.New("sqlite: an Option that is not made by this package")
+			}
+			if err := opt.apply(o); err != nil {
+				return err
+			}
+		}
+		return nil
+	}}
+}
