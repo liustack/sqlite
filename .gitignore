@@ -4,3 +4,4 @@
 
 # Made by make gen and make check-*.
 /.build/
+/bench/results/

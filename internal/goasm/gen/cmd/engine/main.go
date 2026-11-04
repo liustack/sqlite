@@ -317,15 +317,15 @@ func main() {
 	tLLVM := time.Since(t0)
 
 	allow := map[string]bool{}
-	for _, h := range append(append([]string{}, gen.HostCallbacks...), gen.GeneratorCallbacks...) {
-		allow[h] = true
-	}
 	for _, e := range strings.Split(*extra, ",") {
 		allow[e] = true
 	}
 	funcs := map[string]bool{}
 	for name, def := range rep.Defined {
 		funcs[name] = true
+		if gen.IsHostCallback(name) {
+			allow[name] = true
+		}
 		if !def && !allow[name] {
 			reject(name, "object", "external reference to "+name+" outside the allow list")
 		}

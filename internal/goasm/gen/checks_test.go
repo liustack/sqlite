@@ -3,7 +3,6 @@
 package gen
 
 import (
-	"sort"
 	"strings"
 	"testing"
 )
@@ -216,16 +215,17 @@ func TestCFlagsTargets(t *testing.T) {
 	}
 }
 
-// The closed list of host callbacks is the plan's five. The one more that the
-// generator puts in by itself is on a list of its own, so that C cannot name it.
-func TestHostCallbacksList(t *testing.T) {
-	want := "host_call host_memory_grow host_now host_poll host_release"
-	got := append([]string{}, HostCallbacks...)
-	sort.Strings(got)
-	if strings.Join(got, " ") != want {
-		t.Fatalf("HostCallbacks = %v, the plan's five are %s", got, want)
+// A host callback is any function named host_*, and the pass's own two are
+// among them.
+func TestHostCallbacks(t *testing.T) {
+	for name, want := range map[string]bool{"host_read": true, "host_poll": true, "malloc": false, "hostile": false} {
+		if IsHostCallback(name) != want {
+			t.Errorf("IsHostCallback(%q) = %v", name, !want)
+		}
 	}
-	if g := strings.Join(GeneratorCallbacks, " "); g != "host_trap" {
-		t.Fatalf("GeneratorCallbacks = %v, want host_trap", GeneratorCallbacks)
+	for _, g := range GeneratorCallbacks {
+		if !IsHostCallback(g) {
+			t.Errorf("%s does not look like a host callback", g)
+		}
 	}
 }

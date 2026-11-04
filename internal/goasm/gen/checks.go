@@ -109,7 +109,7 @@ func CheckObjectData(objPath string, allow map[string]bool, writable bool) error
 					continue
 				}
 			}
-			if name != "" && !allow[name] {
+			if name != "" && !allow[name] && !IsHostCallback(name) {
 				return fmt.Errorf("external reference to %q outside the allow list", name)
 			}
 		}

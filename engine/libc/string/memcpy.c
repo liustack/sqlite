@@ -20,9 +20,9 @@
    destination aligned and the source not is what glibc picks for its loops
    (sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S). The loop is 8 loads
    and 8 stores with one counter: 19 instructions for 128 bytes on amd64, where
-   64 bytes at a time took 13 for 64. Almost all the instructions memcpy runs in
-   a React render are in this loop, since the strings that are concatenated are
-   a few KB long. A loop of 256 bytes takes all 16 SSE registers, gains 1% to 3%
+   64 bytes at a time took 13 for 64. Most of what memcpy copies in SQLite is
+   pages and records of a few KB, which go through this loop. A loop of 256
+   bytes takes all 16 SSE registers, gains 1% to 3%
    on copies of 8 KB and more and loses 10% to 50% on copies of 130 to 300 bytes,
    since its last copy is 256 bytes.
 

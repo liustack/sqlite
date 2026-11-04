@@ -1,0 +1,262 @@
+/*
+ * Copyright (c) 2026 The liustack/sqlite Authors.
+ * SPDX-License-Identifier: MIT
+ * Use of this source code is governed by the MIT license in LICENSE at the
+ * root of this repository.
+ */
+/* The operating system of SQLite: a VFS and mutexes that call the Go host
+   (host.h). Compiled after sqlite3.c in the same unit (sqlite.c), using only
+   the public API. */
+#include "host.h"
+
+/* ---- mutexes ---- */
+
+static int goMutexInit(void) { return SQLITE_OK; }
+static int goMutexEnd(void) { return SQLITE_OK; }
+static sqlite3_mutex *goMutexAlloc(int type) { return (sqlite3_mutex *)host_mutex_alloc(type); }
+static void goMutexFree(sqlite3_mutex *m) { host_mutex_free((long)m); }
+static void goMutexEnter(sqlite3_mutex *m) { host_mutex_enter((long)m); }
+static int goMutexTry(sqlite3_mutex *m) { return host_mutex_try((long)m); }
+static void goMutexLeave(sqlite3_mutex *m) { host_mutex_leave((long)m); }
+
+static const sqlite3_mutex_methods goMutexMethods = {
+    goMutexInit, goMutexEnd, goMutexAlloc, goMutexFree,
+    goMutexEnter, goMutexTry, goMutexLeave, 0, 0,
+};
+
+/* go_init installs the mutexes and starts SQLite. The host calls it once,
+   before any other function. */
+int go_init(void) {
+  int rc = sqlite3_config(SQLITE_CONFIG_MUTEX, &goMutexMethods);
+  if (rc != SQLITE_OK) return rc;
+  return sqlite3_initialize();
+}
+
+/* ---- statements for group commit ---- */
+
+/* goClassify is the authorizer the host installs on every connection. As a
+   statement is prepared, it sorts it into *flags: GO_WRITES_MAIN when it
+   changes a table of the main database, GO_PRIVATE when it is not plain DML
+   or touches something only its own connection has (another schema such as
+   temp, a write of a trigger, which may be a temporary one, or a function
+   that reads the connection's state). The driver merges a statement into another
+   connection's transaction only with GO_WRITES_MAIN and no GO_PRIVATE. */
+#define GO_WRITES_MAIN 1
+#define GO_PRIVATE 2
+
+static int isMain(const char *db) { return db && strcmp(db, "main") == 0; }
+
+static int goClassify(void *p, int op, const char *a, const char *b, const char *db, const char *trigger) {
+  int *flags = (int *)p;
+  (void)a;
+  switch (op) {
+  case SQLITE_INSERT:
+  case SQLITE_UPDATE:
+  case SQLITE_DELETE:
+    /* trigger names the trigger a write comes from, which may be a
+       temporary one. For a read it names a view or a common table
+       expression. */
+    *flags |= isMain(db) && !trigger ? GO_WRITES_MAIN : GO_PRIVATE;
+    break;
+  case SQLITE_READ:
+    /* A read of a common table expression or a subquery has no schema. */
+    if (db && !isMain(db)) *flags |= GO_PRIVATE;
+    break;
+  case SQLITE_SELECT:
+  case SQLITE_RECURSIVE:
+    break;
+  case SQLITE_FUNCTION:
+    if (sqlite3_stricmp(b, "last_insert_rowid") == 0 || sqlite3_stricmp(b, "changes") == 0 ||
+        sqlite3_stricmp(b, "total_changes") == 0)
+      *flags |= GO_PRIVATE;
+    break;
+  default:
+    *flags |= GO_PRIVATE;
+  }
+  return SQLITE_OK;
+}
+
+/* go_classify installs goClassify on db with the word it writes to. */
+int go_classify(sqlite3 *db, int *flags) { return sqlite3_set_authorizer(db, goClassify, flags); }
+
+/* ---- files ---- */
+
+typedef struct GoFile {
+  sqlite3_file base;
+  long h;        /* the Go handle */
+  int persistWal; /* SQLITE_FCNTL_PERSIST_WAL */
+  int psow;       /* SQLITE_FCNTL_POWERSAFE_OVERWRITE */
+} GoFile;
+
+#define FH(f) (((GoFile *)(f))->h)
+
+static int goClose(sqlite3_file *f) { return host_close(FH(f)); }
+
+static int goRead(sqlite3_file *f, void *buf, int n, sqlite3_int64 off) {
+  return host_read(FH(f), buf, n, off);
+}
+
+static int goWrite(sqlite3_file *f, const void *buf, int n, sqlite3_int64 off) {
+  return host_write(FH(f), buf, n, off);
+}
+
+static int goTruncate(sqlite3_file *f, sqlite3_int64 size) { return host_truncate(FH(f), size); }
+static int goSync(sqlite3_file *f, int flags) { return host_sync(FH(f), flags); }
+
+static int goFileSize(sqlite3_file *f, sqlite3_int64 *size) {
+  long long s = 0;
+  int rc = host_file_size(FH(f), &s);
+  *size = s;
+  return rc;
+}
+
+static int goLock(sqlite3_file *f, int level) { return host_lock(FH(f), level); }
+static int goUnlock(sqlite3_file *f, int level) { return host_unlock(FH(f), level); }
+static int goCheckReservedLock(sqlite3_file *f, int *res) { return host_check_reserved_lock(FH(f), res); }
+
+/* modeBit reads (arg < 0) or sets a flag of the file, as os_unix does. */
+static void modeBit(int *flag, int *arg) {
+  if (*arg < 0) {
+    *arg = *flag;
+  } else {
+    *flag = *arg != 0;
+  }
+}
+
+static int goFileControl(sqlite3_file *f, int op, void *arg) {
+  GoFile *g = (GoFile *)f;
+  switch (op) {
+  case SQLITE_FCNTL_LOCKSTATE:
+    *(int *)arg = host_lock_state(g->h);
+    return SQLITE_OK;
+  case SQLITE_FCNTL_SIZE_HINT:
+    return host_size_hint(g->h, *(sqlite3_int64 *)arg);
+  case SQLITE_FCNTL_HAS_MOVED:
+    *(int *)arg = host_has_moved(g->h);
+    return SQLITE_OK;
+  case SQLITE_FCNTL_PERSIST_WAL:
+    modeBit(&g->persistWal, (int *)arg);
+    return SQLITE_OK;
+  case SQLITE_FCNTL_POWERSAFE_OVERWRITE:
+    modeBit(&g->psow, (int *)arg);
+    return SQLITE_OK;
+  case SQLITE_FCNTL_VFSNAME:
+    *(char **)arg = sqlite3_mprintf("%s", "go");
+    return SQLITE_OK;
+  case SQLITE_FCNTL_CHUNK_SIZE:
+    host_chunk_size(g->h, *(int *)arg);
+    return SQLITE_OK;
+  }
+  return SQLITE_NOTFOUND;
+}
+
+static int goSectorSize(sqlite3_file *f) {
+  (void)f;
+  return 4096;
+}
+
+static int goDeviceCharacteristics(sqlite3_file *f) {
+  return ((GoFile *)f)->psow ? SQLITE_IOCAP_POWERSAFE_OVERWRITE : 0;
+}
+
+static int goShmMap(sqlite3_file *f, int region, int size, int extend, void volatile **p) {
+  return host_shm_map(FH(f), region, size, extend, p);
+}
+
+static int goShmLock(sqlite3_file *f, int offset, int n, int flags) {
+  return host_shm_lock(FH(f), offset, n, flags);
+}
+
+static void goShmBarrier(sqlite3_file *f) {
+  (void)f;
+  host_shm_barrier();
+}
+
+static int goShmUnmap(sqlite3_file *f, int deleteFlag) { return host_shm_unmap(FH(f), deleteFlag); }
+
+static const sqlite3_io_methods goIoMethods = {
+    2, goClose, goRead, goWrite, goTruncate, goSync, goFileSize,
+    goLock, goUnlock, goCheckReservedLock, goFileControl, goSectorSize,
+    goDeviceCharacteristics, goShmMap, goShmLock, goShmBarrier, goShmUnmap,
+    0, 0,
+};
+
+/* ---- the VFS ---- */
+
+static int goOpen(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *f, int flags, int *outFlags) {
+  GoFile *g = (GoFile *)f;
+  int out = 0;
+  long h = 0;
+  int rc;
+  (void)vfs;
+  memset(g, 0, sizeof(*g));
+  rc = host_open(name, flags, &out, &h);
+  if (rc != SQLITE_OK) return rc;
+  g->h = h;
+  /* Powersafe overwrite is on unless the URI turns it off, as in os_unix. */
+  g->psow = sqlite3_uri_boolean(name, "psow", SQLITE_POWERSAFE_OVERWRITE);
+  g->base.pMethods = &goIoMethods;
+  if (outFlags) *outFlags = out;
+  return SQLITE_OK;
+}
+
+static int goDelete(sqlite3_vfs *vfs, const char *name, int syncDir) {
+  (void)vfs;
+  return host_delete(name, syncDir);
+}
+
+static int goAccess(sqlite3_vfs *vfs, const char *name, int flags, int *res) {
+  (void)vfs;
+  return host_access(name, flags, res);
+}
+
+static int goFullPathname(sqlite3_vfs *vfs, const char *name, int n, char *out) {
+  (void)vfs;
+  return host_full_pathname(name, n, out);
+}
+
+static int goRandomness(sqlite3_vfs *vfs, int n, char *out) {
+  (void)vfs;
+  host_randomness(out, n);
+  return n;
+}
+
+static int goSleep(sqlite3_vfs *vfs, int us) {
+  (void)vfs;
+  host_sleep(us);
+  return us;
+}
+
+/* The Julian day of the Unix epoch, in milliseconds. */
+#define UNIX_EPOCH_JD_MS ((sqlite3_int64)24405875 * 8640000)
+
+static int goCurrentTimeInt64(sqlite3_vfs *vfs, sqlite3_int64 *t) {
+  (void)vfs;
+  *t = UNIX_EPOCH_JD_MS + host_now_ms();
+  return SQLITE_OK;
+}
+
+static int goCurrentTime(sqlite3_vfs *vfs, double *t) {
+  sqlite3_int64 ms;
+  goCurrentTimeInt64(vfs, &ms);
+  *t = ms / 86400000.0;
+  return SQLITE_OK;
+}
+
+static int goGetLastError(sqlite3_vfs *vfs, int n, char *out) {
+  (void)vfs;
+  (void)n;
+  (void)out;
+  return 0;
+}
+
+static sqlite3_vfs goVfs = {
+    2, sizeof(GoFile), 512, 0, "go", 0,
+    goOpen, goDelete, goAccess, goFullPathname,
+    0, 0, 0, 0,
+    goRandomness, goSleep, goCurrentTime, goGetLastError, goCurrentTimeInt64,
+    0, 0, 0,
+};
+
+int sqlite3_os_init(void) { return sqlite3_vfs_register(&goVfs, 1); }
+int sqlite3_os_end(void) { return SQLITE_OK; }
