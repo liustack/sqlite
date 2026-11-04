@@ -23,8 +23,9 @@
 #define SQLITE_DEFAULT_MEMSTATUS 0
 #define SQLITE_OMIT_DEPRECATED 1
 #define SQLITE_OMIT_SHARED_CACHE 1
-/* No time zone database in the C: localtime and utc are left out. */
-#define SQLITE_OMIT_LOCALTIME 1
+/* The localtime and utc modifiers: localtime_r (os.c) asks the Go host,
+   which uses time.Local. */
+#define HAVE_LOCALTIME_R 1
 
 #include "sqlite3.c"
 #include "os.c"

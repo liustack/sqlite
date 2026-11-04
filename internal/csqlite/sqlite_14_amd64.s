@@ -14680,7 +14680,7 @@ TEXT ·whereLoopAddBtree(SB), $256-32
 	BYTE $0x83
 	BYTE $0xe6
 	BYTE $0x07
-	LEAQ ·engine_rodata+63776(SB), AX
+	LEAQ ·engine_rodata+63808(SB), AX
 	QUAD $0xd5c183700c034266
 	QUAD $0xffee328e0fdb8545
 	QUAD $0xcb014d38db6b4dff

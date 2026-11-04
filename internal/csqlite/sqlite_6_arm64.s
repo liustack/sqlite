@@ -13114,7 +13114,7 @@ TEXT ·sqlite3InitOne(SB), $200-48
 	WORD $0xf9405feb
 	WORD $0x7101901f
 	WORD $0x54002121
-	MOVD $·engine_rodata+62855(SB), R13
+	MOVD $·engine_rodata+62895(SB), R13
 	WORD $0x1400011a
 	WORD $0xf9404feb
 	WORD $0x2a1f03ef
@@ -13177,7 +13177,7 @@ TEXT ·sqlite3InitOne(SB), $200-48
 	WORD $0xf9405feb
 	WORD $0x7108101f
 	WORD $0x54001901
-	MOVD $·engine_rodata+62833(SB), R13
+	MOVD $·engine_rodata+62873(SB), R13
 	WORD $0x140000d9
 	WORD $0x39419189
 	WORD $0x12000508
@@ -13379,7 +13379,7 @@ TEXT ·sqlite3InitOne(SB), $200-48
 	WORD $0x72a0282a
 	WORD $0xea0a013f
 	WORD $0x54005f00
-	MOVD $·engine_rodata+62819(SB), R13
+	MOVD $·engine_rodata+62859(SB), R13
 	WORD $0x14000009
 	WORD $0xf9403fee
 	WORD $0xa94b53ed
@@ -13387,7 +13387,7 @@ TEXT ·sqlite3InitOne(SB), $200-48
 	WORD $0x17fffe85
 	WORD $0xf94067ec
 	WORD $0xf9405feb
-	MOVD $·engine_rodata+62877(SB), R13
+	MOVD $·engine_rodata+62917(SB), R13
 	WORD $0xf24009a8
 	WORD $0xaa0d03ef
 	WORD $0xb900a3e0
@@ -14108,7 +14108,7 @@ TEXT ·sqlite3InitOne(SB), $200-48
 	WORD $0x17ffffb4
 	MOVD $·engine_rodata+9664(SB), R21
 	WORD $0x1400007f
-	MOVD $·engine_rodata+62112(SB), R9
+	MOVD $·engine_rodata+62152(SB), R9
 	WORD $0xf868592d
 	WORD $0x17fffd11
 	WORD $0x92400dc8
@@ -18994,7 +18994,7 @@ TEXT ·sqlite3_declare_vtab(SB), $104-32
 	WORD $0xb4000069
 	WORD $0xb9401928
 	WORD $0x340009c8
-	MOVD $·engine_rodata+63183(SB), R9
+	MOVD $·engine_rodata+63223(SB), R9
 	WORD $0x528fcfc8
 	MOVD $·engine_rodata+5265(SB), R22
 	WORD $0x72a00048
@@ -19032,7 +19032,7 @@ TEXT ·sqlite3_declare_vtab(SB), $104-32
 	WORD $0xf9000bf5
 	CALL (R9)
 	WORD $0xf9402ff7
-	MOVD $·engine_rodata+63183(SB), R8
+	MOVD $·engine_rodata+63223(SB), R8
 	MOVD $·engine_rodata+5265(SB), R22
 	WORD $0x528002b5
 	WORD $0xf90002e8
@@ -20496,7 +20496,7 @@ TEXT ·sqlite3RunParser(SB), $184-32
 	WORD $0x34fff7e8
 	WORD $0x7101911f
 	WORD $0x54001101
-	MOVD $·engine_rodata+62855(SB), R11
+	MOVD $·engine_rodata+62895(SB), R11
 	WORD $0x14000090
 	WORD $0xf9401528
 	WORD $0x9114c194
@@ -20527,7 +20527,7 @@ TEXT ·sqlite3RunParser(SB), $184-32
 	WORD $0x54fff3e0
 	WORD $0x7108111f
 	WORD $0x54000d01
-	MOVD $·engine_rodata+62833(SB), R11
+	MOVD $·engine_rodata+62873(SB), R11
 	WORD $0x14000070
 	WORD $0xb9402ec8
 	WORD $0x71000508
@@ -20631,7 +20631,7 @@ TEXT ·sqlite3RunParser(SB), $184-32
 	WORD $0x72a0282a
 	WORD $0xea0a013f
 	WORD $0x54001f00
-	MOVD $·engine_rodata+62819(SB), R11
+	MOVD $·engine_rodata+62859(SB), R11
 	WORD $0xf2400968
 	WORD $0xaa0b03ef
 	WORD $0x54000560
@@ -20877,7 +20877,7 @@ TEXT ·sqlite3RunParser(SB), $184-32
 	WORD $0xad3f0121
 	WORD $0xad3e0d22
 	WORD $0x14000047
-	MOVD $·engine_rodata+62112(SB), R9
+	MOVD $·engine_rodata+62152(SB), R9
 	WORD $0xf868792b
 	WORD $0x17ffff08
 	WORD $0x92400c08
@@ -24067,7 +24067,7 @@ TEXT ·sqlite3EndTable(SB), $344-48
 	WORD $0x540047e1
 	WORD $0x79406ae8
 	WORD $0xf94077e9
-	MOVD $·engine_rodata+63324(SB), R11
+	MOVD $·engine_rodata+63364(SB), R11
 	WORD $0x0b483d48
 	WORD $0x531e750c
 	WORD $0x7100219f
@@ -24099,7 +24099,7 @@ TEXT ·sqlite3EndTable(SB), $344-48
 	WORD $0xf90007f4
 	BL ·host_poll(SB)
 	WORD $0xa95457f7
-	MOVD $·engine_rodata+63324(SB), R11
+	MOVD $·engine_rodata+63364(SB), R11
 	WORD $0xf9408bec
 	WORD $0xb94133ea
 	WORD $0xf940afee
@@ -24127,7 +24127,7 @@ TEXT ·sqlite3EndTable(SB), $344-48
 	WORD $0xf90007f4
 	BL ·host_poll(SB)
 	WORD $0xa95457f7
-	MOVD $·engine_rodata+63324(SB), R11
+	MOVD $·engine_rodata+63364(SB), R11
 	WORD $0xf9408bec
 	WORD $0xb94133ea
 	WORD $0xf940afee
@@ -24176,7 +24176,7 @@ TEXT ·sqlite3EndTable(SB), $344-48
 	WORD $0xf940afee
 	WORD $0xa9502bef
 	WORD $0xa95457f7
-	MOVD $·engine_rodata+63324(SB), R11
+	MOVD $·engine_rodata+63364(SB), R11
 	WORD $0x926799c8
 	WORD $0xf9407bf0
 	WORD $0xb94113ed
@@ -24212,7 +24212,7 @@ TEXT ·sqlite3EndTable(SB), $344-48
 	WORD $0xf940afee
 	WORD $0xa95457f7
 	WORD $0xf94087ea
-	MOVD $·engine_rodata+63324(SB), R11
+	MOVD $·engine_rodata+63364(SB), R11
 	WORD $0xb94113ed
 	WORD $0x926799c8
 	WORD $0xf9409bec
@@ -24239,7 +24239,7 @@ TEXT ·sqlite3EndTable(SB), $344-48
 	WORD $0xf940afee
 	WORD $0xa95457f7
 	WORD $0xf94087ea
-	MOVD $·engine_rodata+63324(SB), R11
+	MOVD $·engine_rodata+63364(SB), R11
 	WORD $0xb94113ed
 	WORD $0x926799c8
 	WORD $0xf9409bec
@@ -24263,7 +24263,7 @@ TEXT ·sqlite3EndTable(SB), $344-48
 	WORD $0xf90007f4
 	BL ·host_poll(SB)
 	WORD $0xa95457f7
-	MOVD $·engine_rodata+63324(SB), R11
+	MOVD $·engine_rodata+63364(SB), R11
 	WORD $0xf9409bec
 	WORD $0xf940afee
 	WORD $0x17ffff7e

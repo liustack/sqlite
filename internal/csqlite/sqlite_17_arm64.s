@@ -10080,7 +10080,7 @@ TEXT ·sqlite3LogEst(SB), NOSPLIT, $40-24
 	WORD $0xb9401fea
 	WORD $0x17ffffea
 	WORD $0x92400aa8
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080148
 	WORD $0x51002908
@@ -11768,7 +11768,7 @@ TEXT ·whereClauseInsert(SB), NOSPLIT, $136-40
 	WORD $0xf9403ff5
 	WORD $0x17ffffe0
 	WORD $0x924009a8
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080168
 	WORD $0x51046108
@@ -12750,7 +12750,7 @@ TEXT ·wherePathSolver(SB), $344-24
 	WORD $0xa94bd7ef
 	WORD $0x17ffffd0
 	WORD $0x92400928
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080328
 	WORD $0x51002908
@@ -12921,7 +12921,7 @@ TEXT ·wherePathSolver(SB), $344-24
 	WORD $0xa94bd7ef
 	WORD $0x17ffffd0
 	WORD $0x92400928
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080288
 	WORD $0x51013108
@@ -13062,7 +13062,7 @@ TEXT ·wherePathSolver(SB), $344-24
 	WORD $0xa94bd7ef
 	WORD $0x17ffffd0
 	WORD $0x92400a88
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080148
 	WORD $0x5100ad08
@@ -14695,7 +14695,7 @@ TEXT ·whereLoopAddBtreeIndex(SB), $376-48
 	WORD $0xf940afed
 	WORD $0x17ffffe7
 	WORD $0x92400968
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080148
 	WORD $0x5100ad08
@@ -15676,7 +15676,7 @@ TEXT ·whereLoopAddBtreeIndex(SB), $376-48
 	WORD $0xf940afed
 	WORD $0x17ffffe5
 	WORD $0x92400968
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080148
 	WORD $0x51002908
@@ -15764,7 +15764,7 @@ TEXT ·whereLoopAddBtreeIndex(SB), $376-48
 	WORD $0xf940afed
 	WORD $0x17ffffe1
 	WORD $0x92400988
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080168
 	WORD $0x5100ad08

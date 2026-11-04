@@ -68,6 +68,7 @@ A C function `host_x` declared in `engine/host.h` becomes a call of the Go funct
 - **Memory.** `malloc`, `realloc` and `free` are Go: size classes up to 256 KiB cut from 4 MiB mmap arenas, a mapping of its own above that. The garbage collector never sees SQLite's memory.
 - **Threads.** SQLite runs in multi-thread mode: connections on many goroutines at once, each used by one at a time. `engine/os.c` installs mutexes that are Go `sync.Mutex` values (`SQLITE_CONFIG_MUTEX`, since SQLite 3.54 has no compile option for it).
 - **Files.** `engine/os.c` is the VFS (named `go`). Each method calls `internal/vfs`.
+- **Local time.** The `localtime` and `utc` modifiers call `localtime_r` in `engine/os.c`, which asks Go: the zone is `time.Local` (the `TZ` variable, or `/etc/localtime`). A program in an image without zone files gets UTC unless it imports `time/tzdata`.
 
 ## One writer per file
 

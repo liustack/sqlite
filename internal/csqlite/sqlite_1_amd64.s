@@ -8499,7 +8499,7 @@ TEXT ·sqlite3_randomness(SB), $208-24
 	BYTE $0x48
 	BYTE $0x29
 	BYTE $0xca
-	ADDQ ·engine_rodata+65544(SB), DX
+	ADDQ ·engine_rodata+65552(SB), DX
 	QUAD $0x6f0ff300000080b9
 	QUAD $0x0a4c6f0ff3d00a44
 	QUAD $0xf3f00a546f0ff3e0
@@ -9839,7 +9839,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $96-24
 	QUAD $0x4500000180888b49
 	BYTE $0x31
 	BYTE $0xd2
-	LEAQ ·engine_rodata+63792(SB), R11
+	LEAQ ·engine_rodata+63824(SB), R11
 	LEAQ ·engine_rodata+1392(SB), BX
 	LEAQ ·engine_rodata+656(SB), R14
 	QUAD $0x000105840fed854d
@@ -9868,7 +9868,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $96-24
 	BYTE $0x18
 	LEAQ ·engine_rodata+656(SB), R14
 	LEAQ ·engine_rodata+1392(SB), BX
-	LEAQ ·engine_rodata+63792(SB), R11
+	LEAQ ·engine_rodata+63824(SB), R11
 	QUAD $0x4c8b4c3024548b4c
 	QUAD $0x482024448b4c2824
 	QUAD $0x24748b4850247c8b
@@ -9879,7 +9879,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $96-24
 	QUAD $0xd039d2b60fc03130
 	QUAD $0xf60f04b60f430f75
 	QUAD $0x000092840f461804
-	QUAD $0x2cfa8349c2ff4900
+	QUAD $0x2bfa8349c2ff4900
 	QUAD $0xff4800000081840f
 	QUAD $0xfed98f0fc98548c9
 	QUAD $0x4c582464894cffff
@@ -9896,7 +9896,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $96-24
 	CALL ·host_poll(SB)
 	LEAQ ·engine_rodata+656(SB), R14
 	LEAQ ·engine_rodata+1392(SB), BX
-	LEAQ ·engine_rodata+63792(SB), R11
+	LEAQ ·engine_rodata+63824(SB), R11
 	QUAD $0x4c8b4c3024548b4c
 	QUAD $0x482024448b4c2824
 	QUAD $0x24748b4850247c8b
@@ -10205,13 +10205,13 @@ TEXT ·jsonSetFunc(SB), $96-32
 	QUAD $0x0167850f01c6f641
 	BYTE $0x00
 	BYTE $0x00
-	LEAQ ·engine_rodata+61980(SB), CX
+	LEAQ ·engine_rodata+62012(SB), CX
 	QUAD $0x49c8014881046348
 	QUAD $0x1024448d49240489
 	QUAD $0x6c894c5024448948
 	BYTE $0x24
 	BYTE $0x40
-	LEAQ ·engine_rodata+62019(SB), R13
+	LEAQ ·engine_rodata+62051(SB), R13
 	QUAD $0x894cc48949e6894d
 	QUAD $0x4c08246c894c2424
 	BYTE $0x89
@@ -10303,7 +10303,7 @@ TEXT ·jsonSetFunc(SB), $96-32
 	CALL AX
 	BYTE $0xeb
 	BYTE $0x2c
-	LEAQ ·engine_rodata+62016(SB), CX
+	LEAQ ·engine_rodata+62048(SB), CX
 	QUAD $0x10c48349083cb60f
 	QUAD $0x246c894c2424894c
 	QUAD $0x894c102474894c08
@@ -10380,7 +10380,7 @@ TEXT ·jsonArrayLengthFunc(SB), $96-32
 	QUAD $0x8d48402444894824
 	BYTE $0x40
 	BYTE $0x01
-	LEAQ ·engine_rodata+62063(SB), R15
+	LEAQ ·engine_rodata+62095(SB), R15
 	QUAD $0x24648b4cf8440f4c
 	QUAD $0x31f63145d5894950
 	QUAD $0x6c894c2424894cff
@@ -12216,7 +12216,7 @@ TEXT ·jsonObjectFunc(SB), $128-32
 	QUAD $0x0090c68148006d8b
 	BYTE $0x00
 	BYTE $0x00
-	LEAQ ·engine_rodata+62065(SB), R14
+	LEAQ ·engine_rodata+62097(SB), R14
 	QUAD $0xffffc7c749f48949
 	QUAD $0x4800000001bfffff
 	QUAD $0x894cffffffffc6c7
@@ -12236,7 +12236,7 @@ TEXT ·jsonObjectFunc(SB), $128-32
 	BYTE $0x4c
 	BYTE $0x8b
 	BYTE $0x28
-	LEAQ ·engine_rodata+62116(SB), R14
+	LEAQ ·engine_rodata+62148(SB), R14
 	QUAD $0xbfffffffffc7c749
 	QUAD $0xffc6c74800000001
 	QUAD $0x4c2424894cffffff
@@ -12769,7 +12769,7 @@ TEXT ·jsonPrettyFunc(SB), $96-32
 	QUAD $0x031ce9c889480000
 	BYTE $0x00
 	BYTE $0x00
-	LEAQ ·engine_rodata+62150(SB), AX
+	LEAQ ·engine_rodata+62182(SB), AX
 	QUAD $0x4100000098868948
 	QUAD $0xa68d4c00000004b8
 	QUAD $0xa0868944000000b0
@@ -12984,7 +12984,7 @@ TEXT ·jsonReplaceFunc(SB), $96-32
 	BYTE $0x6c
 	BYTE $0x24
 	BYTE $0x40
-	LEAQ ·engine_rodata+62019(SB), R13
+	LEAQ ·engine_rodata+62051(SB), R13
 	QUAD $0x894cc48949e6894d
 	QUAD $0x4c08246c894c2424
 	BYTE $0x89
@@ -13366,7 +13366,7 @@ TEXT ·jsonValidFunc(SB), $112-32
 	BYTE $0x83
 	BYTE $0xc4
 	BYTE $0x50
-	LEAQ ·engine_rodata+62161(SB), R14
+	LEAQ ·engine_rodata+62193(SB), R14
 	QUAD $0xbfffffffffc7c749
 	QUAD $0xffc6c74800000001
 	QUAD $0x4c2424894cffffff
@@ -13929,7 +13929,7 @@ TEXT ·jsonObjectStep(SB), $96-32
 	QUAD $0x4901508d48084d8b
 	QUAD $0xeb3a0104c6185589
 	BYTE $0x4d
-	LEAQ ·engine_rodata+62063(SB), R14
+	LEAQ ·engine_rodata+62095(SB), R14
 	QUAD $0x000001bf41f58949
 	QUAD $0x6c894c2424894c00
 	QUAD $0x4c102474894c0824
@@ -14020,13 +14020,13 @@ TEXT ·jsonObjectCompute(SB), $128-24
 	BYTE $0x00
 	BYTE $0x00
 	BYTE $0x00
-	LEAQ ·engine_rodata+62225(SB), R14
+	LEAQ ·engine_rodata+62257(SB), R14
 	QUAD $0x000002bf41c58949
 	QUAD $0xd0e900000001bf00
 	QUAD $0x0090a08d4d000001
 	BYTE $0x00
 	BYTE $0x00
-	LEAQ ·engine_rodata+62222(SB), R14
+	LEAQ ·engine_rodata+62254(SB), R14
 	QUAD $0x000002bf41c58949
 	QUAD $0x894c602444894800
 	QUAD $0x4c08246c894c2424
@@ -14097,7 +14097,7 @@ TEXT ·jsonObjectCompute(SB), $128-24
 	BYTE $0x00
 	BYTE $0x00
 	BYTE $0x00
-	LEAQ ·engine_rodata+62224(SB), R14
+	LEAQ ·engine_rodata+62256(SB), R14
 	QUAD $0x000001bf41c58949
 	QUAD $0x24894cf631ff3100
 	QUAD $0x894c08246c894c24
@@ -18461,7 +18461,7 @@ TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $128-40
 	QUAD $0x72000000c0f98148
 	QUAD $0xf8ba04eec1ce891a
 	QUAD $0x0b740ffe83ffffff
-	LEAQ ·engine_rodata+65456(SB), DX
+	LEAQ ·engine_rodata+65464(SB), DX
 	QUAD $0x000000bed0b2548b
 	QUAD $0x0000006c2444c700
 	QUAD $0xfb8139720cfb8300
@@ -19151,7 +19151,7 @@ TEXT ·jsonAppendSqlValue(SB), $144-24
 	QUAD $0x4c000000012440c7
 	BYTE $0x8b
 	BYTE $0x28
-	LEAQ ·engine_rodata+61950(SB), R14
+	LEAQ ·engine_rodata+61982(SB), R14
 	QUAD $0xbfffffffffc7c749
 	QUAD $0xffc6c74800000001
 	QUAD $0x4c2424894cffffff
@@ -21667,7 +21667,7 @@ TEXT ·jsonArrayCompute(SB), $80-24
 	BYTE $0x00
 	BYTE $0x00
 	BYTE $0x00
-	LEAQ ·engine_rodata+62219(SB), R14
+	LEAQ ·engine_rodata+62251(SB), R14
 	QUAD $0xc589494824648b4c
 	QUAD $0x01bf00000002bf41
 	QUAD $0x000000d7e9000000
@@ -21703,7 +21703,7 @@ TEXT ·jsonArrayCompute(SB), $80-24
 	BYTE $0x01
 	BYTE $0xeb
 	BYTE $0x3b
-	LEAQ ·engine_rodata+62218(SB), R14
+	LEAQ ·engine_rodata+62250(SB), R14
 	QUAD $0xc589494824648b4c
 	QUAD $0xff3100000001bf41
 	QUAD $0x894c2424894cf631

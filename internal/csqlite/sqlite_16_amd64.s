@@ -6498,7 +6498,7 @@ TEXT ·computeLimitRegisters(SB), $176-32
 	QUAD $0x0000008824848b00
 	QUAD $0xe18341ffffff5be9
 	BYTE $0x06
-	LEAQ ·engine_rodata+63776(SB), AX
+	LEAQ ·engine_rodata+63808(SB), AX
 	QUAD $0x83d2294448140342
 	QUAD $0x708e0fd33966ecc2
 	QUAD $0x450028ba66000004
@@ -6531,7 +6531,7 @@ TEXT ·computeLimitRegisters(SB), $176-32
 	BYTE $0x83
 	BYTE $0xe1
 	BYTE $0x07
-	LEAQ ·engine_rodata+63776(SB), CX
+	LEAQ ·engine_rodata+63808(SB), CX
 	QUAD $0xf6c0834904034266
 	QUAD $0x0003ad8e0fc33966
 	QUAD $0xf881410028ba6600
@@ -6590,7 +6590,7 @@ TEXT ·computeLimitRegisters(SB), $176-32
 	BYTE $0x83
 	BYTE $0xe0
 	BYTE $0x07
-	LEAQ ·engine_rodata+63776(SB), AX
+	LEAQ ·engine_rodata+63808(SB), AX
 	QUAD $0xf6c2834014034266
 	QUAD $0x40054f8002578966
 	QUAD $0x87894800000202e9
@@ -7643,7 +7643,7 @@ TEXT ·multiSelectByMerge(SB), $304-40
 	BYTE $0x0f
 	BYTE $0xb6
 	BYTE $0xc0
-	LEAQ ·engine_rodata+65504(SB), CX
+	LEAQ ·engine_rodata+65512(SB), CX
 	BYTE $0x48
 	BYTE $0x8b
 	BYTE $0x04

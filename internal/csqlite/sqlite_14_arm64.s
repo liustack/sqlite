@@ -7732,7 +7732,7 @@ TEXT ·computeLimitRegisters(SB), $152-32
 	WORD $0xf9404ff4
 	WORD $0x17ffffe5
 	WORD $0x924009e8
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b0801c8
 	WORD $0x51002908
@@ -7766,7 +7766,7 @@ TEXT ·computeLimitRegisters(SB), $152-32
 	WORD $0xf9404ff4
 	WORD $0x17ffffe9
 	WORD $0x927f05e8
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b0801c8
 	WORD $0x51005108
@@ -7824,7 +7824,7 @@ TEXT ·computeLimitRegisters(SB), $152-32
 	WORD $0xf9404ff4
 	WORD $0x17ffffe9
 	WORD $0x924009a8
-	MOVD $·engine_rodata+63324(SB), R9
+	MOVD $·engine_rodata+63364(SB), R9
 	WORD $0x78687928
 	WORD $0x0b080148
 	WORD $0x51002908
@@ -9421,7 +9421,7 @@ TEXT ·multiSelectByMerge(SB), $344-40
 	WORD $0xb90081bf
 	WORD $0x540000c8
 	WORD $0x92401d08
-	MOVD $·engine_rodata+65056(SB), R9
+	MOVD $·engine_rodata+65072(SB), R9
 	WORD $0xf8687928
 	WORD $0x14000003
 	MOVD $·engine_rodata+36210(SB), R8

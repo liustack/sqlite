@@ -82,6 +82,21 @@ func host_now_ms(sp uintptr) uintptr {
 	return uintptr(time.Now().UnixMilli())
 }
 
+// host_localtime writes the fields of struct tm for Unix time t in
+// time.Local (engine/host.h).
+func host_localtime(sp, t, out uintptr) {
+	defer failQuiet(sp)
+	lt := time.Unix(int64(t), 0).In(time.Local)
+	isDST := 0
+	if lt.IsDST() {
+		isDST = 1
+	}
+	for i, v := range [9]int{lt.Second(), lt.Minute(), lt.Hour(), lt.Day(), int(lt.Month()) - 1,
+		lt.Year() - 1900, int(lt.Weekday()), lt.YearDay() - 1, isDST} {
+		putInt(out+uintptr(4*i), v)
+	}
+}
+
 func host_close(sp, f uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
 	r := files.get(f).Close()

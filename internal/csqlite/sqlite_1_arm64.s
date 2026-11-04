@@ -13346,7 +13346,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $88-24
 	WORD $0x4b0d0168
 	WORD $0x1200750e
 	WORD $0xaa1f03ef
-	MOVD $·engine_rodata+63344(SB), R16
+	MOVD $·engine_rodata+63384(SB), R16
 	MOVD $·engine_rodata+1349(SB), R17
 	WORD $0x528008d3
 	WORD $0x92679a88
@@ -13393,7 +13393,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $88-24
 	MOVD $·engine_rodata+1349(SB), R17
 	WORD $0xb9401ff8
 	WORD $0xf9401bef
-	MOVD $·engine_rodata+63344(SB), R16
+	MOVD $·engine_rodata+63384(SB), R16
 	WORD $0xb9403bee
 	WORD $0xf940c108
 	MOVD $·engine_rodata+620(SB), R12
@@ -13408,7 +13408,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $88-24
 	WORD $0x6a13013f
 	WORD $0x54000360
 	WORD $0x910005ef
-	WORD $0xf100b1ff
+	WORD $0xf100adff
 	WORD $0x540002c0
 	WORD $0xd1000508
 	WORD $0xf100011f
@@ -13425,7 +13425,7 @@ TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $88-24
 	WORD $0xb9403bee
 	MOVD $·engine_rodata+1349(SB), R17
 	WORD $0xf9402ff4
-	MOVD $·engine_rodata+63344(SB), R16
+	MOVD $·engine_rodata+63384(SB), R16
 	MOVD $·engine_rodata+620(SB), R12
 	WORD $0x17ffffac
 	WORD $0x2a1f03e0
@@ -13785,7 +13785,7 @@ TEXT ·jsonSetFunc(SB), $104-32
 	WORD $0xf9400508
 	WORD $0xd3420d08
 	WORD $0x37000bb6
-	MOVD $·engine_rodata+61540(SB), R9
+	MOVD $·engine_rodata+61580(SB), R9
 	WORD $0xaa1403f6
 	WORD $0xf90037f4
 	WORD $0xb8a87928
@@ -13794,7 +13794,7 @@ TEXT ·jsonSetFunc(SB), $104-32
 	WORD $0xf8010528
 	WORD $0xaa0903f4
 	WORD $0xa904a7f5
-	MOVD $·engine_rodata+61579(SB), R21
+	MOVD $·engine_rodata+61619(SB), R21
 	WORD $0xf90007f4
 	WORD $0xf9000bf5
 	WORD $0xf9000ff6
@@ -13868,7 +13868,7 @@ TEXT ·jsonSetFunc(SB), $104-32
 	WORD $0xf9000bf5
 	CALL (R9)
 	WORD $0x1400000b
-	MOVD $·engine_rodata+61576(SB), R9
+	MOVD $·engine_rodata+61616(SB), R9
 	WORD $0x91004294
 	WORD $0x38686938
 	WORD $0xf90007f4
@@ -13969,7 +13969,7 @@ TEXT ·jsonArrayLengthFunc(SB), $104-32
 	WORD $0xf9402beb
 	WORD $0xb40004a0
 	WORD $0xaa0003e8
-	MOVD $·engine_rodata+61623(SB), R10
+	MOVD $·engine_rodata+61663(SB), R10
 	WORD $0xf94037f4
 	WORD $0x38401509
 	WORD $0xaa0b03f5
@@ -16147,7 +16147,7 @@ TEXT ·jsonObjectFunc(SB), $120-32
 	WORD $0xaa1503e9
 	WORD $0xf94002b5
 	WORD $0x52800028
-	MOVD $·engine_rodata+61625(SB), R22
+	MOVD $·engine_rodata+61665(SB), R22
 	WORD $0x91024174
 	WORD $0x92800017
 	WORD $0x52800038
@@ -16164,7 +16164,7 @@ TEXT ·jsonObjectFunc(SB), $120-32
 	WORD $0xaa1503e9
 	WORD $0xf94002b5
 	WORD $0x52800028
-	MOVD $·engine_rodata+61676(SB), R22
+	MOVD $·engine_rodata+61716(SB), R22
 	WORD $0x91024174
 	WORD $0x92800017
 	WORD $0x52800038
@@ -16783,7 +16783,7 @@ TEXT ·jsonPrettyFunc(SB), $88-32
 	WORD $0xf90007f4
 	BL ·host_poll(SB)
 	WORD $0x17fffff5
-	MOVD $·engine_rodata+61710(SB), R8
+	MOVD $·engine_rodata+61750(SB), R8
 	WORD $0xf9004d68
 	WORD $0x52800088
 	WORD $0xb900a168
@@ -17010,7 +17010,7 @@ TEXT ·jsonReplaceFunc(SB), $104-32
 	WORD $0xaa1403f6
 	WORD $0xf8010528
 	WORD $0xa904a7f5
-	MOVD $·engine_rodata+61579(SB), R21
+	MOVD $·engine_rodata+61619(SB), R21
 	WORD $0xf90037f4
 	WORD $0xaa0903f4
 	WORD $0xf90007f4
@@ -17322,7 +17322,7 @@ TEXT ·jsonValidFunc(SB), $104-32
 	WORD $0x54000263
 	WORD $0xf9400155
 	WORD $0x52800028
-	MOVD $·engine_rodata+61721(SB), R22
+	MOVD $·engine_rodata+61761(SB), R22
 	WORD $0x91014294
 	WORD $0x92800017
 	WORD $0x52800038
@@ -18176,7 +18176,7 @@ TEXT ·jsonObjectStep(SB), $104-32
 	WORD $0x5280074a
 	WORD $0x3828692a
 	WORD $0x14000012
-	MOVD $·engine_rodata+61623(SB), R22
+	MOVD $·engine_rodata+61663(SB), R22
 	WORD $0xaa0003f5
 	WORD $0x52800037
 	WORD $0xf90007f4
@@ -18275,13 +18275,13 @@ TEXT ·jsonObjectCompute(SB), $136-24
 	WORD $0xf9403fe9
 	WORD $0xb94073ea
 	WORD $0x37200f2a
-	MOVD $·engine_rodata+61785(SB), R22
+	MOVD $·engine_rodata+61825(SB), R22
 	WORD $0x91024134
 	WORD $0xaa0803f5
 	WORD $0x52800057
 	WORD $0x52800038
 	WORD $0x14000078
-	MOVD $·engine_rodata+61782(SB), R22
+	MOVD $·engine_rodata+61822(SB), R22
 	WORD $0x910241b4
 	WORD $0xaa0003f5
 	WORD $0x52800057
@@ -18393,7 +18393,7 @@ TEXT ·jsonObjectCompute(SB), $136-24
 	WORD $0xf9403fed
 	WORD $0xf94047f5
 	WORD $0x17ffffc2
-	MOVD $·engine_rodata+61784(SB), R22
+	MOVD $·engine_rodata+61824(SB), R22
 	WORD $0x91024134
 	WORD $0xaa0803f5
 	WORD $0x52800037
@@ -23506,7 +23506,7 @@ TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $120-40
 	WORD $0x710032ff
 	WORD $0x54fffea3
 	WORD $0x14000007
-	MOVD $·engine_rodata+65008(SB), R10
+	MOVD $·engine_rodata+65024(SB), R10
 	WORD $0x8b090949
 	WORD $0xb85d0129
 	WORD $0x710032ff
@@ -24438,7 +24438,7 @@ TEXT ·jsonAppendSqlValue(SB), $136-24
 	WORD $0x35002be8
 	WORD $0xf9400128
 	WORD $0x52800029
-	MOVD $·engine_rodata+61510(SB), R22
+	MOVD $·engine_rodata+61550(SB), R22
 	WORD $0x91014154
 	WORD $0x92800017
 	WORD $0x52800038
@@ -27856,7 +27856,7 @@ TEXT ·jsonArrayCompute(SB), $104-24
 	WORD $0xb94057e9
 	WORD $0x37200669
 	WORD $0xf9402ff4
-	MOVD $·engine_rodata+61779(SB), R22
+	MOVD $·engine_rodata+61819(SB), R22
 	WORD $0xaa0803f5
 	WORD $0x52800057
 	WORD $0x52800038
@@ -27903,7 +27903,7 @@ TEXT ·jsonArrayCompute(SB), $104-24
 	WORD $0x39008109
 	WORD $0x1400000f
 	WORD $0xf9402ff4
-	MOVD $·engine_rodata+61778(SB), R22
+	MOVD $·engine_rodata+61818(SB), R22
 	WORD $0xaa0803f5
 	WORD $0x52800037
 	WORD $0x2a1f03f8

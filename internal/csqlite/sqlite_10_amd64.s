@@ -16184,25 +16184,25 @@ TEXT ·attachFunc(SB), $160-32
 	BYTE $0x64
 	BYTE $0x75
 	BYTE $0x1b
-	LEAQ ·engine_rodata+63303(SB), R14
+	LEAQ ·engine_rodata+63335(SB), R14
 	BYTE $0xeb
 	BYTE $0x3a
-	LEAQ ·engine_rodata+63325(SB), R14
+	LEAQ ·engine_rodata+63357(SB), R14
 	BYTE $0xeb
 	BYTE $0x31
-	LEAQ ·engine_rodata+63281(SB), R14
+	LEAQ ·engine_rodata+63313(SB), R14
 	BYTE $0xeb
 	BYTE $0x28
 	BYTE $0x41
 	BYTE $0x0f
 	BYTE $0xb6
 	BYTE $0xc7
-	LEAQ ·engine_rodata+63267(SB), R14
+	LEAQ ·engine_rodata+63299(SB), R14
 	QUAD $0x0004b918771cf883
 	QUAD $0x0d72c1a30f480141
 	BYTE $0x89
 	BYTE $0xc0
-	LEAQ ·engine_rodata+62560(SB), CX
+	LEAQ ·engine_rodata+62592(SB), CX
 	QUAD $0x40c48349c1348b4c
 	QUAD $0xffbf4148246c8b4c
 	QUAD $0x00000001bfffffff
@@ -22597,7 +22597,7 @@ TEXT ·sqlite3LockAndPrepare(SB), $192-72
 	BYTE $0x00
 	BYTE $0xeb
 	BYTE $0xba
-	LEAQ ·engine_rodata+63504(SB), AX
+	LEAQ ·engine_rodata+63536(SB), AX
 	BYTE $0x49
 	BYTE $0x89
 	BYTE $0x07
@@ -22612,7 +22612,7 @@ TEXT ·sqlite3LockAndPrepare(SB), $192-72
 	BYTE $0x18
 	CALL ·sqlite3_log(SB)
 	QUAD $0x0000009824bc8b4c
-	LEAQ ·engine_rodata+63631(SB), AX
+	LEAQ ·engine_rodata+63663(SB), AX
 	QUAD $0x380847c741078949
 	BYTE $0x47
 	BYTE $0x02
@@ -22745,7 +22745,7 @@ TEXT ·sqlite3_finalize(SB), $80-24
 	BYTE $0x24
 	BYTE $0x18
 	CALL ·sqlite3_log(SB)
-	LEAQ ·engine_rodata+63631(SB), AX
+	LEAQ ·engine_rodata+63663(SB), AX
 	QUAD $0x07894948247c8b4c
 	QUAD $0x00016cae0847c741
 	LEAQ ·engine_rodata+3576(SB), AX

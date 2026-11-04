@@ -3416,7 +3416,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	PCALIGN $16
 	WORD $0x394002b3
 	WORD $0xaa1503ee
-	MOVD $·engine_rodata+63324(SB), R13
+	MOVD $·engine_rodata+63364(SB), R13
 	WORD $0xf90043fe
 	WORD $0x340016f3
 	WORD $0xaa1f03ef
@@ -3454,7 +3454,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xa94753f7
 	WORD $0x52800151
 	WORD $0xa9463ff0
-	MOVD $·engine_rodata+63324(SB), R13
+	MOVD $·engine_rodata+63364(SB), R13
 	WORD $0xb94053f3
 	WORD $0xf94027eb
 	WORD $0xf94047ee
@@ -3493,7 +3493,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xa94753f7
 	WORD $0x52800151
 	WORD $0xa9463ff0
-	MOVD $·engine_rodata+63324(SB), R13
+	MOVD $·engine_rodata+63364(SB), R13
 	WORD $0xb94053ec
 	WORD $0xf94027eb
 	WORD $0xf94047ee
@@ -3524,7 +3524,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xa94753f7
 	WORD $0x52800151
 	WORD $0xa9463ff0
-	MOVD $·engine_rodata+63324(SB), R13
+	MOVD $·engine_rodata+63364(SB), R13
 	WORD $0xb94053ec
 	WORD $0xf94027eb
 	WORD $0xf94047ee
@@ -3554,7 +3554,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xa94753f7
 	WORD $0x52800151
 	WORD $0xa9463ff0
-	MOVD $·engine_rodata+63324(SB), R13
+	MOVD $·engine_rodata+63364(SB), R13
 	WORD $0xb94053ec
 	WORD $0xf94027eb
 	WORD $0xf94047ee
@@ -3589,7 +3589,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xa9463ff0
 	WORD $0x52800151
 	WORD $0xa94753f7
-	MOVD $·engine_rodata+63324(SB), R13
+	MOVD $·engine_rodata+63364(SB), R13
 	WORD $0xb94053f3
 	WORD $0xf94047ee
 	WORD $0xf9402ff8
@@ -3693,7 +3693,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xf9402feb
 	WORD $0xf9403bed
 	WORD $0x5280050f
-	MOVD $·engine_rodata+63324(SB), R12
+	MOVD $·engine_rodata+63364(SB), R12
 	WORD $0xf94047ee
 	WORD $0x928003e9
 	WORD $0xf1000d5f
@@ -3711,7 +3711,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xf90007f4
 	BL ·host_poll(SB)
 	WORD $0xa94753ed
-	MOVD $·engine_rodata+63324(SB), R12
+	MOVD $·engine_rodata+63364(SB), R12
 	WORD $0xa9452fea
 	WORD $0xb9406bef
 	WORD $0x92679a88
@@ -3720,7 +3720,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xf9402feb
 	WORD $0xf9403bed
 	WORD $0x7104013f
-	MOVD $·engine_rodata+63324(SB), R12
+	MOVD $·engine_rodata+63364(SB), R12
 	WORD $0x5280050f
 	WORD $0x54000343
 	WORD $0xf94047ee
@@ -3740,7 +3740,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xf90007f4
 	BL ·host_poll(SB)
 	WORD $0xa94753ed
-	MOVD $·engine_rodata+63324(SB), R12
+	MOVD $·engine_rodata+63364(SB), R12
 	WORD $0xa9452fea
 	WORD $0xb9406bef
 	WORD $0xf94047ee
@@ -3766,7 +3766,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0xf90007f4
 	BL ·host_poll(SB)
 	WORD $0xa94753ed
-	MOVD $·engine_rodata+63324(SB), R12
+	MOVD $·engine_rodata+63364(SB), R12
 	WORD $0xa9452fea
 	WORD $0xb9406bef
 	WORD $0xf94047ee
