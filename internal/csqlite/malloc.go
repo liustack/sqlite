@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build (linux || darwin) && (amd64 || arm64)
+//go:build ((linux || darwin) && (amd64 || arm64)) || (windows && amd64)
 
 package csqlite
 
@@ -145,7 +145,7 @@ func (c *sizeClass) cut(ci int) uintptr {
 	run := max(refill/size, 1) * size
 	heap.mu.Lock()
 	if heap.end-heap.next < run {
-		m, err := mmap(arenaSize, 0)
+		m, err := mmap(arenaSize)
 		if err != nil {
 			heap.mu.Unlock()
 			return 0
@@ -169,7 +169,7 @@ func (c *sizeClass) cut(ci int) uintptr {
 
 func allocLarge(t uintptr) uintptr {
 	t = roundUp(t, pageSize)
-	m, err := mmap(t, 0)
+	m, err := mmap(t)
 	if err != nil {
 		return 0
 	}

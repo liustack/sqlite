@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: "0"
@@ -32,5 +32,6 @@ jobs:
       - run: go test -count=1 ./...
       # The race detector needs cgo on linux. It tests the driver, not the build.
       - run: go test -race -count=1 . ./internal/vfs ./internal/csqlite
+        if: runner.os != 'Windows'
         env:
           CGO_ENABLED: "1"

@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build linux || darwin
+//go:build linux || darwin || windows
 
 #include "textflag.h"
 
