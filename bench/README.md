@@ -47,6 +47,7 @@ Each benchmark uses a fresh database file in `b.TempDir()` and one `*sql.DB`. Sc
 | `Aggregate`      | Join 10k users with 100k posts, `GROUP BY`, `ORDER BY`, 250 rows back                              |
 | `PointParallel`  | `Point` from `b.RunParallel` (GOMAXPROCS goroutines) on a pool of GOMAXPROCS*2 connections         |
 | `InsertParallel` | One autocommit `INSERT`, from exactly `g=1`, `g=8` or `g=64` goroutines, pool capped at `g` connections |
+| `InsertParallelFull` | `InsertParallel` with `synchronous=FULL`: every commit syncs the WAL to the disk (on macOS without `fullfsync`, so the disk cache may still hold it) |
 
 In `InsertParallel`, `ns/op` is wall time divided by total inserts, so a lower number at `g=64` than at `g=1` means the driver gets more inserts done per second. Every insert is a separate autocommit and returns only after its commit.
 

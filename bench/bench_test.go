@@ -19,11 +19,14 @@ import (
 	"testing"
 )
 
-// open returns a new database in a fresh temp directory. The pool is closed
-// when the benchmark ends.
-func open(tb testing.TB) *sql.DB {
+// open returns a new database in a fresh temp directory, with
+// synchronous=NORMAL. The pool is closed when the benchmark ends.
+func open(tb testing.TB) *sql.DB { return openSync(tb, "NORMAL") }
+
+// openSync is open with the given synchronous.
+func openSync(tb testing.TB, synchronous string) *sql.DB {
 	tb.Helper()
-	db, err := sql.Open(DriverName, DSN(filepath.Join(tb.TempDir(), "bench.db")))
+	db, err := sql.Open(DriverName, DSN(filepath.Join(tb.TempDir(), "bench.db"), synchronous))
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -278,10 +281,16 @@ func BenchmarkPointParallel(b *testing.B) {
 // ourselves, not RunParallel, so g does not depend on GOMAXPROCS). The pool
 // is capped at g connections. Each op is one autocommit INSERT, durable per
 // the DSN settings.
-func BenchmarkInsertParallel(b *testing.B) {
+func BenchmarkInsertParallel(b *testing.B) { insertParallel(b, "NORMAL") }
+
+// InsertParallelFull: InsertParallel with synchronous=FULL, where every
+// commit syncs the WAL to the disk.
+func BenchmarkInsertParallelFull(b *testing.B) { insertParallel(b, "FULL") }
+
+func insertParallel(b *testing.B, synchronous string) {
 	for _, g := range []int{1, 8, 64} {
 		b.Run(fmt.Sprintf("g=%d", g), func(b *testing.B) {
-			db := open(b)
+			db := openSync(b, synchronous)
 			insertTable(b, db)
 			db.SetMaxOpenConns(g)
 			db.SetMaxIdleConns(g)
