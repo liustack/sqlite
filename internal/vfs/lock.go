@@ -66,20 +66,47 @@ func (f *File) attachInode(name string) int {
 		}
 		inodes.m[id] = node
 	} else if node.readOnly && !f.readOnly {
-		// Only read-only Files came before. Take a descriptor that can
-		// hold write locks while there are no locks to move.
+		// Only read-only Files came before.
 		node.mu.Lock()
-		if node.lock == LockNone {
-			if fd, err := dupDescriptor(f.fd); err == nil {
-				unix.Close(node.fd)
-				node.fd, node.readOnly = fd, false
-			}
-		}
+		node.takeWritable(f.fd)
 		node.mu.Unlock()
 	}
 	node.nRef++
 	f.inode = node
 	return OK
+}
+
+// takeWritable gives a read-only inode a copy of fd, a read-write
+// descriptor of the same file, so that write locks can be taken. When
+// Files of the process hold SHARED, the read lock moves to the new
+// descriptor. A read-only descriptor never holds more than that, since
+// every write lock fails on it. Two open file descriptions of the process
+// may both hold a read lock for a moment, and no other process can hold a
+// write lock on the shared range while the process reads, so the move
+// cannot be refused for a conflict. If it fails all the same, the inode
+// keeps its descriptor and only write locks fail, as before. node.mu is
+// held.
+func (node *inode) takeWritable(fd int) {
+	nfd, err := dupDescriptor(fd)
+	if err != nil {
+		return
+	}
+	if node.lock == LockShared {
+		if setLock(nfd, &node.fl, unix.F_RDLCK, sharedFirst, sharedSize) != nil {
+			unix.Close(nfd)
+			return
+		}
+		// The old descriptor may be a copy of a read-only File's, whose
+		// description outlives it: closing it would not drop its lock.
+		// The same holds for nfd and the new File.
+		if setLock(node.fd, &node.fl, unix.F_UNLCK, 0, 0) != nil {
+			setLock(nfd, &node.fl, unix.F_UNLCK, 0, 0)
+			unix.Close(nfd)
+			return
+		}
+	}
+	unix.Close(node.fd)
+	node.fd, node.readOnly = nfd, false
 }
 
 // lockDescriptor opens the descriptor the inode holds its locks on: a copy
@@ -101,8 +128,9 @@ func lockDescriptor(f *File, name string) (fd int, readOnly bool, err error) {
 	return fd, f.readOnly, err
 }
 
+// dupDescriptor copies fd to a number above 2 (see aboveStdio).
 func dupDescriptor(fd int) (int, error) {
-	return unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
+	return unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 3)
 }
 
 // detachInode is the end of attachInode. The last File closes the inode's
@@ -263,15 +291,19 @@ func (f *File) LockState() int {
 	return f.lock
 }
 
-// fcntlHook, when set by a test, is called before each lock fcntl.
-var fcntlHook func()
+// fcntlHook, when set by a test, is called before each lock fcntl with its
+// lock type, -1 for a test of a lock, and its range. An error it returns is
+// returned in place of the call, as if fcntl had failed.
+var fcntlHook func(typ int16, start, n int64) error
 
 // setLock sets a lock of typ (F_RDLCK, F_WRLCK or F_UNLCK) on n bytes from
 // start, without waiting. n 0 is to the end of the file. fl is space for the
 // argument.
 func setLock(fd int, fl *unix.Flock_t, typ int16, start, n int64) error {
 	if fcntlHook != nil {
-		fcntlHook()
+		if err := fcntlHook(typ, start, n); err != nil {
+			return err
+		}
 	}
 	*fl = unix.Flock_t{Type: typ, Whence: 0, Start: start, Len: n}
 	for {
@@ -287,7 +319,9 @@ func setLock(fd int, fl *unix.Flock_t, typ int16, start, n int64) error {
 // this open file description do not count.
 func testLock(fd int, fl *unix.Flock_t, start, n int64) (int16, error) {
 	if fcntlHook != nil {
-		fcntlHook()
+		if err := fcntlHook(-1, start, n); err != nil {
+			return 0, err
+		}
 	}
 	*fl = unix.Flock_t{Type: unix.F_WRLCK, Whence: 0, Start: start, Len: n}
 	for {

@@ -25,12 +25,13 @@
 // byte ranges are those of os_unix, so the locks also work against SQLite
 // built from C, as long as that SQLite runs in another process.
 //
-// One more difference: when the last reader of the process leaves one of the
-// WAL read slots, the process keeps its lock on the slot for about a
-// millisecond, so that the next reader needs no system call. Another process
-// may see the slot locked for that long after the last reader here, as if
-// that reader were still in its transaction: its checkpoint or log restart
-// waits or skips, and it never reads wrong data (see shmReadSlots).
+// One more difference: while no other process has the -shm open, the last
+// reader of the process to leave one of the WAL read slots leaves the lock
+// on the slot for about a millisecond, so that the next reader needs no
+// system call. When another process opens the -shm, this process finds out
+// within about that millisecond and from then on releases read slots at
+// once, as os_unix, so that the other process's checkpoints are not held
+// off (see shmReadSlots).
 //
 // Results are SQLite result codes, with the values of sqlite3.h.
 //
@@ -186,11 +187,7 @@ func openFile(name string, oflags int, mode uint32) (int, error) {
 	if m == 0 {
 		m = defaultFileMode
 	}
-	var fd int
-	err := retry(func() (err error) {
-		fd, err = unix.Open(name, oflags, m)
-		return err
-	})
+	fd, err := openFD(name, oflags, m)
 	if err != nil {
 		return -1, err
 	}
@@ -201,6 +198,54 @@ func openFile(name string, oflags int, mode uint32) (int, error) {
 		}
 	}
 	return fd, nil
+}
+
+// openFD opens name, again when a signal interrupts it, and never as
+// descriptor 0, 1 or 2 (see aboveStdio).
+func openFD(name string, oflags int, mode uint32) (int, error) {
+	var fd int
+	err := retry(func() (err error) {
+		fd, err = unix.Open(name, oflags, mode)
+		return err
+	})
+	if err != nil {
+		return -1, err
+	}
+	return aboveStdio(fd)
+}
+
+// aboveStdio moves a descriptor that got number 0, 1 or 2 to a number
+// above, as os_unix's robust_open. A program that closed its stdin, stdout
+// or stderr gives that number to the next file opened, and what is then
+// written to stdout or stderr (the Go runtime writes panics to 2) would go
+// into the database. The old number is given /dev/null, so that later
+// opens do not land there. os_unix closes the file and opens it again. A
+// copy keeps the same open file, so that a file just made with O_EXCL is
+// not lost.
+func aboveStdio(fd int) (int, error) {
+	if fd > 2 {
+		return fd, nil
+	}
+	nfd, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 3)
+	if err != nil {
+		unix.Close(fd)
+		return -1, err
+	}
+	// Without O_CLOEXEC: it stands for a standard stream, which children
+	// inherit.
+	null, err := unix.Open("/dev/null", unix.O_RDWR, 0)
+	if err != nil {
+		// The number is left free.
+		unix.Close(fd)
+		return nfd, nil
+	}
+	// Dup2 puts /dev/null in place of fd in one step. A null that itself
+	// got a low number fills that one too and is kept.
+	unix.Dup2(null, fd)
+	if null > 2 {
+		unix.Close(null)
+	}
+	return nfd, nil
 }
 
 // tempDir is os_unix's unixTempFileDir: the first directory that can be
@@ -343,12 +388,7 @@ func openDirectory(name string) (int, error) {
 	} else if i == 0 {
 		dir = "/"
 	}
-	var fd int
-	err := retry(func() (err error) {
-		fd, err = unix.Open(dir, unix.O_RDONLY|unix.O_CLOEXEC, 0)
-		return err
-	})
-	return fd, err
+	return openFD(dir, unix.O_RDONLY|unix.O_CLOEXEC, 0)
 }
 
 // Size is the size of the file. As os_unix, a size of 1 is given as 0: a

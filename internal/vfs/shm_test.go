@@ -217,6 +217,19 @@ func TestShmLockAllocs(t *testing.T) {
 // fcntlHook once, so that no test writes it while a release timer reads it.
 var fcntlTotal atomic.Int64
 
+// fcntlFault, when set, is called by the hook TestMain sets: an error it
+// returns fails that lock fcntl. Set it with failFcntl.
+var fcntlFault atomic.Pointer[func(typ int16, start, n int64) error]
+
+// failFcntl makes the lock fcntl calls fail for which fault returns an
+// error, until the test ends or the returned func is called.
+func failFcntl(t *testing.T, fault func(typ int16, start, n int64) error) (stop func()) {
+	fcntlFault.Store(&fault)
+	stop = func() { fcntlFault.Store(nil) }
+	t.Cleanup(stop)
+	return stop
+}
+
 // fcntlCount counts the lock fcntl calls made since it was made or Reset.
 type fcntlCount struct{ base int64 }
 
@@ -426,8 +439,9 @@ func TestShmReadSlotIdle(t *testing.T) {
 	}
 	calls.Reset()
 	a.shm.node.releaseIdle()
-	if calls.Load() != 1 {
-		t.Errorf("release of slots 3..7 made %d fcntl calls, want 1", calls.Load())
+	// One test of the DMS byte, one unlock.
+	if calls.Load() != 2 {
+		t.Errorf("release of slots 3..7 made %d fcntl calls, want 2", calls.Load())
 	}
 	for slot := 3; slot < ShmNLock; slot++ {
 		if got := heldBy(t, name, slot); got != unix.F_UNLCK {
@@ -546,4 +560,161 @@ func TestShmUnmapIdle(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Errorf("%d fcntl calls after the -shm was closed", calls.Load())
 	}
+}
+
+// otherProcess opens the -shm of name as another process does: its own
+// open file description, with a read lock on the DMS byte. close lets go.
+func otherProcess(t *testing.T, name string) (close func()) {
+	t.Helper()
+	fd, err := unix.Open(name+"-shm", unix.O_RDWR|unix.O_CREAT|unix.O_CLOEXEC, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fl unix.Flock_t
+	if err := setLock(fd, &fl, unix.F_RDLCK, shmDMS, 1); err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	close = func() {
+		if !closed {
+			closed = true
+			unix.Close(fd)
+		}
+	}
+	t.Cleanup(close)
+	return close
+}
+
+// readT runs a read transaction of f on slot: takes it shared and gives it
+// back.
+func readT(t *testing.T, f *File, slot int) {
+	t.Helper()
+	lockT(t, "shared", f.ShmLock(slot, 1, ShmLock|ShmShared), OK)
+	lockT(t, "unlock", f.ShmLock(slot, 1, ShmUnlock|ShmShared), OK)
+}
+
+func TestShmOtherProcessFirst(t *testing.T) {
+	// Another process has the -shm open before this one: read slots are
+	// released at once, as os_unix, or its checkpoints would rarely find
+	// them free and its WAL would grow.
+	idleDelay(t, time.Hour)
+	name := filepath.Join(t.TempDir(), "other.db")
+	a := openT(t, name, mainDB)
+	otherProcess(t, name)
+	shmMapT(t, a, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false) })
+	readT(t, a, 3)
+	if got := heldBy(t, name, 3); got != unix.F_UNLCK {
+		t.Errorf("slot 3 after the last reader left = %d, want F_UNLCK", got)
+	}
+}
+
+func TestShmOtherProcessComesAndGoes(t *testing.T) {
+	idleDelay(t, time.Hour)
+	a, _, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false) })
+	node := a.shm.node
+
+	// Alone, the process keeps an idle read slot locked.
+	readT(t, a, 3)
+	if got := heldBy(t, name, 3); got != unix.F_RDLCK {
+		t.Fatalf("idle slot 3 = %d, want F_RDLCK", got)
+	}
+	// Another process opens the -shm. Until the next tick of the timer
+	// the process does not know it.
+	leave := otherProcess(t, name)
+	readT(t, a, 4)
+	node.releaseIdle()
+	for slot := 3; slot <= 4; slot++ {
+		if got := heldBy(t, name, slot); got != unix.F_UNLCK {
+			t.Errorf("slot %d after the tick = %d, want F_UNLCK", slot, got)
+		}
+	}
+	// From the tick on, the last reader releases its slot at once, and
+	// the timer is armed to look again.
+	readT(t, a, 5)
+	if got := heldBy(t, name, 5); got != unix.F_UNLCK {
+		t.Errorf("slot 5 with another process = %d, want F_UNLCK", got)
+	}
+	node.mu.Lock()
+	armed := node.armed
+	node.mu.Unlock()
+	if !armed {
+		t.Error("timer not armed after a release with another process")
+	}
+
+	// The other process goes: after the next tick, slots are kept again.
+	leave()
+	node.releaseIdle()
+	readT(t, a, 6)
+	if got := heldBy(t, name, 6); got != unix.F_RDLCK {
+		t.Errorf("idle slot 6 when alone again = %d, want F_RDLCK", got)
+	}
+}
+
+func TestShmIdlePartialRelease(t *testing.T) {
+	// The release of idle slots 4 and 6 fails for slot 6. Slot 4, whose
+	// kernel lock is gone, must not stay marked idle: its next reader
+	// would hold it with no kernel lock. Slot 6 stays idle and is retried.
+	idleDelay(t, time.Hour)
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	node := a.shm.node
+	readT(t, a, 4)
+	readT(t, a, 6)
+	stop := failFcntl(t, func(typ int16, start, n int64) error {
+		if typ == unix.F_UNLCK && start <= shmBase+6 && shmBase+6 < start+n {
+			return unix.ENOLCK
+		}
+		return nil
+	})
+	node.releaseIdle()
+	stop()
+
+	node.mu.Lock()
+	idle, armed := node.idle, node.armed
+	node.mu.Unlock()
+	if idle != 1<<6 || !armed {
+		t.Errorf("after a release that failed for slot 6: idle %#x, armed %v, want 0x40, true", idle, armed)
+	}
+	lockT(t, "b shared 4", b.ShmLock(4, 1, ShmLock|ShmShared), OK)
+	if got := heldBy(t, name, 4); got != unix.F_RDLCK {
+		t.Errorf("b holds slot 4, seen from outside = %d, want F_RDLCK", got)
+	}
+	if got := heldBy(t, name, 6); got != unix.F_RDLCK {
+		t.Errorf("slot 6 whose unlock failed = %d, want F_RDLCK", got)
+	}
+	node.releaseIdle()
+	if got := heldBy(t, name, 6); got != unix.F_UNLCK {
+		t.Errorf("slot 6 after the retry = %d, want F_UNLCK", got)
+	}
+}
+
+func TestShmUnlockPartial(t *testing.T) {
+	// a goes while holding slots 0 and 2 shared, and the unlock of slot 2
+	// fails. Slot 0 was unlocked in the kernel: the next holder must take
+	// it again there. Slot 2 is still locked and counted.
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { b.ShmUnmap(false) })
+	lockT(t, "a shared 0", a.ShmLock(0, 1, ShmLock|ShmShared), OK)
+	lockT(t, "a shared 2", a.ShmLock(2, 1, ShmLock|ShmShared), OK)
+	failFcntl(t, func(typ int16, start, n int64) error {
+		if typ == unix.F_UNLCK && start <= shmBase+2 && shmBase+2 < start+n {
+			return unix.ENOLCK
+		}
+		return nil
+	})
+	a.ShmUnmap(false)
+	fcntlFault.Store(nil)
+
+	lockT(t, "b shared 0", b.ShmLock(0, 1, ShmLock|ShmShared), OK)
+	if got := heldBy(t, name, 0); got != unix.F_RDLCK {
+		t.Errorf("b holds slot 0, seen from outside = %d, want F_RDLCK", got)
+	}
+	lockT(t, "b excl 2", b.ShmLock(2, 1, ShmLock|ShmExclusive), Busy)
 }

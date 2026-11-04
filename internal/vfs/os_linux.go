@@ -34,12 +34,7 @@ func allocate(fd int, from, size int64, blksize int64) error {
 // openTempFile opens an unnamed file in dir. It fails on a file system
 // without O_TMPFILE, and the caller then makes a named file.
 func openTempFile(dir string) (int, error) {
-	var fd int
-	err := retry(func() (err error) {
-		fd, err = unix.Open(dir, unix.O_RDWR|unix.O_EXCL|unix.O_TMPFILE|unix.O_CLOEXEC, 0600)
-		return err
-	})
-	return fd, err
+	return openFD(dir, unix.O_RDWR|unix.O_EXCL|unix.O_TMPFILE|unix.O_CLOEXEC, 0600)
 }
 
 // corruptFS reports the read errors os_unix turns into SQLITE_IOERR_CORRUPTFS.

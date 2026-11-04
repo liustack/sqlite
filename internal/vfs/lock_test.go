@@ -444,3 +444,39 @@ func TestLockReadOnlyFirstThenWritable(t *testing.T) {
 	lockT(t, "ro unlock", ro.Unlock(LockNone), OK)
 	lockT(t, "rw EXCLUSIVE", rw.Lock(LockExclusive), OK)
 }
+
+func TestLockReadOnlyHoldsSharedThenWritable(t *testing.T) {
+	if isRoot() {
+		t.Skip("root can write a read-only file")
+	}
+	// The read-only File holds SHARED, as a WAL connection always does,
+	// when a read-write File of the database comes. The read-write File
+	// must still be able to write.
+	name := filepath.Join(t.TempDir(), "roshared.db")
+	if err := os.WriteFile(name, []byte("x"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	ro := openT(t, name, readOnlyD)
+	lockT(t, "ro SHARED", ro.Lock(LockShared), OK)
+	if err := os.Chmod(name, 0644); err != nil {
+		t.Fatal(err)
+	}
+	rw := openT(t, name, mainDB)
+	// The process still reads: no other process can write.
+	if got := dbHeldBy(t, name, sharedFirst, sharedSize); got != unix.F_RDLCK {
+		t.Errorf("shared range = %d, want F_RDLCK", got)
+	}
+	lockT(t, "ro RESERVED", ro.Lock(LockReserved), IOErrLock)
+	lockT(t, "rw SHARED", rw.Lock(LockShared), OK)
+	lockT(t, "rw RESERVED", rw.Lock(LockReserved), OK)
+	if got := dbHeldBy(t, name, reservedByte, 1); got != unix.F_WRLCK {
+		t.Errorf("reserved byte = %d, want F_WRLCK", got)
+	}
+	// No read lock is left behind on the old descriptor: once ro goes,
+	// rw gets the whole file.
+	lockT(t, "ro unlock", ro.Unlock(LockNone), OK)
+	lockT(t, "rw EXCLUSIVE", rw.Lock(LockExclusive), OK)
+	if got := dbHeldBy(t, name, sharedFirst, sharedSize); got != unix.F_WRLCK {
+		t.Errorf("shared range = %d, want F_WRLCK", got)
+	}
+}
