@@ -157,7 +157,7 @@ func TestAccess(t *testing.T) {
 		{filepath.Join(dir, "missing"), AccessExists, false},
 		{empty, AccessExists, false}, // an empty file counts as missing, as os_win
 		{full, AccessExists, true},
-		{dir, AccessExists, true},
+		{dir, AccessExists, false}, // size 0, as os_win
 		{full, AccessReadWrite, true},
 		{ro, AccessReadWrite, false},
 		{ro, AccessRead, true},

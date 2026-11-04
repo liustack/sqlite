@@ -28,6 +28,20 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # The sqlite3 shell, SQLite built from C, for TestInteropShell.
+      - name: sqlite3 shell
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+          Linux)
+            command -v sqlite3 || { sudo apt-get update -q && sudo apt-get install -y -q sqlite3; }
+            echo "SQLITE3=$(command -v sqlite3)" >> "$GITHUB_ENV" ;;
+          macOS)
+            echo "SQLITE3=/usr/bin/sqlite3" >> "$GITHUB_ENV" ;;
+          Windows)
+            choco install sqlite -y --no-progress
+            echo 'SQLITE3=C:\ProgramData\chocolatey\bin\sqlite3.exe' >> "$GITHUB_ENV" ;;
+          esac
       - run: go vet -asmdecl=false ./...
       - run: go test -count=1 ./...
       # The race detector needs cgo on linux. It tests the driver, not the build.
