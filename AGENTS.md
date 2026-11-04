@@ -34,6 +34,7 @@ The driver runs on linux and darwin, amd64 and arm64. Group commit merges concur
    - [docs/testing.md](docs/testing.md): the checks before a commit and the tests of the generator
    - [docs/commit.md](docs/commit.md): commit rules
    - [docs/upstream.md](docs/upstream.md): where the code comes from and how to move to a new SQLite
+   - [docs/benchmarks.md](docs/benchmarks.md): how fast the driver is against the other drivers, on linux/amd64 and darwin/arm64
 4. Docs are written for readers: conclusions and how to do things, not reasoning or work logs. The README is a landing page and only links to the docs.
 5. Docs are written in English. Keep it short and direct, use everyday words, and do not invent terms. Do not use semicolons, and do not use dashes as punctuation.
 

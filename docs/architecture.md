@@ -63,9 +63,11 @@ On an Apple M4 (WAL, `synchronous=NORMAL`, one autocommit `INSERT` per call, `be
 
 | Writers | mattn (cgo) | this driver |
 | --- | --- | --- |
-| 1 | 6.0 µs | 7.0 µs |
-| 8 | 7.7 µs | 5.5 µs |
-| 64 | 8.8 µs | 3.0 µs |
+| 1 | 9.7 µs | 9.1 µs |
+| 8 | 9.0 µs | 3.4 µs |
+| 64 | 16.8 µs | 1.4 µs |
+
+More drivers and linux are in [benchmarks.md](benchmarks.md).
 
 A prototype of it in application code, on mattn/go-sqlite3 (WAL, one writer goroutine taking whatever callers are waiting, up to 256), measured on an Apple M4:
 
