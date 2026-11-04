@@ -85,8 +85,9 @@ var allocationGranularity = sync.OnceValue(func() int64 {
 })
 
 // openShmHandle opens the -shm at path, as os_win's winHandleOpen: for
-// reading and writing, or for reading only when it cannot be written.
-func openShmHandle(path string) (h windows.Handle, readOnly bool, rc int) {
+// reading and writing, or for reading only when it cannot be written or
+// readOnly asks for it (readonly_shm=1).
+func openShmHandle(path string, readOnly bool) (h windows.Handle, ro bool, rc int) {
 	p, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return windows.InvalidHandle, false, CantOpen
@@ -95,9 +96,11 @@ func openShmHandle(path string) (h windows.Handle, readOnly bool, rc int) {
 		return windows.InvalidHandle, false, CantOpenIsDir
 	}
 	share := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE)
-	h, err = windows.CreateFile(p, windows.GENERIC_READ|windows.GENERIC_WRITE, share, nil, windows.OPEN_ALWAYS, windows.FILE_ATTRIBUTE_NORMAL, 0)
-	if err == nil {
-		return h, false, OK
+	if !readOnly {
+		h, err = windows.CreateFile(p, windows.GENERIC_READ|windows.GENERIC_WRITE, share, nil, windows.OPEN_ALWAYS, windows.FILE_ATTRIBUTE_NORMAL, 0)
+		if err == nil {
+			return h, false, OK
+		}
 	}
 	h, err = windows.CreateFile(p, windows.GENERIC_READ, share, nil, windows.OPEN_ALWAYS, windows.FILE_ATTRIBUTE_NORMAL, 0)
 	if err != nil {
@@ -138,7 +141,7 @@ func (f *File) openShm() int {
 	shmNodes.Lock()
 	node := shmNodes.m[key]
 	if node == nil {
-		h, ro, rc := openShmHandle(path)
+		h, ro, rc := openShmHandle(path, f.roShm)
 		if rc != OK {
 			shmNodes.Unlock()
 			return rc
@@ -158,7 +161,7 @@ func (f *File) openShm() int {
 	shmNodes.Unlock()
 
 	if !node.shared {
-		h, _, rc := openShmHandle(path)
+		h, _, rc := openShmHandle(path, f.roShm)
 		if rc != OK {
 			f.ShmUnmap(false)
 			return rc

@@ -192,7 +192,12 @@ func newShmNode(f *File, id fileID) (*shmNode, int) {
 	mode := uint32(f.st.Mode) & 0777
 	node := &shmNode{id: id, path: f.path + "-shm", fd: -1}
 
-	fd, err := openFile(node.path, unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
+	// As os_unix, readonly_shm=1 opens it for reading only at once, and
+	// one that cannot be written is opened for reading only.
+	fd, err := -1, error(unix.EACCES)
+	if !f.roShm {
+		fd, err = openFile(node.path, unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
+	}
 	if err != nil {
 		fd, err = openFile(node.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, mode)
 		if err != nil {

@@ -339,3 +339,55 @@ func TestFullPathname(t *testing.T) {
 		t.Errorf("FullPathname of a long name = %d, want CantOpen", rc)
 	}
 }
+
+func TestOpenModeOf(t *testing.T) {
+	// As os_unix, a main database opened through a URI with modeof= is
+	// made with the mode of that file. Journals keep taking the mode of
+	// their database.
+	dir := t.TempDir()
+	ref := filepath.Join(dir, "ref")
+	if err := os.WriteFile(ref, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	os.Chmod(ref, 0600)
+	db := filepath.Join(dir, "new.db")
+	f, _, rc := OpenWith(db, mainDB|OpenURI, OpenOptions{ModeOf: ref})
+	if rc != OK {
+		t.Fatalf("Open = %d", rc)
+	}
+	f.Close()
+	if got := modeOf(t, db); got != 0600 {
+		t.Errorf("mode = %v, want 0600", got)
+	}
+	// Without SQLITE_OPEN_URI the parameter is not looked at.
+	plain := filepath.Join(dir, "plain.db")
+	openT2 := func(name string, flags int, o OpenOptions) int {
+		f, _, rc := OpenWith(name, flags, o)
+		if rc == OK {
+			f.Close()
+		}
+		return rc
+	}
+	if rc := openT2(plain, mainDB, OpenOptions{ModeOf: ref}); rc != OK {
+		t.Fatalf("Open = %d", rc)
+	}
+	if got, want := modeOf(t, plain), 0644&^umask(); got != want {
+		t.Errorf("mode without URI = %v, want %v", got, want)
+	}
+	// A modeof file that is not there fails the open, and makes nothing.
+	missing := filepath.Join(dir, "missing.db")
+	if rc := openT2(missing, mainDB|OpenURI, OpenOptions{ModeOf: filepath.Join(dir, "none")}); rc != IOErrFstat {
+		t.Errorf("Open with a missing modeof = %d, want IOErrFstat", rc)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Errorf("database made anyway: %v", err)
+	}
+	// The journal of the new database takes its mode, not modeof's.
+	os.Chmod(ref, 0640)
+	if rc := openT2(db+"-journal", mainJrnl|OpenURI, OpenOptions{ModeOf: ref}); rc != OK {
+		t.Fatalf("Open journal = %d", rc)
+	}
+	if got := modeOf(t, db+"-journal"); got != 0600 {
+		t.Errorf("journal mode = %v, want 0600", got)
+	}
+}

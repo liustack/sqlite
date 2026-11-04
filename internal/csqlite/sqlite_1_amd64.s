@@ -5885,7 +5885,7 @@ TEXT ·logFunc(SB), $96-32
 	BYTE $0xc1
 	BYTE $0xe1
 	BYTE $0x04
-	LEAQ ·engine_rodata+88880(SB), SI
+	LEAQ ·engine_rodata+88912(SB), SI
 	QUAD $0x5c0ff2c06e0f4866
 	QUAD $0x0ff2000008903184
 	QUAD $0xf20000089831845c
@@ -5929,7 +5929,7 @@ TEXT ·logFunc(SB), $96-32
 	BYTE $0xc1
 	BYTE $0xe1
 	BYTE $0x04
-	LEAQ ·engine_rodata+86688(SB), SI
+	LEAQ ·engine_rodata+86720(SB), SI
 	QUAD $0x0f44f2c86e0f4866
 	QUAD $0x90318c5c0ff2ca2a
 	QUAD $0x318c5c0ff2000004
@@ -5983,7 +5983,7 @@ TEXT ·logFunc(SB), $96-32
 	BYTE $0xc1
 	BYTE $0xe1
 	BYTE $0x04
-	LEAQ ·engine_rodata+88880(SB), SI
+	LEAQ ·engine_rodata+88912(SB), SI
 	QUAD $0x5c0ff2e86e0f4866
 	QUAD $0x0ff20000089031ac
 	QUAD $0xf20000089831ac5c
@@ -10707,7 +10707,7 @@ TEXT ·sqlite3_randomness(SB), $208-24
 	BYTE $0x48
 	BYTE $0x29
 	BYTE $0xca
-	ADDQ ·engine_rodata+99464(SB), DX
+	ADDQ ·engine_rodata+99496(SB), DX
 	QUAD $0x6f0ff300000080b9
 	QUAD $0x0a4c6f0ff3d00a44
 	QUAD $0xf3f00a546f0ff3e0
@@ -20669,7 +20669,7 @@ TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $128-40
 	QUAD $0x72000000c0f98148
 	QUAD $0xf8ba04eec1ce891a
 	QUAD $0x0b740ffe83ffffff
-	LEAQ ·engine_rodata+86136(SB), DX
+	LEAQ ·engine_rodata+86160(SB), DX
 	QUAD $0x000000bed0b2548b
 	QUAD $0x0000006c2444c700
 	QUAD $0xfb8139720cfb8300

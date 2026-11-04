@@ -26,14 +26,18 @@ func rc(r int) uintptr { return uintptr(int32(r)) }
 
 func putInt(p uintptr, v int) { *(*int32)(at(p)) = int32(v) }
 
-func host_open(sp, name, flags, outFlags, handle uintptr) (ret uintptr) {
+// host_open opens a file. a is engine/host.h's struct host_open_args.
+func host_open(sp, name, flags, a uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
-	f, out, r := vfs.Open(cstring(name), i32(flags))
+	f, out, r := vfs.OpenWith(cstring(name), i32(flags), vfs.OpenOptions{
+		ModeOf:      cstring(*(*uintptr)(at(a))),
+		ReadOnlyShm: *(*int32)(at(a + 16)) != 0,
+	})
 	if r != sqliteOK {
 		return rc(r)
 	}
-	putInt(outFlags, out)
-	*(*int64)(at(handle)) = int64(files.add(f))
+	*(*int64)(at(a + 8)) = int64(files.add(f))
+	putInt(a+20, out)
 	return sqliteOK
 }
 

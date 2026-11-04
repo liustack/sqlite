@@ -21,7 +21,16 @@ void host_mutex_leave(long m);
 
 /* The VFS. A file is a handle of the Go table. Each returns a SQLite result
    code unless it says otherwise. */
-int host_open(const char *name, int flags, int *out_flags, long *handle);
+/* host_open reads the options of the URI from a and writes the flags the
+   file was opened with and its handle there. The Go side reads the fields
+   at these offsets (os.c checks them). */
+struct host_open_args {
+  const char *modeof; /* 0: modeof= of the URI, or 0 */
+  long handle;        /* 8: out */
+  int readonly_shm;   /* 16: readonly_shm=1 of the URI */
+  int out_flags;      /* 20: out */
+};
+int host_open(const char *name, int flags, struct host_open_args *a);
 int host_delete(const char *name, int sync_dir);
 int host_access(const char *name, int flags, int *res);
 int host_full_pathname(const char *name, int n, char *out);

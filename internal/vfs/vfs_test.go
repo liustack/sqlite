@@ -714,3 +714,37 @@ func startHelper(t *testing.T, env, name string) (stop func()) {
 	}
 	return stop
 }
+
+func TestShmReadOnlyParam(t *testing.T) {
+	// readonly_shm=1: the -shm is opened for reading only, as os_unix and
+	// os_win. It can be used only while another process has it set up.
+	name := filepath.Join(t.TempDir(), "roshm.db")
+	w := openT(t, name, mainDB)
+	shmMapT(t, w, 0, true)
+	if rc := w.ShmUnmap(false); rc != OK {
+		t.Fatal(rc)
+	}
+
+	// The -shm is there, but no one has it open.
+	f, _, rc := OpenWith(name, mainDB, OpenOptions{ReadOnlyShm: true})
+	if rc != OK {
+		t.Fatalf("Open = %d", rc)
+	}
+	t.Cleanup(func() { f.Close() })
+	if _, rc := f.ShmMap(0, shmRegionSize, false); rc != ReadOnlyCantInit {
+		t.Errorf("ShmMap with no one else = %d, want ReadOnlyCantInit", rc)
+	}
+	f.ShmUnmap(false)
+
+	// Another process has it set up: the memory is there, read only.
+	startHelper(t, helperEnv, name)
+	addr, rc := f.ShmMap(0, shmRegionSize, false)
+	if rc != ReadOnly || addr == 0 {
+		t.Fatalf("ShmMap = %#x, %d, want an address and ReadOnly", addr, rc)
+	}
+	if region(addr)[0] != 99 {
+		t.Errorf("read-only -shm does not show the helper's write")
+	}
+	lockT(t, "shared 3", f.ShmLock(3, 1, ShmLock|ShmShared), OK)
+	f.ShmUnmap(false)
+}
