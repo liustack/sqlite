@@ -48,9 +48,16 @@ const (
 type Error struct {
 	Code int // the extended result code
 	Msg  string
+	err  error // ErrCollationPanic, or nil
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("sqlite: %s (%d)", e.Msg, e.Code) }
+
+func (e *Error) Unwrap() error { return e.err }
+
+// ErrCollationPanic is under the error of a statement in which a Go collation
+// panicked.
+var ErrCollationPanic = errors.New("panic in a Go collation")
 
 // Primary is the primary result code.
 func (e *Error) Primary() int { return e.Code & 0xff }
@@ -162,8 +169,12 @@ func Open(name string, flags int, vfs string) (*Conn, error) {
 	}
 	r := int32(sqlite3_open_v2(a.top, zName, pdb, uintptr(flags|OpenExResCode), zVfs))
 	c.db = *(*uintptr)(at(pdb))
+	c.st.db = c.db
 	if r == OK {
 		r = int32(go_classify(c.sp, c.db, c.classifyWord()))
+	}
+	if r == OK {
+		r = int32(go_count_rollbacks(c.sp, c.db, c.st.base+rollbackOffset))
 	}
 	if r != OK {
 		err := c.err(int(r))
@@ -189,6 +200,17 @@ const (
 
 // err is the error of result code r, with the connection's message.
 func (c *Conn) err(r int) error {
+	if msg := c.st.collatePanic; msg != "" {
+		// go_collate_failed made SQLite stop with SQLITE_NOMEM and roll
+		// back what the statement did.
+		c.st.collatePanic = ""
+		if r == OK || r == Row || r == Done {
+			// SQLite went on after the panic: nothing it does on this
+			// connection can be trusted any more.
+			poison(c.st.base, "a Go collation panicked and SQLite went on: "+msg)
+		}
+		return &Error{Code: r, Msg: "panic in a Go collation: " + msg, err: ErrCollationPanic}
+	}
 	if r == OK || r == Row || r == Done {
 		return nil
 	}
@@ -232,12 +254,14 @@ func (c *Conn) Exec(sql string) error {
 		defer release(p)
 		copy(bytesAt(p, len(sql)), sql)
 		*(*byte)(at(p + uintptr(len(sql)))) = 0
-		return c.err(int(int32(sqlite3_exec(c.sp, c.db, p, 0, 0, 0))))
+		return c.execResult(int(int32(sqlite3_exec(c.sp, c.db, p, 0, 0, 0))))
 	}
 	a := c.args()
 	z := a.str(sql)
-	return c.err(int(int32(sqlite3_exec(a.top, c.db, z, 0, 0, 0))))
+	return c.execResult(int(int32(sqlite3_exec(a.top, c.db, z, 0, 0, 0))))
 }
+
+func (c *Conn) execResult(r int) error { return c.err(r) }
 
 // Prepare compiles the first statement of sql. tail is the rest of sql. A
 // nil statement with no error is sql with no statement in it.
@@ -273,8 +297,19 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	if p == 0 {
 		return nil, tail, nil
 	}
-	return &Stmt{c: c, p: p, kind: kind}, tail, nil
+	writes := int32(sqlite3_stmt_readonly(a.top, p)) == 0
+	return &Stmt{c: c, p: p, kind: kind, writes: writes}, tail, nil
 }
+
+// rollbacks is how many transactions SQLite has rolled back on the
+// connection (go_count_rollbacks).
+func (c *Conn) rollbacks() uint32 { return *(*uint32)(at(c.st.base + rollbackOffset)) }
+
+// ErrRolledBack is the error of a statement that wrote, at its end, when
+// SQLite rolled back its transaction while it ran: another statement of the
+// connection failed in a way that ends the transaction (out of memory, an
+// I/O error, a full disk, a panic in a Go collation), or ROLLBACK ran.
+var ErrRolledBack = errors.New("sqlite: the transaction of the statement was rolled back while it ran: what it wrote is gone")
 
 // Changes is the number of rows the last statement changed.
 func (c *Conn) Changes() int64 { return int64(sqlite3_changes64(c.sp, c.db)) }
@@ -316,6 +351,22 @@ type Stmt struct {
 	c    *Conn
 	p    uintptr
 	kind int32 // what goClassify saw as it was prepared
+	// writes says the statement is not read-only. paused says it stopped
+	// at a row, when the connection had rolled back rollbacks
+	// transactions.
+	writes    bool
+	paused    bool
+	rollbacks uint32
+}
+
+// lost says whether a statement that writes lost its transaction while it
+// stopped at a row: another statement ended it. A rollback inside its own
+// step is its own error, already in the result, or SQLite running it again
+// after a change of the schema, after which it goes on and commits.
+func (s *Stmt) lost() bool {
+	lost := s.paused && s.c.rollbacks() != s.rollbacks
+	s.paused = false
+	return lost
 }
 
 // Mergeable says the statement changes tables of the main database and
@@ -350,7 +401,13 @@ func (s *Stmt) Reset() error {
 	if err := s.c.brokenErr(); err != nil {
 		return err
 	}
-	return s.err(sqlite3_reset(s.c.sp, s.p))
+	lost := s.lost()
+	// A statement stopped before its end finishes its write here.
+	err := s.err(sqlite3_reset(s.c.sp, s.p))
+	if lost && err == nil {
+		err = ErrRolledBack
+	}
+	return err
 }
 
 // ClearBindings sets every parameter to NULL.
@@ -366,8 +423,22 @@ func (s *Stmt) Step() (bool, error) {
 	if err := s.c.brokenErr(); err != nil {
 		return false, err
 	}
-	switch r := int32(sqlite3_step(s.c.sp, s.p)); r {
+	if s.lost() {
+		// The rows still to come are of a write that is gone.
+		sqlite3_reset(s.c.sp, s.p)
+		return false, ErrRolledBack
+	}
+	r := int32(sqlite3_step(s.c.sp, s.p))
+	// A callback that panicked during the step leaves no trace in r: the
+	// row it gave, or its end, may be wrong.
+	if err := s.c.brokenErr(); err != nil {
+		return false, err
+	}
+	switch r {
 	case Row:
+		if s.writes {
+			s.paused, s.rollbacks = true, s.c.rollbacks()
+		}
 		return true, nil
 	case Done:
 		return false, nil

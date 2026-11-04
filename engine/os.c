@@ -63,6 +63,28 @@ int go_create_function(sqlite3 *db, const char *name, int nArg, int flags, long 
   return sqlite3_create_function_v2(db, name, nArg, flags, (void *)h, goFunc, 0, 0, goFuncDestroy);
 }
 
+static void goStep(sqlite3_context *ctx, int argc, sqlite3_value **argv) { host_step(ctx, argc, argv); }
+static void goFinal(sqlite3_context *ctx) { host_final(ctx); }
+
+/* go_create_aggregate is go_create_function for an aggregate: SQLite calls
+   goStep for each row of a group and goFinal at its end, also when the
+   statement stops early. */
+int go_create_aggregate(sqlite3 *db, const char *name, int nArg, int flags, long h) {
+  return sqlite3_create_function_v2(db, name, nArg, flags, (void *)h, 0, goStep, goFinal, goFuncDestroy);
+}
+
+static int goCollate(void *h, int n1, const void *p1, int n2, const void *p2) {
+  return host_collate((long)h, n1, p1, n2, p2);
+}
+static void goCollateDestroy(void *h) { host_collate_destroy((long)h); }
+
+/* go_create_collation makes the Go comparison of handle h the collation
+   name. Unlike the functions, SQLite does not call goCollateDestroy when
+   this fails: the caller drops h then. */
+int go_create_collation(sqlite3 *db, const char *name, long h) {
+  return sqlite3_create_collation_v2(db, name, SQLITE_UTF8, (void *)h, goCollate, goCollateDestroy);
+}
+
 /* ---- statements for group commit ---- */
 
 /* goClassify is the authorizer the host installs on every connection. As a
@@ -149,6 +171,25 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
 
 /* go_classify installs goClassify on db with the word it writes to. */
 int go_classify(sqlite3 *db, int *flags) { return sqlite3_set_authorizer(db, goClassify, flags); }
+
+/* goRollbackHook counts the transactions SQLite rolls back on db, in the word
+   go_count_rollbacks gives it: a statement that writes and was running when
+   one ended learns it lost what it wrote (Stmt.Step). */
+static void goRollbackHook(void *n) { ++*(volatile unsigned *)n; }
+
+/* go_count_rollbacks installs goRollbackHook on db with the word it counts in. */
+int go_count_rollbacks(sqlite3 *db, unsigned *n) {
+  sqlite3_rollback_hook(db, goRollbackHook, n);
+  return SQLITE_OK;
+}
+
+/* go_collate_failed records the panic of a Go collation on db the way SQLite
+   records an allocation that failed: the comparisons after the panic gave 0,
+   so the statement must not finish. SQLite stops it with SQLITE_NOMEM and
+   rolls it back, or the whole transaction, on the error path it tests for
+   every allocation (commits, VACUUM and savepoints all take it). sqlite3OomFault
+   is internal to SQLite: this file is compiled with sqlite3.c (sqlite.c). */
+void go_collate_failed(sqlite3 *db) { sqlite3OomFault(db); }
 
 /* ---- files ---- */
 

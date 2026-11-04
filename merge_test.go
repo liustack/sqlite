@@ -295,21 +295,28 @@ func TestMergeDeferredForeignKey(t *testing.T) {
 	mExec(t, db, `CREATE TABLE p(id INTEGER PRIMARY KEY)`)
 	mExec(t, db, `CREATE TABLE c(pid REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED)`)
 	mExec(t, db, `CREATE TABLE ok(x)`)
-	var bad, good error
-	err := behind(t, db, func() error {
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() { defer wg.Done(); _, bad = db.Exec(`INSERT INTO c VALUES (7)`) }()
-		for waiting() == 0 {
-			time.Sleep(time.Millisecond)
-		}
-		go func() { defer wg.Done(); _, good = db.Exec(`INSERT INTO ok VALUES (1)`) }()
-		wg.Wait()
-		return nil
-	})
+	// The holder keeps the lock until both inserts wait in the queue, so
+	// they run as one batch.
+	tx, err := db.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
+	mExec(t, tx, `INSERT INTO h VALUES (1)`)
+	var bad, good error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); _, bad = db.Exec(`INSERT INTO c VALUES (7)`) }()
+	for waiting() < 1 {
+		time.Sleep(time.Millisecond)
+	}
+	go func() { defer wg.Done(); _, good = db.Exec(`INSERT INTO ok VALUES (1)`) }()
+	for waiting() < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
 	if bad == nil || !strings.Contains(bad.Error(), "FOREIGN KEY") {
 		t.Fatalf("the orphan insert got %v, want a foreign key error", bad)
 	}
@@ -725,5 +732,68 @@ func TestHandedRequestLeadsBatch(t *testing.T) {
 	}
 	if c := mCount(t, db, `SELECT count(*) FROM t`); c != n {
 		t.Fatalf("%d rows, want %d", c, n)
+	}
+}
+
+// When SQLite rolls back a transaction itself (here RAISE(ROLLBACK) in a
+// trigger), the statements after it in the sql.Tx fail: none of them may
+// run on its own and commit, and Commit fails.
+func TestTxEndedBySQLite(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	mExec(t, db, `CREATE TABLE t(x); CREATE TABLE stop(x);
+		CREATE TRIGGER stop_all BEFORE INSERT ON stop BEGIN SELECT RAISE(ROLLBACK, 'stopped'); END`)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, tx, `INSERT INTO t VALUES ('a')`)
+	if _, err := tx.Exec(`INSERT INTO stop VALUES (1)`); err == nil || !strings.Contains(err.Error(), "stopped") {
+		t.Fatalf("the trigger: %v", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO t VALUES ('b')`); err == nil {
+		t.Error("an insert after the rollback ran")
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT count(*) FROM t`).Scan(&n); err == nil {
+		t.Error("a query after the rollback ran")
+	}
+	if err := tx.Commit(); err == nil {
+		t.Error("Commit after the rollback succeeded")
+	}
+	if n := mCount(t, db, `SELECT count(*) FROM t`); n != 0 {
+		t.Fatalf("t has %d rows", n)
+	}
+	mExec(t, db, `INSERT INTO t VALUES ('c')`)
+}
+
+// A write on one connection after another connection changed the schema
+// succeeds once: SQLite runs it again inside the step, and it commits.
+func TestWriteAfterSchemaChange(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	ctx := t.Context()
+	a, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if _, err := a.ExecContext(ctx, `CREATE TABLE t(x)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ExecContext(ctx, `INSERT INTO t VALUES (1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.ExecContext(ctx, `CREATE TABLE other(x)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ExecContext(ctx, `INSERT INTO t VALUES (2)`); err != nil {
+		t.Fatalf("insert after a change of the schema: %v", err)
+	}
+	if n := mCount(t, db, `SELECT count(*) FROM t`); n != 2 {
+		t.Fatalf("t has %d rows", n)
 	}
 }

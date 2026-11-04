@@ -207,3 +207,78 @@ func TestMergeable(t *testing.T) {
 		s.Finalize()
 	}
 }
+
+// A statement that writes and was running when SQLite rolled back its
+// transaction, because another statement of the connection failed, ends
+// with ErrRolledBack: it must not end as if what it wrote were kept.
+func TestRolledBackWhileRunning(t *testing.T) {
+	c := open(t, filepath.Join(t.TempDir(), "r.db"))
+	if err := c.Exec(`CREATE TABLE r(n); CREATE TABLE stop(x);
+		CREATE TRIGGER stop_all BEFORE INSERT ON stop BEGIN SELECT RAISE(ROLLBACK, 'stopped'); END`); err != nil {
+		t.Fatal(err)
+	}
+	for _, end := range []string{"step", "reset"} {
+		s, _, err := c.Prepare(`INSERT INTO r VALUES (1), (2) RETURNING n`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if more, err := s.Step(); err != nil || !more {
+			t.Fatalf("first row: %v %v", more, err)
+		}
+		if err := c.Exec(`INSERT INTO stop VALUES (1)`); err == nil {
+			t.Fatal("the trigger did not stop the insert")
+		}
+		switch end {
+		case "step":
+			for {
+				more, e := s.Step()
+				if e != nil || !more {
+					err = e
+					break
+				}
+			}
+		case "reset":
+			err = s.Reset()
+		}
+		s.Finalize()
+		if !errors.Is(err, ErrRolledBack) {
+			t.Fatalf("%s: %v, want ErrRolledBack", end, err)
+		}
+		if v := mustOne(t, c, "SELECT count(*) FROM r"); v != "0" {
+			t.Fatalf("r has %s rows", v)
+		}
+	}
+	// A statement that runs alone is not touched.
+	if err := c.Exec(`INSERT INTO r VALUES (3)`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// SQLite rolls back and runs a statement again inside one step when the
+// schema changed under it. That rollback is not another statement's: the
+// write commits and must end with no error.
+func TestSchemaRetryIsNotRolledBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.db")
+	a := open(t, path)
+	b := open(t, path)
+	if err := a.Exec(`CREATE TABLE t(x)`); err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := b.Prepare(`INSERT INTO t VALUES (1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Finalize()
+	if err := a.Exec(`CREATE TABLE other(x)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Step(); err != nil {
+		t.Fatalf("insert after a change of the schema: %v", err)
+	}
+	if err := s.Reset(); err != nil {
+		t.Fatal(err)
+	}
+	if v := mustOne(t, a, "SELECT count(*) FROM t"); v != "1" {
+		t.Fatalf("t has %s rows", v)
+	}
+}

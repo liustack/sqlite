@@ -38,6 +38,8 @@ type conn struct {
 	// readOnlyTx says a read-only transaction is open: it takes no write
 	// lock.
 	readOnlyTx bool
+	// tx is the transaction of database/sql that is open, or nil.
+	tx *tx
 	// bad says the connection is in a state it cannot leave (a transaction
 	// that would not roll back): database/sql must drop it.
 	bad bool
@@ -162,6 +164,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		c.endWrite()
 		return nil, err
 	}
+	c.tx = t
 	return t, nil
 }
 
@@ -177,6 +180,17 @@ type tx struct {
 // then, since database/sql is done with it either way.
 func (t *tx) end(sql string) error {
 	c := t.c
+	c.tx = nil
+	if c.c.AutoCommit() {
+		// SQLite ended the transaction before: an error rolled it back, or
+		// a statement of the transaction ended it.
+		err := t.restore()
+		c.endWrite()
+		if sql == "COMMIT" {
+			return errTxEnded
+		}
+		return err
+	}
 	err := c.c.Exec(sql)
 	if !c.c.AutoCommit() {
 		if rerr := c.c.Exec("ROLLBACK"); rerr != nil || !c.c.AutoCommit() {
@@ -188,6 +202,19 @@ func (t *tx) end(sql string) error {
 	}
 	c.endWrite()
 	return err
+}
+
+// errTxEnded is the error of the statements, and the Commit, of a
+// transaction that SQLite ended before them.
+var errTxEnded = errors.New("sqlite: the transaction already ended: an error rolled it back, or a statement of it ended it")
+
+// txEnded fails a statement of a database/sql transaction that SQLite ended
+// already. Run as an autocommit statement, it would commit on its own.
+func (c *conn) txEnded() error {
+	if c.tx != nil && c.c.AutoCommit() {
+		return errTxEnded
+	}
+	return nil
 }
 
 // restore undoes what BeginTx set for a read-only transaction.

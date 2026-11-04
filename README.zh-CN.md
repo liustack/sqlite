@@ -80,6 +80,18 @@ db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=syn
 
 名字可以是文件名、`:memory:` 或 [SQLite URI](https://sqlite.org/uri.html)。`_pragma=name(value)` 在每个新连接上执行一条 PRAGMA，`_txlock=immediate` 让 `BEGIN` 马上拿写锁。没有用 `busy_timeout` 另设的话，连接等锁最多 5 秒。其余见 [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite)。
 
+Go 写的 SQL 函数、聚合函数和排序规则放在 connector 上，这样连接池里的每个连接都有：
+
+```go
+c, err := sqlite.NewConnector("file:app.db",
+	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
+	sqlite.WithAggregate("median", 1, newMedian),
+	sqlite.WithCollation("fold", fold))
+db := sql.OpenDB(c)
+```
+
+`sqlite.Register` 把它们交给之后 `sql.Open` 创建的每个 connector。函数出错或 panic 只让它所在的语句失败，连接不受影响。
+
 驱动注册的名字是 `sqlite`，和 modernc.org/sqlite、glebarez/go-sqlite 一样，所以同时导入其中一个的程序启动时会 panic。这时用 `sql.OpenDB(sqlite.NewConnector(dsn))` 打开数据库。
 
 ## 对你有什么不同

@@ -38,7 +38,14 @@ void host_localtime(long long t, int *out);
    arguments and sets the result through the C API, from the shadow pointer
    it was called with. */
 void host_func(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void host_step(sqlite3_context *ctx, int argc, sqlite3_value **argv);
+void host_final(sqlite3_context *ctx);
 void host_func_destroy(long h);
+
+/* Collations written in Go: host_collate compares with the Go function of
+   handle h. */
+int host_collate(long h, int n1, const void *p1, int n2, const void *p2);
+void host_collate_destroy(long h);
 
 int host_close(long f);
 int host_read(long f, void *buf, int n, long long off);
