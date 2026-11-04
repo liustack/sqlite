@@ -26,6 +26,14 @@
 /* The localtime and utc modifiers: localtime_r (os.c) asks the Go host,
    which uses time.Local. */
 #define HAVE_LOCALTIME_R 1
+/* What programs most often need and cannot add from Go: full-text search,
+   the spatial index, the SQL math functions (sin, log, pow and the others,
+   from musl in engine/libc/math, so every target gives the same bits) and
+   median and percentile. */
+#define SQLITE_ENABLE_FTS5 1
+#define SQLITE_ENABLE_RTREE 1
+#define SQLITE_ENABLE_MATH_FUNCTIONS 1
+#define SQLITE_ENABLE_PERCENTILE 1
 
 #include "sqlite3.c"
 #include "os.c"

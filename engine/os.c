@@ -191,6 +191,11 @@ int go_count_rollbacks(sqlite3 *db, unsigned *n) {
    is internal to SQLite: this file is compiled with sqlite3.c (sqlite.c). */
 void go_collate_failed(sqlite3 *db) { sqlite3OomFault(db); }
 
+/* go_vtabs_in_tx says virtual tables (FTS5, R*Tree) take part in the open
+   transaction of db: one was written since it began. db->nVTrans is internal
+   to SQLite, as sqlite3OomFault is. */
+int go_vtabs_in_tx(sqlite3 *db) { return db->nVTrans > 0; }
+
 /* ---- files ---- */
 
 typedef struct GoFile {

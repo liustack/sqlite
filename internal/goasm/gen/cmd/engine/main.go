@@ -1,9 +1,10 @@
 // Copyright (c) 2026 The liustack/sqlite Authors.
 // SPDX-License-Identifier: MIT
 //
-// Whole-engine driver: compile engine/sqlite.c and the string functions of
-// engine/libc freestanding with LLVM 22.1.8, link them into one module, run the
-// shadow-stack pass, llc, the checks and the lowering over every function,
+// Whole-engine driver: compile engine/sqlite.c and the string and math
+// functions of engine/libc freestanding with LLVM 22.1.8, link them into one
+// module, run the shadow-stack pass, llc, the checks and the lowering over
+// every function,
 // and emit Go assembly split by C source file, the read-only data and the Go
 // declarations. With -keep-going it does not stop at the first function it
 // cannot lower: it lists every rejection by class, emits a stub for each
@@ -135,10 +136,13 @@ func main() {
 	type src struct{ path, group string }
 	var srcs []src
 	srcs = append(srcs, src{filepath.Join(*engineDir, "sqlite.c"), "sqlite"})
-	ms, _ := filepath.Glob(filepath.Join(*engineDir, "libc", "string", "*.c"))
-	for _, m := range ms {
-		srcs = append(srcs, src{m, "libc"})
+	for _, dir := range []string{"libc/string", "libc/math"} {
+		ms, _ := filepath.Glob(filepath.Join(*engineDir, dir, "*.c"))
+		for _, m := range ms {
+			srcs = append(srcs, src{m, "libc"})
+		}
 	}
+	srcs = append(srcs, src{filepath.Join(*engineDir, "libc", "math.c"), "libc"})
 	if *srcList != "" {
 		srcs = nil
 		for _, f := range strings.Split(*srcList, ",") {

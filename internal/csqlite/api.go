@@ -320,6 +320,10 @@ func (c *Conn) LastInsertRowID() int64 { return int64(sqlite3_last_insert_rowid(
 // SetLastInsertRowID sets what LastInsertRowID and last_insert_rowid() give.
 func (c *Conn) SetLastInsertRowID(id int64) { sqlite3_set_last_insert_rowid(c.sp, c.db, uintptr(id)) }
 
+// VirtualTablesInTx says virtual tables take part in the open transaction:
+// one was written since it began.
+func (c *Conn) VirtualTablesInTx() bool { return int32(go_vtabs_in_tx(c.sp, c.db)) != 0 }
+
 // DeferredFKs says foreign key constraints of the transaction are not
 // resolved yet (SQLITE_DBSTATUS_DEFERRED_FKS).
 func (c *Conn) DeferredFKs() bool {
@@ -372,7 +376,13 @@ func (s *Stmt) lost() bool {
 // Mergeable says the statement changes tables of the main database and
 // touches nothing only its connection has: run on another connection of
 // the same file, it does the same.
-func (s *Stmt) Mergeable() bool { return s.kind == writesMain }
+//
+// goClassify also sees the statements SQLite prepares while it prepares
+// this one: R*Tree prepares writes of its shadow tables when the connection
+// first uses one of its tables. They can only add to the kind, so they make
+// a statement private, which is safe, or make a read look like a write,
+// which SQLite's own sqlite3_stmt_readonly rules out here.
+func (s *Stmt) Mergeable() bool { return s.kind == writesMain && s.writes }
 
 // ChangesConn says the statement changes the connection itself: a PRAGMA
 // that sets something, ATTACH, DETACH, or a temporary table, index, view or
