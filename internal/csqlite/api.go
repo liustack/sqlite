@@ -13,6 +13,9 @@ import (
 	"math"
 	"sync"
 	"unsafe"
+
+	// A Go newer than the one the engine was checked with stops the build.
+	_ "github.com/liustack/sqlite/internal/goversion"
 )
 
 // The C API of SQLite for the driver. A Conn and its statements are used by

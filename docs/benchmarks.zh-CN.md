@@ -217,7 +217,7 @@
 - **单个写者**（Insert）两台机器上都和 mattn 接近。时间花在写 WAL 和 SQLite 协议要求的加锁上，每个驱动的系统调用都一样。
 - **连表加分组**（Aggregate）全是引擎内部的计算，比 cgo 慢 9%（linux）到 31%（darwin）：引擎是同一份 C，由 LLVM 编译，变成的 Go 汇编接近 clang 为本机生成的代码，但还不如它。
 - **大文本**比别的驱动都读得慢：100 行 200 KB 的文本，linux 上 8.85 ms，别的 6.99 到 8.13 ms。时间花在哪还没量。
-- **内存分配**：数字直接拷进 `Scan` 的目标（`driver.RowsColumnScanner`），不装进接口，所以扫描的分配次数是 mattn 和 modernc 的一半。
+- **内存分配**：数字直接拷进 `Scan` 的目标（`driver.RowsColumnScanner`，Go 1.27），不装进接口，所以扫描的分配次数是 mattn 和 modernc 的一半。
 - **linux 上的 Point** 每次查询都含一次 `fstat`，每个驱动都一样：WAL 为空时（夹具刚拷出来就是这样），SQLite 在每次读开始时读一次数据库文件的大小。这台虚拟机上一次系统调用约 0.8 µs，这一行 linux 和 darwin 的差距大半来自这里。
 
 ## 自己再跑一遍

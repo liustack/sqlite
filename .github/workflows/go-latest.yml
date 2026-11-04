@@ -1,0 +1,101 @@
+# Copyright (c) 2026 The liustack/sqlite Authors.
+# SPDX-License-Identifier: MIT
+# Use of this source code is governed by the MIT license in LICENSE at the
+# root of this repository.
+
+# Once a week, the tests on the newest stable Go (job engine), and on each Go
+# release the module lets build (job releases, scripts/go-versions.sh). The
+# generated assembly depends on details inside Go (stack layout, the
+# runtime's use of registers, linker names), and a new Go release can change
+# them. A failure of the job engine is a warning for us to read, not a check
+# for merging, and it only sees the breaks the tests see. A Go newer than
+# the one the engine was checked with stops the build (internal/goversion),
+# so that job builds with sqlite_anygo.
+name: go-latest
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  engine:
+    name: engine (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux/amd64
+            os: ubuntu-24.04
+          - name: linux/arm64
+            os: ubuntu-24.04-arm
+          - name: darwin/arm64
+            os: macos-15
+          # amd64 binaries on the arm64 runner, which Rosetta runs
+          - name: darwin/amd64
+            os: macos-15
+            goarch: amd64
+          - name: windows/amd64
+            os: windows-2025
+    defaults:
+      run:
+        # Git Bash on windows.
+        shell: bash
+    env:
+      # Empty: the runner's own architecture.
+      GOARCH: ${{ matrix.goarch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+      - run: go version
+      - run: go vet -asmdecl=false -tags sqlite_anygo ./...
+      - run: go test -count=1 -tags sqlite_anygo ./...
+
+  # The Go releases the module lets build: the go line of go.mod and the
+  # newest patch release of each minor version up to the one
+  # internal/goversion stops. Unlike the job above, a failure here is a
+  # release we say we support.
+  releases:
+    name: releases (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux/amd64
+            os: ubuntu-24.04
+          - name: linux/arm64
+            os: ubuntu-24.04-arm
+          - name: darwin/arm64
+            os: macos-15
+          - name: windows/amd64
+            os: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: GO_VERSIONS_LIST=1 scripts/go-versions.sh
+      - name: Tests with each release
+        run: scripts/go-versions.sh
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-versions-${{ strategy.job-index }}
+          path: .build/go-versions
