@@ -34,6 +34,8 @@ Time per operation, lower is better, the median of 6 runs. The best of each row 
 | Insert, 8 goroutines at once | **9.74 µs** | 19.1 µs | 25.7 µs | 22.0 µs |
 | Insert, 64 goroutines at once | **2.97 µs** | 19.6 µs | 27.2 µs | 26.9 µs |
 
+With `synchronous=FULL`, where every commit waits for the disk, 64 goroutines insert in **21 µs** each, against 3.03 ms (mattn), 4.37 ms (modernc) and 1.09 ms (ncruces). [How it was measured](docs/benchmarks.md#linuxamd64)
+
 **darwin/arm64** (Apple M4, Go 1.27.2, on a busy machine, so read differences under 30% as noise):
 
 | Workload | this driver | mattn (cgo) | modernc | ncruces |

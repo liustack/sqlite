@@ -36,6 +36,14 @@
 | InsertParallel，64 个写入者 | 2.97 µs | 19.6 µs | 27.2 µs | 26.9 µs |
 | geomean | 5.20 µs | 11.2 µs | 13.7 µs | 12.5 µs |
 
+`synchronous=FULL` 时，每次提交都要等磁盘落盘（`InsertParallelFull`，提交 `76ecfda`，和上面一样单线程，取 4 轮的中位数）。磁盘是虚拟机的持久盘，一次提交连同 fsync 约 0.6 到 0.9 ms：
+
+| 基准 | 本驱动 | mattn | modernc | ncruces |
+| --- | --- | --- | --- | --- |
+| InsertParallelFull，1 个写入者 | 881 µs | 915 µs | 948 µs | 828 µs |
+| InsertParallelFull，8 个写入者 | 191 µs | 1.95 ms | 2.36 ms | 900 µs |
+| InsertParallelFull，64 个写入者 | 21.0 µs | 3.03 ms | 4.37 ms | 1.09 ms |
+
 ## darwin/arm64
 
 一台 Apple M4（10 核），macOS 15，Go 1.27.2。测试期间机器还在跑其他工作（10 核上的平均负载是 3 到 8），所以同一个驱动的数字在多次运行间会浮动多达 30%，只有更大的差距才说明问题。四个驱动的 Insert 行都落在这个噪声之内。
@@ -56,7 +64,7 @@
 ## 数字说明了什么
 
 - **读**（Point、PointParallel、Scan）比 cgo 快：调用引擎就是普通的 Go 调用，没有跨 cgo 的开销。进程里另一个读正在跑或刚结束时，读事务也不用在内核里加锁（见 `internal/vfs`）。
-- **多个写入者**（InsertParallel）是合并提交发挥作用的地方：从 8 个写入者起，一次提交带上许多条插入，到 64 个写入者时，一条插入的耗时只有其他驱动的六分之一到十二分之一。在忙碌的 Mac 上，modernc 在 64 个写入者时把时间花在 SQLite 的 busy handler 里，它的休眠时间会越来越长，而持有锁的写入者在等一个线程。
+- **多个写入者**（InsertParallel）是合并提交发挥作用的地方：从 8 个写入者起，一次提交带上许多条插入，到 64 个写入者时，一条插入的耗时只有其他驱动的六分之一到十二分之一。`synchronous=FULL` 时提交越贵差距越大：64 个写入者时一次 fsync 带上约 50 条插入，一条插入 21 µs，其他驱动是 1.1 到 4.4 ms。在忙碌的 Mac 上，modernc 在 64 个写入者时把时间花在 SQLite 的 busy handler 里，它的休眠时间会越来越长，而持有锁的写入者在等一个线程。
 - **一个写入者**（Insert）在两台机器上都和 mattn 接近。时间花在 WAL 写入和 SQLite 协议要求的锁上，所有驱动发出的系统调用都一样。
 - **Aggregate** 全部工作都在引擎内部，比 cgo 慢 6%（linux）到 20%（darwin）：引擎是同一份 C，由 LLVM 编译，得到的 Go 汇编接近 clang 为这台机器生成的代码，但还不如它。
 - **Scan** 把每个数字直接复制进 `Scan` 的目标变量（`driver.RowsColumnScanner`），不装箱成接口，所以分配次数只有 mattn 和 modernc 的一半。
