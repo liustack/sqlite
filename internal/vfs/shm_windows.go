@@ -106,6 +106,10 @@ func openShmHandle(path string) (h windows.Handle, readOnly bool, rc int) {
 	return h, true, OK
 }
 
+// sharedShmForTest makes every new node use the shared handle, as on a
+// network drive, as os_win's sqlite3_win_test_unc_locking.
+var sharedShmForTest bool
+
 // remote tells whether path is on a network drive, as os_win's winIsUNCPath
 // and winIsRemoteVolume.
 func remote(path string) bool {
@@ -139,7 +143,7 @@ func (f *File) openShm() int {
 			shmNodes.Unlock()
 			return rc
 		}
-		node = &shmNode{key: key, path: path, h: h, shared: remote(f.path), readOnly: ro, unlocked: true}
+		node = &shmNode{key: key, path: path, h: h, shared: sharedShmForTest || remote(f.path), readOnly: ro, unlocked: true}
 		if shmNodes.m == nil {
 			shmNodes.m = make(map[string]*shmNode)
 		}

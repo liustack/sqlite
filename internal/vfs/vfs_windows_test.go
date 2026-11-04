@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -269,5 +270,100 @@ func TestShmLockBytes(t *testing.T) {
 	b.ShmUnmap(false)
 	if s, e := held(t, shm, shmBase, ShmNLock+1); !s || !e {
 		t.Errorf("after unmap: can lock shared %v, exclusive %v", s, e)
+	}
+}
+
+func TestTruncateWhileMapped(t *testing.T) {
+	// SQLite built from C with mmap_size > 0 keeps the database mapped.
+	// Shrinking it then fails with ERROR_USER_MAPPED_FILE, which os_win
+	// takes as done: SQLite reads a file longer than its pages fine.
+	name := filepath.Join(t.TempDir(), "mapped.db")
+	f := openT(t, name, mainDB)
+	if rc := f.WriteAt(make([]byte, 65536), 0); rc != OK {
+		t.Fatal(rc)
+	}
+	p, _ := windows.UTF16PtrFromString(name)
+	h, err := windows.CreateFile(p, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(h)
+	m, err := windows.CreateFileMapping(h, nil, windows.PAGE_READONLY, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(m)
+	v, err := windows.MapViewOfFile(m, windows.FILE_MAP_READ, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.UnmapViewOfFile(v)
+	if rc := f.Truncate(4096); rc != OK {
+		t.Errorf("Truncate under another's mapping = %d, want OK", rc)
+	}
+}
+
+func TestShmSharedHandle(t *testing.T) {
+	// On a network drive, as os_win, the Files of the process take their
+	// slot locks on the node's one handle, and the node sorts them out.
+	sharedShmForTest = true
+	t.Cleanup(func() { sharedShmForTest = false })
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	if !a.shm.node.shared {
+		t.Fatal("node does not use the shared handle")
+	}
+	shm := name + "-shm"
+	const (
+		lockShared = ShmLock | ShmShared
+		lockExcl   = ShmLock | ShmExclusive
+		unShared   = ShmUnlock | ShmShared
+		unExcl     = ShmUnlock | ShmExclusive
+	)
+	lockT(t, "a shared 3", a.ShmLock(3, 1, lockShared), OK)
+	lockT(t, "b shared 3", b.ShmLock(3, 1, lockShared), OK)
+	lockT(t, "a unlock 3", a.ShmLock(3, 1, unShared), OK)
+	// b still reads: the process keeps its lock.
+	if s, e := held(t, shm, shmBase+3, 1); !s || e {
+		t.Errorf("slot 3 with b reading: can lock shared %v, exclusive %v", s, e)
+	}
+	lockT(t, "a excl 3", a.ShmLock(3, 1, lockExcl), Busy)
+	lockT(t, "b unlock 3", b.ShmLock(3, 1, unShared), OK)
+	if s, e := held(t, shm, shmBase+3, 1); !s || !e {
+		t.Errorf("slot 3 with no reader: can lock shared %v, exclusive %v", s, e)
+	}
+	lockT(t, "a excl 0", a.ShmLock(0, 1, lockExcl), OK)
+	lockT(t, "b excl 0", b.ShmLock(0, 1, lockExcl), Busy)
+	lockT(t, "b shared 0", b.ShmLock(0, 1, lockShared), Busy)
+	lockT(t, "a unlock 0", a.ShmLock(0, 1, unExcl), OK)
+	lockT(t, "b shared 0", b.ShmLock(0, 1, lockShared), OK)
+
+	// Many readers come and go at once: the process's lock on the slot is
+	// there exactly while one of them reads, and taken once.
+	var wg sync.WaitGroup
+	for range 4 {
+		f := openT(t, name, mainDB)
+		shmMapT(t, f, 0, false)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer f.ShmUnmap(false)
+			for range 2000 {
+				if rc := f.ShmLock(4, 1, lockShared); rc != OK {
+					t.Errorf("shared 4 = %d", rc)
+					return
+				}
+				if rc := f.ShmLock(4, 1, unShared); rc != OK {
+					t.Errorf("unlock 4 = %d", rc)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if s, e := held(t, shm, shmBase+4, 1); !s || !e {
+		t.Errorf("slot 4 after the readers left: can lock shared %v, exclusive %v", s, e)
 	}
 }
