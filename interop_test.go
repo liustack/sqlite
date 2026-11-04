@@ -67,6 +67,19 @@ func TestInteropShell(t *testing.T) {
 			go func() { shellDone <- cmd.Wait() }()
 			stop := make(chan struct{})
 			var wg sync.WaitGroup
+			// SQLite gives a waiting writer of another process no turn: its busy
+			// handler sleeps and tries again, and finds the lock free only
+			// between two writes. The workers queue for the file inside the
+			// driver, so one takes the lock the moment another lets it go, and on
+			// windows, where a commit takes milliseconds, the shell has waited
+			// out its timeout on its first INSERT. So after each write all
+			// workers wait three times as long as it took (1 to 20 ms), which
+			// leaves the lock free most of the time while they still write
+			// together.
+			var pace struct {
+				sync.Mutex
+				next time.Time
+			}
 			written := make([]int, workers)
 			errs := make(chan error, workers)
 			for w := range workers {
@@ -79,15 +92,29 @@ func TestInteropShell(t *testing.T) {
 							return
 						default:
 						}
+						pace.Lock()
+						next := pace.next
+						pace.Unlock()
+						select {
+						case <-stop:
+							return
+						case <-time.After(time.Until(next)):
+						}
+						start := time.Now()
 						if _, err := db.Exec(`INSERT INTO t VALUES('go', ?)`, written[w]); err != nil {
 							errs <- err
 							return
 						}
 						written[w]++
-						// Room for the shell: with the rollback journal, a
-						// writer that never pauses keeps every other
-						// process out, C or Go.
-						time.Sleep(100 * time.Microsecond)
+						now := time.Now()
+						pace.Lock()
+						// The time of a write includes its wait for the
+						// shell, hence the upper bound.
+						pause := min(max(3*now.Sub(start), time.Millisecond), 20*time.Millisecond)
+						if n := now.Add(pause); n.After(pace.next) {
+							pace.next = n
+						}
+						pace.Unlock()
 					}
 				}()
 			}
