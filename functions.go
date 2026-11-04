@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/liustack/sqlite/internal/csqlite"
+	"github.com/liustack/sqlite/internal/extapi"
 )
 
 // Func is a SQL function written in Go.
@@ -354,4 +355,21 @@ func Join(opts ...Option) Option {
 		}
 		return nil
 	}}
+}
+
+func init() {
+	extapi.BorrowedFunction = func(name string, nArg int, fn func([]driver.Value) (driver.Value, error), flags ...int) any {
+		fl := make([]FuncFlag, len(flags))
+		for i, f := range flags {
+			fl[i] = FuncFlag(f)
+		}
+		opt := WithFunction(name, nArg, fn, fl...)
+		return Option{func(o *options) error {
+			if err := opt.apply(o); err != nil {
+				return err
+			}
+			o.funcs[len(o.funcs)-1].flags |= csqlite.FuncBorrowBlobs
+			return nil
+		}}
+	}
 }

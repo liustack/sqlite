@@ -432,7 +432,7 @@ func host_vtab_filter(sp, c, idxNum, idxStr, argc, argv uintptr) (ret uintptr) {
 	if idxStr != 0 {
 		s = cstring(idxStr)
 	}
-	vals := values(sp, argc, argv)
+	vals := values(sp, argc, argv, false)
 	err := run(func() error { return cur.Filter(int(int32(idxNum)), s, vals) })
 	if err = setEOF(c, cur, err); err != nil {
 		return vtabError(sp, v, err)
@@ -530,7 +530,7 @@ func host_vtab_update(sp, v, h, argc, argv, rowid uintptr) (ret uintptr) {
 	if !ok {
 		return vtabError(sp, v, errors.New("the table takes no writes"))
 	}
-	vals := values(sp, argc, argv)
+	vals := values(sp, argc, argv, false)
 	err := run(func() error {
 		switch {
 		case len(vals) == 1:
