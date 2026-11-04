@@ -16,16 +16,25 @@ permissions:
 
 jobs:
   test:
+    name: test (${{ matrix.target.name }}, ${{ matrix.go }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-2025]
+        target:
+          - { name: linux/amd64, os: ubuntu-24.04 }
+          - { name: linux/arm64, os: ubuntu-24.04-arm }
+          - { name: darwin/arm64, os: macos-15 }
+          # amd64 binaries on the arm64 runner, which Rosetta runs
+          - { name: darwin/amd64, os: macos-15, goarch: amd64 }
+          - { name: windows/amd64, os: windows-2025 }
         # The lowest Go the module supports (the go line of go.mod) and the
         # newest patch release of the newest minor version it supports.
         go: [go.mod, "1.27"]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.target.os }}
     env:
       CGO_ENABLED: "0"
+      # Empty: the runner's own architecture.
+      GOARCH: ${{ matrix.target.goarch }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -50,8 +59,9 @@ jobs:
           esac
       - run: go vet -asmdecl=false ./...
       - run: go test -count=1 ./...
-      # The race detector needs cgo on linux. It tests the driver, not the build.
+      # The race detector needs cgo on linux. It tests the driver, not the build,
+      # so the runner's own architecture is enough.
       - run: go test -race -count=1 . ./internal/vfs ./internal/csqlite
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.target.goarch == ''
         env:
           CGO_ENABLED: "1"
