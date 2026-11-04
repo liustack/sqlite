@@ -64,7 +64,7 @@
 go get github.com/liustack/sqlite
 ```
 
-需要 Go 1.27 或更新。支持 linux 和 darwin 的 amd64、arm64，以及 windows 的 amd64。
+需要 Go 1.26.6 到 1.27（见[升级 Go](docs/upstream.zh-CN.md#升级-go)）。支持 linux 和 darwin 的 amd64、arm64，以及 windows 的 amd64。
 
 ## 使用
 

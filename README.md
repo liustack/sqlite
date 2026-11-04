@@ -64,7 +64,7 @@ Where another driver still wins: work that stays inside SQLite (the join), where
 go get github.com/liustack/sqlite
 ```
 
-Go 1.27 or later. linux and darwin on amd64 and arm64, windows on amd64.
+Go 1.26.6 to 1.27 (see [Moving to a new Go](docs/upstream.md#moving-to-a-new-go)). linux and darwin on amd64 and arm64, windows on amd64.
 
 ## Use
 
