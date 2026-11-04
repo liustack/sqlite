@@ -80,19 +80,20 @@ db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=syn
 
 The name is a file, `:memory:` or a [SQLite URI](https://sqlite.org/uri.html). `_pragma=name(value)` runs a PRAGMA on every new connection, and `_txlock=immediate` makes `BEGIN` take the write lock at once. A connection waits 5 seconds for a lock unless `busy_timeout` says otherwise. The rest is on [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite).
 
-SQL functions, aggregates and collations written in Go go on the connector, so that every connection of the pool has them:
+SQL functions, aggregates, collations and read-only virtual tables written in Go go on the connector, so that every connection of the pool has them:
 
 ```go
 c, err := sqlite.NewConnector("file:app.db",
 	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
 	sqlite.WithAggregate("mode", 1, newMode),
-	sqlite.WithCollation("fold", fold))
+	sqlite.WithCollation("fold", fold),
+	sqlite.WithModule("files", connectFiles))
 db := sql.OpenDB(c)
 ```
 
-`sqlite.Register` gives them to every connector `sql.Open` makes after it. An error or a panic in a function fails its statement, not the connection.
+`sqlite.Register` gives them to every connector `sql.Open` makes after it. An error or a panic in a function or a virtual table fails its statement, not the connection.
 
-Common functions come ready in packages under `ext/`: [`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp) (the `REGEXP` operator, `regexp_like`, `regexp_substr`, `regexp_replace`), [`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid), [`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash) (md5, sha1, sha256, sha512, crc32) and [`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats) (variance and standard deviation). Each is one option, and `sqlite.Join` hands several over as one:
+Common functions come ready in packages under `ext/`: [`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp) (the `REGEXP` operator, `regexp_like`, `regexp_substr`, `regexp_replace`), [`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid), [`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash) (md5, sha1, sha256, sha512, crc32), [`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats) (variance and standard deviation), [`unicode`](https://pkg.go.dev/github.com/liustack/sqlite/ext/unicode) (upper and lower case and a case-blind collation for every script), [`csv`](https://pkg.go.dev/github.com/liustack/sqlite/ext/csv) (a CSV file as a table) and [`series`](https://pkg.go.dev/github.com/liustack/sqlite/ext/series) (`generate_series`). Each is one option, and `sqlite.Join` hands several over as one:
 
 ```go
 sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))

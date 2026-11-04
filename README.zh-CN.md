@@ -80,19 +80,20 @@ db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=syn
 
 名字可以是文件名、`:memory:` 或 [SQLite URI](https://sqlite.org/uri.html)。`_pragma=name(value)` 在每个新连接上执行一条 PRAGMA，`_txlock=immediate` 让 `BEGIN` 马上拿写锁。没有用 `busy_timeout` 另设的话，连接等锁最多 5 秒。其余见 [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite)。
 
-Go 写的 SQL 函数、聚合函数和排序规则放在 connector 上，这样连接池里的每个连接都有：
+Go 写的 SQL 函数、聚合函数、排序规则和只读虚拟表放在 connector 上，这样连接池里的每个连接都有：
 
 ```go
 c, err := sqlite.NewConnector("file:app.db",
 	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
 	sqlite.WithAggregate("mode", 1, newMode),
-	sqlite.WithCollation("fold", fold))
+	sqlite.WithCollation("fold", fold),
+	sqlite.WithModule("files", connectFiles))
 db := sql.OpenDB(c)
 ```
 
-`sqlite.Register` 把它们交给之后 `sql.Open` 创建的每个 connector。函数出错或 panic 只让它所在的语句失败，连接不受影响。
+`sqlite.Register` 把它们交给之后 `sql.Open` 创建的每个 connector。函数或虚拟表出错、panic 只让它所在的语句失败，连接不受影响。
 
-常用函数在 `ext/` 下的包里现成可用：[`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp)（`REGEXP` 运算符、`regexp_like`、`regexp_substr`、`regexp_replace`）、[`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid)、[`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash)（md5、sha1、sha256、sha512、crc32）和 [`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats)（方差和标准差）。每个包是一个 option，`sqlite.Join` 能把几个合成一个交出去：
+常用函数在 `ext/` 下的包里现成可用：[`regexp`](https://pkg.go.dev/github.com/liustack/sqlite/ext/regexp)（`REGEXP` 运算符、`regexp_like`、`regexp_substr`、`regexp_replace`）、[`uuid`](https://pkg.go.dev/github.com/liustack/sqlite/ext/uuid)、[`hash`](https://pkg.go.dev/github.com/liustack/sqlite/ext/hash)（md5、sha1、sha256、sha512、crc32）、[`stats`](https://pkg.go.dev/github.com/liustack/sqlite/ext/stats)（方差和标准差）、[`unicode`](https://pkg.go.dev/github.com/liustack/sqlite/ext/unicode)（任何文字的大小写转换，和不分大小写的排序规则）、[`csv`](https://pkg.go.dev/github.com/liustack/sqlite/ext/csv)（把 CSV 文件当表查）和 [`series`](https://pkg.go.dev/github.com/liustack/sqlite/ext/series)（`generate_series`）。每个包是一个 option，`sqlite.Join` 能把几个合成一个交出去：
 
 ```go
 sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
