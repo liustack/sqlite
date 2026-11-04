@@ -179,8 +179,8 @@ func newFunction(name string, nArg int, isNil bool, flags []FuncFlag) (function,
 // as a sorts before, with or after b, and must be a total order. A panic in
 // cmp fails the statement with the panic, and SQLite undoes it as it does
 // when memory runs out: it rolls back the statement, or the whole
-// transaction. Then the next statements of the transaction and its Commit
-// fail. The connection stays good.
+// transaction. When the whole transaction is gone, the next statements of it
+// and its Commit fail. The connection stays good.
 func WithCollation(name string, cmp func(a, b string) int) Option {
 	return Option{func(o *options) error {
 		switch {
