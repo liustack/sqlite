@@ -44,6 +44,14 @@ All 8 threads, nothing else running on the machine:
 | InsertParallel, 64 writers | 2.97 µs | 19.6 µs | 27.2 µs | 26.9 µs |
 | geomean | 5.20 µs | 11.2 µs | 13.7 µs | 12.5 µs |
 
+With `synchronous=FULL`, where every commit waits for the disk (`InsertParallelFull`, commit `76ecfda`, one thread as above, the median of 4 runs). The disk is a persistent disk of the VM, and a commit with its fsync takes about 0.6 to 0.9 ms:
+
+| Benchmark | this driver | mattn | modernc | ncruces |
+| --- | --- | --- | --- | --- |
+| InsertParallelFull, 1 writer | 881 µs | 915 µs | 948 µs | 828 µs |
+| InsertParallelFull, 8 writers | 191 µs | 1.95 ms | 2.36 ms | 900 µs |
+| InsertParallelFull, 64 writers | 21.0 µs | 3.03 ms | 4.37 ms | 1.09 ms |
+
 ## darwin/arm64
 
 An Apple M4 (10 cores), macOS 15, Go 1.27.2. The machine was in use by other work during the runs (load average 3 to 8 on 10 cores), so the numbers of one driver move by up to 30% between runs, and only the larger differences mean something. The Insert rows of the four drivers are within that noise of each other.
@@ -64,7 +72,7 @@ An Apple M4 (10 cores), macOS 15, Go 1.27.2. The machine was in use by other wor
 ## What the numbers say
 
 - **Reads** (Point, PointParallel, Scan) are faster than with cgo: a call into the engine is a plain Go call, with no cgo crossing, and a read transaction takes no lock in the kernel when another read of the process is running or just ended (see `internal/vfs`).
-- **Many writers** (InsertParallel) are where group commit shows: from 8 writers up, one commit carries many inserts, and at 64 writers an insert costs a sixth to a twelfth of what it costs with the other drivers. On the busy Mac, modernc at 64 writers spends its time in SQLite's busy handler, whose sleeps grow while the writer that holds the lock waits for a thread.
+- **Many writers** (InsertParallel) are where group commit shows: from 8 writers up, one commit carries many inserts, and at 64 writers an insert costs a sixth to a twelfth of what it costs with the other drivers. With `synchronous=FULL` the gap grows with the cost of a commit: at 64 writers one fsync carries about 50 inserts, and an insert costs 21 µs against 1.1 to 4.4 ms. On the busy Mac, modernc at 64 writers spends its time in SQLite's busy handler, whose sleeps grow while the writer that holds the lock waits for a thread.
 - **One writer** (Insert) is close to mattn on both machines. The time goes to the WAL write and the locks SQLite's protocol asks for, the same system calls for every driver.
 - **Aggregate**, which is all work inside the engine, is 6% (linux) to 20% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
 - **Scan** copies each number straight into the `Scan` destination (`driver.RowsColumnScanner`), without boxing it in an interface, so it allocates half as often as mattn and modernc.

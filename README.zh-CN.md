@@ -34,6 +34,8 @@
 | 8 个 goroutine 同时插入 | **9.74 µs** | 19.1 µs | 25.7 µs | 22.0 µs |
 | 64 个 goroutine 同时插入 | **2.97 µs** | 19.6 µs | 27.2 µs | 26.9 µs |
 
+`synchronous=FULL`（每次提交都等磁盘落盘）时，64 个 goroutine 同时插入每条 **21 µs**，mattn 3.03 ms，modernc 4.37 ms，ncruces 1.09 ms。[测法](docs/benchmarks.zh-CN.md#linuxamd64)
+
 **darwin/arm64**（Apple M4，Go 1.27.2，测的时候机器上还有别的任务，30% 以内的差别当噪声看）：
 
 | 场景 | 本驱动 | mattn（cgo） | modernc | ncruces |
