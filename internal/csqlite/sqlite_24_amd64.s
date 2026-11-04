@@ -6007,7 +6007,7 @@ TEXT ·sqlite3_db_filename(SB), NOSPLIT, $80-32
 	LEAQ ·engine_rodata+10927(SB), AX
 	QUAD $0x8b481e7500137980
 	BYTE $0x11
-	CMPQ DX, ·engine_rodata+99456(SB)
+	CMPQ DX, ·engine_rodata+99488(SB)
 	QUAD $0x0000d8818b481274
 	QUAD $0x018081894909eb00
 	QUAD $0x24448948c0310000
@@ -8227,7 +8227,7 @@ TEXT ·sqlite3_os_init(SB), $80-16
 	BYTE $0x4c
 	BYTE $0x8b
 	BYTE $0x07
-	CMPQ R8, ·engine_rodata+99448(SB)
+	CMPQ R8, ·engine_rodata+99480(SB)
 	QUAD $0x854d000000d1840f
 	BYTE $0xc0
 	BYTE $0x0f
@@ -8270,7 +8270,7 @@ TEXT ·sqlite3_os_init(SB), $80-16
 	QUAD $0xff5fe94824648b4c
 	BYTE $0xff
 	BYTE $0xff
-	CMPQ R11, ·engine_rodata+99448(SB)
+	CMPQ R11, ·engine_rodata+99480(SB)
 	QUAD $0x894810418b491a75
 	BYTE $0x41
 	BYTE $0x10

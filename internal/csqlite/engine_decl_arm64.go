@@ -1948,7 +1948,7 @@ var missingNames = []string{}
 //   host_mutex_leave ii>v
 //   host_mutex_try ii>i
 //   host_now_ms i>i
-//   host_open iiiii>i
+//   host_open iiii>i
 //   host_poll i>v
 //   host_randomness iii>v
 //   host_read iiiii>i

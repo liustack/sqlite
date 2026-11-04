@@ -13835,7 +13835,7 @@ TEXT ·sqlite3VdbeHalt(SB), $192-24
 	BYTE $0x48
 	BYTE $0x8b
 	BYTE $0x07
-	CMPQ AX, ·engine_rodata+99456(SB)
+	CMPQ AX, ·engine_rodata+99488(SB)
 	QUAD $0x0000009024bc8b4c
 	QUAD $0x8b4cfffff8eb840f
 	QUAD $0xc0854d000000d887
@@ -14030,7 +14030,7 @@ TEXT ·sqlite3VdbeHalt(SB), $192-24
 	BYTE $0x48
 	BYTE $0x8b
 	BYTE $0x07
-	CMPQ AX, ·engine_rodata+99456(SB)
+	CMPQ AX, ·engine_rodata+99488(SB)
 	QUAD $0x0000009024bc8b4c
 	QUAD $0x8b48fffffc8e840f
 	QUAD $0x47c749000000d8bf

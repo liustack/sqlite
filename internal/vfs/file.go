@@ -55,6 +55,7 @@ type File struct {
 	lock     int    // the lock level held
 	noLock   bool   // not a main database: Lock and Unlock do nothing, as os_unix
 	readOnly bool   // opened for reading only
+	roShm    bool   // readonly_shm=1
 	dirSync  bool   // a new journal: sync its directory on the first Sync
 	chunk    int64  // SQLITE_FCNTL_CHUNK_SIZE
 	dev      uint64 // device and inode when opened, for HasMoved
@@ -67,11 +68,11 @@ type File struct {
 	st unix.Stat_t
 }
 
-// Open opens name with SQLITE_OPEN_* flags, as os_unix's unixOpen. An empty
-// name is a temporary file, deleted when closed. outFlags are the flags the
-// file was opened with: READONLY in place of READWRITE and CREATE when it
-// could only be opened for reading.
-func Open(name string, flags int) (f *File, outFlags int, rc int) {
+// OpenWith opens name with SQLITE_OPEN_* flags and the options of its URI,
+// as os_unix's unixOpen. An empty name is a temporary file, deleted when
+// closed. outFlags are the flags the file was opened with: READONLY in
+// place of READWRITE and CREATE when it could only be opened for reading.
+func OpenWith(name string, flags int, o OpenOptions) (f *File, outFlags int, rc int) {
 	eType := flags & openTypeMask
 	isExclusive := flags&OpenExclusive != 0
 	isDelete := flags&OpenDeleteOnClose != 0
@@ -80,7 +81,7 @@ func Open(name string, flags int) (f *File, outFlags int, rc int) {
 	// A new journal or WAL: its directory entry is synced on the first Sync.
 	isNewJrnl := isCreate && (eType == OpenSuperJournal || eType == OpenMainJournal || eType == OpenWAL)
 
-	f = &File{fd: -1, path: name, noLock: eType != OpenMainDB}
+	f = &File{fd: -1, path: name, noLock: eType != OpenMainDB, roShm: o.ReadOnlyShm}
 
 	fileName := name
 	if name == "" {
@@ -110,7 +111,7 @@ func Open(name string, flags int) (f *File, outFlags int, rc int) {
 		oflags |= unix.O_EXCL
 	}
 
-	mode, uid, gid, rc := createMode(fileName, flags)
+	mode, uid, gid, rc := createMode(fileName, flags, o.ModeOf)
 	if rc != OK {
 		return nil, 0, rc
 	}
@@ -160,8 +161,9 @@ func Open(name string, flags int) (f *File, outFlags int, rc int) {
 
 // createMode is os_unix's findCreateFileMode: the mode to create a file
 // with, 0 for the default. A journal or WAL takes the mode, owner and group
-// of its database file.
-func createMode(name string, flags int) (mode uint32, uid, gid int, rc int) {
+// of its database file, and a main database opened through a URI those of
+// modeof, when given.
+func createMode(name string, flags int, modeOf string) (mode uint32, uid, gid int, rc int) {
 	switch {
 	case flags&(OpenWAL|OpenMainJournal) != 0:
 		// "<db>-journal", "<db>-wal", "<db>-journalNN" or "<db>-walNN".
@@ -176,6 +178,12 @@ func createMode(name string, flags int) (mode uint32, uid, gid int, rc int) {
 		}
 	case flags&OpenDeleteOnClose != 0:
 		return 0600, 0, 0, OK
+	case flags&OpenURI != 0 && modeOf != "":
+		var st unix.Stat_t
+		if err := unix.Stat(modeOf, &st); err != nil {
+			return 0, 0, 0, IOErrFstat
+		}
+		return uint32(st.Mode) & 0777, int(st.Uid), int(st.Gid), OK
 	}
 	return 0, 0, 0, OK
 }

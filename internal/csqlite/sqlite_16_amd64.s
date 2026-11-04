@@ -7643,7 +7643,7 @@ TEXT ·multiSelectByMerge(SB), $304-40
 	BYTE $0x0f
 	BYTE $0xb6
 	BYTE $0xc0
-	LEAQ ·engine_rodata+86184(SB), CX
+	LEAQ ·engine_rodata+86208(SB), CX
 	BYTE $0x48
 	BYTE $0x8b
 	BYTE $0x04

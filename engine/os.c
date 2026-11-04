@@ -329,16 +329,28 @@ static const sqlite3_io_methods goIoMethods = {
 
 /* ---- the VFS ---- */
 
+/* internal/csqlite's host_open reads and writes these offsets. */
+_Static_assert(__builtin_offsetof(struct host_open_args, modeof) == 0, "host_open_args.modeof");
+_Static_assert(__builtin_offsetof(struct host_open_args, handle) == 8, "host_open_args.handle");
+_Static_assert(__builtin_offsetof(struct host_open_args, readonly_shm) == 16, "host_open_args.readonly_shm");
+_Static_assert(__builtin_offsetof(struct host_open_args, out_flags) == 20, "host_open_args.out_flags");
+
 static int goOpen(sqlite3_vfs *vfs, sqlite3_filename name, sqlite3_file *f, int flags, int *outFlags) {
   GoFile *g = (GoFile *)f;
   int out = 0;
-  long h = 0;
+  struct host_open_args a;
   int rc;
   (void)vfs;
   memset(g, 0, sizeof(*g));
-  rc = host_open(name, flags, &out, &h);
+  /* What os_unix also reads from the URI: the mode a new database is made
+  ** with, and a -shm opened for reading only. */
+  memset(&a, 0, sizeof(a));
+  a.modeof = (flags & SQLITE_OPEN_URI) ? sqlite3_uri_parameter(name, "modeof") : 0;
+  a.readonly_shm = sqlite3_uri_boolean(name, "readonly_shm", 0);
+  rc = host_open(name, flags, &a);
   if (rc != SQLITE_OK) return rc;
-  g->h = h;
+  out = a.out_flags;
+  g->h = a.handle;
   /* Powersafe overwrite is on unless the URI turns it off, as in os_unix. */
   g->psow = sqlite3_uri_boolean(name, "psow", SQLITE_POWERSAFE_OVERWRITE);
   g->base.pMethods = &goIoMethods;

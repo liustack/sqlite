@@ -36,6 +36,7 @@ type File struct {
 	lock     int    // the lock level held
 	noLock   bool   // not a main database: Lock and Unlock do nothing, as os_unix
 	readOnly bool   // opened for reading only
+	roShm    bool   // readonly_shm=1
 	chunk    int64  // SQLITE_FCNTL_CHUNK_SIZE
 	shm      *shm
 
@@ -46,11 +47,12 @@ type File struct {
 	info windows.ByHandleFileInformation
 }
 
-// Open opens name with SQLITE_OPEN_* flags, as os_win's winOpen. An empty
-// name is a temporary file, deleted when closed. outFlags are the flags the
-// file was opened with: READONLY in place of READWRITE and CREATE when it
-// could only be opened for reading.
-func Open(name string, flags int) (f *File, outFlags int, rc int) {
+// OpenWith opens name with SQLITE_OPEN_* flags and the options of its URI,
+// as os_win's winOpen: of the options, only ReadOnlyShm. An empty name is a
+// temporary file, deleted when closed. outFlags are the flags the file was
+// opened with: READONLY in place of READWRITE and CREATE when it could only
+// be opened for reading.
+func OpenWith(name string, flags int, o OpenOptions) (f *File, outFlags int, rc int) {
 	eType := flags & openTypeMask
 	isExclusive := flags&OpenExclusive != 0
 	isDelete := flags&OpenDeleteOnClose != 0
@@ -112,7 +114,7 @@ func Open(name string, flags int) (f *File, outFlags int, rc int) {
 	}
 	if err != nil {
 		if isReadWrite && isRO && !isExclusive {
-			return Open(name, flags&^(OpenReadWrite|OpenCreate)|OpenReadOnly)
+			return OpenWith(name, flags&^(OpenReadWrite|OpenCreate)|OpenReadOnly, o)
 		}
 		return nil, 0, CantOpen
 	}
@@ -121,6 +123,7 @@ func Open(name string, flags int) (f *File, outFlags int, rc int) {
 		path:     name,
 		noLock:   eType != OpenMainDB,
 		readOnly: flags&OpenReadOnly != 0,
+		roShm:    o.ReadOnlyShm,
 	}
 	return f, flags, OK
 }
