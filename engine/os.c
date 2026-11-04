@@ -85,6 +85,171 @@ int go_create_collation(sqlite3 *db, const char *name, long h) {
   return sqlite3_create_collation_v2(db, name, SQLITE_UTF8, (void *)h, goCollate, goCollateDestroy);
 }
 
+/* ---- virtual tables written in Go ---- */
+
+/* A table and a cursor of a Go module are handles of the Go tables, kept
+   after SQLite's own struct. The Go side answers xEof ahead: Filter and Next
+   write eof, so that xEof does not leave C. */
+typedef struct GoVtab {
+  sqlite3_vtab base;
+  long h;
+} GoVtab;
+
+typedef struct GoVcursor {
+  sqlite3_vtab_cursor base;
+  long h;
+  int eof;
+} GoVcursor;
+
+/* internal/csqlite reads and writes these offsets. */
+_Static_assert(__builtin_offsetof(GoVcursor, base.pVtab) == 0, "GoVcursor.pVtab");
+_Static_assert(__builtin_offsetof(GoVcursor, h) == 8, "GoVcursor.h");
+_Static_assert(__builtin_offsetof(GoVcursor, eof) == 16, "GoVcursor.eof");
+_Static_assert(__builtin_offsetof(struct host_vtab_connect_args, db) == 0, "connect.db");
+_Static_assert(__builtin_offsetof(struct host_vtab_connect_args, module) == 8, "connect.module");
+_Static_assert(__builtin_offsetof(struct host_vtab_connect_args, argv) == 16, "connect.argv");
+_Static_assert(__builtin_offsetof(struct host_vtab_connect_args, argc) == 24, "connect.argc");
+_Static_assert(__builtin_offsetof(struct host_vtab_connect_args, config) == 28, "connect.config");
+_Static_assert(__builtin_offsetof(struct host_vtab_connect_args, table) == 32, "connect.table");
+_Static_assert(__builtin_offsetof(struct host_vtab_connect_args, err) == 40, "connect.err");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, nConstraint) == 0, "index_info.nConstraint");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, aConstraint) == 8, "index_info.aConstraint");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, nOrderBy) == 16, "index_info.nOrderBy");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, aOrderBy) == 24, "index_info.aOrderBy");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, aConstraintUsage) == 32, "index_info.aConstraintUsage");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, idxNum) == 40, "index_info.idxNum");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, idxStr) == 48, "index_info.idxStr");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, needToFreeIdxStr) == 56, "index_info.needToFreeIdxStr");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, orderByConsumed) == 60, "index_info.orderByConsumed");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, estimatedCost) == 64, "index_info.estimatedCost");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, estimatedRows) == 72, "index_info.estimatedRows");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, idxFlags) == 80, "index_info.idxFlags");
+_Static_assert(__builtin_offsetof(sqlite3_index_info, colUsed) == 88, "index_info.colUsed");
+_Static_assert(sizeof(struct sqlite3_index_constraint) == 12, "index_constraint");
+_Static_assert(__builtin_offsetof(struct sqlite3_index_constraint, op) == 4, "index_constraint.op");
+_Static_assert(__builtin_offsetof(struct sqlite3_index_constraint, usable) == 5, "index_constraint.usable");
+_Static_assert(sizeof(struct sqlite3_index_orderby) == 8, "index_orderby");
+_Static_assert(__builtin_offsetof(struct sqlite3_index_orderby, desc) == 4, "index_orderby.desc");
+_Static_assert(sizeof(struct sqlite3_index_constraint_usage) == 8, "index_constraint_usage");
+_Static_assert(__builtin_offsetof(struct sqlite3_index_constraint_usage, omit) == 4, "index_constraint_usage.omit");
+
+static int goVtabConnect(sqlite3 *db, void *module, int argc, const char *const *argv, sqlite3_vtab **pp,
+                         char **pzErr) {
+  struct host_vtab_connect_args a;
+  GoVtab *t;
+  int rc;
+  memset(&a, 0, sizeof(a));
+  a.db = db;
+  a.module = (long)module;
+  a.argc = argc;
+  a.argv = argv;
+  rc = host_vtab_connect(&a);
+  if (rc != SQLITE_OK) {
+    *pzErr = a.err;
+    return rc;
+  }
+  if (a.config & GO_VTAB_DIRECTONLY) sqlite3_vtab_config(db, SQLITE_VTAB_DIRECTONLY);
+  if (a.config & GO_VTAB_INNOCUOUS) sqlite3_vtab_config(db, SQLITE_VTAB_INNOCUOUS);
+  t = sqlite3_malloc(sizeof(*t));
+  if (!t) {
+    host_vtab_disconnect(a.table);
+    return SQLITE_NOMEM;
+  }
+  memset(t, 0, sizeof(*t));
+  t->h = a.table;
+  *pp = &t->base;
+  return SQLITE_OK;
+}
+
+static int goVtabBestIndex(sqlite3_vtab *v, sqlite3_index_info *info) {
+  return host_vtab_best_index(v, ((GoVtab *)v)->h, info);
+}
+
+static int goVtabDisconnect(sqlite3_vtab *v) {
+  GoVtab *t = (GoVtab *)v;
+  int rc = host_vtab_disconnect(t->h);
+  sqlite3_free(t->base.zErrMsg);
+  sqlite3_free(t);
+  return rc;
+}
+
+static int goVtabOpen(sqlite3_vtab *v, sqlite3_vtab_cursor **pp) {
+  GoVcursor *c = sqlite3_malloc(sizeof(*c));
+  int rc;
+  if (!c) return SQLITE_NOMEM;
+  memset(c, 0, sizeof(*c));
+  rc = host_vtab_open(v, ((GoVtab *)v)->h, &c->h);
+  if (rc != SQLITE_OK) {
+    sqlite3_free(c);
+    return rc;
+  }
+  c->eof = 1;
+  *pp = &c->base;
+  return SQLITE_OK;
+}
+
+static int goVtabClose(sqlite3_vtab_cursor *p) {
+  GoVcursor *c = (GoVcursor *)p;
+  int rc = host_vtab_close(c->h);
+  sqlite3_free(c);
+  return rc;
+}
+
+static int goVtabFilter(sqlite3_vtab_cursor *c, int idxNum, const char *idxStr, int argc, sqlite3_value **argv) {
+  return host_vtab_filter(c, idxNum, idxStr, argc, argv);
+}
+
+static int goVtabNext(sqlite3_vtab_cursor *c) { return host_vtab_next(c); }
+
+static int goVtabEof(sqlite3_vtab_cursor *c) { return ((GoVcursor *)c)->eof; }
+
+static int goVtabColumn(sqlite3_vtab_cursor *c, sqlite3_context *ctx, int i) {
+  return host_vtab_column(c, ctx, i);
+}
+
+static int goVtabRowid(sqlite3_vtab_cursor *c, sqlite3_int64 *rowid) { return host_vtab_rowid(c, rowid); }
+
+/* xCreate does what xConnect does, but must be another function: SQLite
+   makes the name of a module whose xCreate is its xConnect a table too. */
+static int goVtabCreate(sqlite3 *db, void *module, int argc, const char *const *argv, sqlite3_vtab **pp,
+                        char **pzErr) {
+  return goVtabConnect(db, module, argc, argv, pp, pzErr);
+}
+
+/* goModule serves CREATE VIRTUAL TABLE. goEponymousModule serves only the
+   name of the module used as a table (a table-valued function): it has no
+   xCreate. Neither writes: no xUpdate,
+   so SQLite refuses INSERT, UPDATE and DELETE on their tables. */
+static const sqlite3_module goModule = {
+    0, goVtabCreate, goVtabConnect, goVtabBestIndex, goVtabDisconnect, goVtabDisconnect,
+    goVtabOpen, goVtabClose, goVtabFilter, goVtabNext, goVtabEof, goVtabColumn, goVtabRowid,
+};
+
+static const sqlite3_module goEponymousModule = {
+    0, 0, goVtabConnect, goVtabBestIndex, goVtabDisconnect, goVtabDisconnect,
+    goVtabOpen, goVtabClose, goVtabFilter, goVtabNext, goVtabEof, goVtabColumn, goVtabRowid,
+};
+
+static void goModuleDestroy(void *h) { host_module_destroy((long)h); }
+
+/* go_create_module makes the Go module of handle h the module name. SQLite
+   calls host_module_destroy when it is replaced or the connection closes,
+   and also when the call fails. */
+int go_create_module(sqlite3 *db, const char *name, long h, int eponymousOnly) {
+  return sqlite3_create_module_v2(db, name, eponymousOnly ? &goEponymousModule : &goModule, (void *)h,
+                                  goModuleDestroy);
+}
+
+/* go_vtab_error makes z the error message of the table v, for SQLite to
+   report when a method returns an error. */
+void go_vtab_error(sqlite3_vtab *v, const char *z) {
+  sqlite3_free(v->zErrMsg);
+  v->zErrMsg = sqlite3_mprintf("%s", z);
+}
+
+/* go_strdup copies z into memory of sqlite3_malloc, for SQLite to free. */
+char *go_strdup(const char *z) { return sqlite3_mprintf("%s", z); }
+
 /* ---- statements for group commit ---- */
 
 /* goClassify is the authorizer the host installs on every connection. As a
