@@ -21,7 +21,7 @@ make bench ARGS="-bench '^BenchmarkPoint$'"           # some workloads only
 
 `make bench` runs `go run ./cmd/benchrun run` in `bench/`. It builds one test binary per driver (cgo on only for `mattn`) and checks its settings with `TestPragmas`. Then the drivers take turns, one run of every benchmark each, `-count` times, each round starting with the next driver, so that other load on the machine falls on all of them alike. It writes `results/<goos>-<goarch>/<tag>.txt` (the format of `go test`, so `benchstat` reads it too) and `meta.json` (date, commit, Go, CPU, OS, threads, `GOMAXPROCS`, driver versions, load average before and after), then prints the tables. `results/` is not checked in.
 
-To run on one core, start it with the CPUs and `GOMAXPROCS` it should have, for example `taskset -c 0,4 env GOMAXPROCS=1 make bench`.
+To run on one core, start it with the CPUs and `GOMAXPROCS` it should have, for example `taskset -c 0,4 env GOMAXPROCS=1 make bench`. On a shared machine, build on other cores first with `-build-only`, then time with `-no-build`, so that no compile runs on the cores being timed.
 
 By hand: `cd bench && CGO_ENABLED=0 go test -tags modernc -run '^$' -bench . -benchmem`.
 

@@ -56,6 +56,8 @@ func cmdRun(args []string) error {
 	bench := fs.String("bench", ".", "-test.bench: the benchmarks to run")
 	only := fs.String("drivers", strings.Join(drivers, ","), "the drivers, by build tag")
 	out := fs.String("out", filepath.Join("results", runtime.GOOS+"-"+runtime.GOARCH), "where the results go")
+	buildOnly := fs.Bool("build-only", false, "build and check the test binaries, run nothing")
+	noBuild := fs.Bool("no-build", false, "use the test binaries of an earlier -build-only")
 	fs.Parse(args)
 	tags := strings.Split(*only, ",")
 	for _, t := range tags {
@@ -76,6 +78,12 @@ func cmdRun(args []string) error {
 	meta.Set("load_before", loadAverage())
 
 	for _, t := range tags {
+		if *noBuild {
+			if err := os.WriteFile(filepath.Join(*out, t+".txt"), nil, 0o644); err != nil {
+				return err
+			}
+			continue
+		}
 		logf("build %s", t)
 		cmd := exec.Command("go", "test", "-c", "-tags", t, "-o", filepath.Join(bin, t+".test"), ".")
 		cmd.Env = append(os.Environ(), "CGO_ENABLED="+map[bool]string{false: "0", true: "1"}[cgo[t]])
@@ -90,6 +98,9 @@ func cmdRun(args []string) error {
 		if err := os.WriteFile(filepath.Join(*out, t+".txt"), nil, 0o644); err != nil {
 			return err
 		}
+	}
+	if *buildOnly {
+		return nil
 	}
 
 	start := time.Now()
