@@ -18,7 +18,8 @@ import (
 )
 
 // The crash helper writes transactions of crashBatch rows to the database
-// named in its environment until it is killed.
+// named in its environment until it is killed, and says "committed" after
+// each.
 const (
 	crashEnv   = "SQLITE_TEST_CRASH_DB"
 	crashBatch = 100
@@ -59,6 +60,7 @@ func crashHelper(dsn string) int {
 			fmt.Println(err)
 			return 1
 		}
+		fmt.Println("committed")
 	}
 }
 
@@ -89,13 +91,17 @@ func TestCrash(t *testing.T) {
 				if err := cmd.Start(); err != nil {
 					t.Fatal(err)
 				}
-				line, err := bufio.NewReader(stdout).ReadString('\n')
-				if err != nil || line != "ready\n" {
-					cmd.Process.Kill()
-					cmd.Wait()
-					t.Fatalf("helper said %q, %v", line, err)
+				// The kill comes at a random time after the first commit of the
+				// round, however slow the machine is to start the helper.
+				out := bufio.NewReader(stdout)
+				for _, want := range []string{"ready\n", "committed\n"} {
+					if line, err := out.ReadString('\n'); err != nil || line != want {
+						cmd.Process.Kill()
+						cmd.Wait()
+						t.Fatalf("helper said %q, %v, want %q", line, err, want)
+					}
 				}
-				time.Sleep(time.Duration(20+rand.IntN(80)) * time.Millisecond)
+				time.Sleep(time.Duration(rand.IntN(80)) * time.Millisecond)
 				cmd.Process.Kill()
 				cmd.Wait()
 
@@ -112,14 +118,16 @@ func TestCrash(t *testing.T) {
 					t.Fatal(err)
 				}
 				db.Close()
-				if n%crashBatch != 0 || n < last {
-					t.Fatalf("round %d: %d rows after %d, want whole transactions of %d", round, n, last, crashBatch)
+				if n%crashBatch != 0 {
+					t.Fatalf("round %d: %d rows, want whole transactions of %d", round, n, crashBatch)
+				}
+				// The commit the helper said it made is there: a killed
+				// process loses no commit that returned.
+				if n < last+crashBatch {
+					t.Fatalf("round %d: %d rows after %d, want the commit of the round", round, n, last)
 				}
 				t.Logf("round %d: %d rows", round, n)
 				last = n
-			}
-			if last == 0 {
-				t.Error("no transaction was ever committed")
 			}
 		})
 	}

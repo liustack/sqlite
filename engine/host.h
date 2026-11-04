@@ -29,6 +29,8 @@ struct host_open_args {
   long handle;        /* 8: out */
   int readonly_shm;   /* 16: readonly_shm=1 of the URI */
   int out_flags;      /* 20: out */
+  int iocap;          /* 24: out, the SQLITE_IOCAP_* of the file but powersafe
+                         overwrite, which the psow URI parameter sets */
 };
 int host_open(const char *name, int flags, struct host_open_args *a);
 int host_delete(const char *name, int sync_dir);

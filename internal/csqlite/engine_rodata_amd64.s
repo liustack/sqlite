@@ -9372,7 +9372,7 @@ DATA ·engine_rodata+85776(SB)/8, $0xfffee45bfffee445
 DATA ·engine_rodata+85784(SB)/8, $0xfffee3b2fffee450
 DATA ·engine_rodata+85792(SB)/8, $0xfffee467fffee3a0
 DATA ·engine_rodata+85800(SB)/8, $0x00006f67fffee511
-DATA ·engine_rodata+85808(SB)/8, $0x0000001800000002
+DATA ·engine_rodata+85808(SB)/8, $0x0000002000000002
 DATA ·engine_rodata+85816(SB)/8, $0x0000000000000200
 DATA ·engine_rodata+85832(SB)/8, $·engine_rodata+85804(SB)
 DATA ·engine_rodata+85848(SB)/8, $·goOpen(SB)

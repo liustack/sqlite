@@ -38,6 +38,7 @@ func host_open(sp, name, flags, a uintptr) (ret uintptr) {
 	}
 	*(*int64)(at(a + 8)) = int64(files.add(f))
 	putInt(a+20, out)
+	putInt(a+24, f.DeviceCharacteristics())
 	return sqliteOK
 }
 
