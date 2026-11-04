@@ -3,7 +3,7 @@
 # Use of this source code is governed by the MIT license in LICENSE at the
 # root of this repository.
 
-.PHONY: check check-gen gen pass test-gen vendor-check
+.PHONY: bench bench-docs check check-gen gen pass test-gen vendor-check
 
 # The checks every commit passes (docs/testing.md).
 check: vendor-check
@@ -13,6 +13,7 @@ check: vendor-check
 	scripts/docs-list.sh --check >/dev/null
 	go test -count=1 ./...
 	go test -race -count=1 . ./internal/vfs ./internal/csqlite
+	cd bench && go vet -tags liustack ./... && go run ./cmd/benchrun docs -check
 
 # The C of engine/ as Go assembly, on a machine with LLVM 22.1.8: make gen,
 # make gen ARCH=amd64. ARCH defaults to the machine's.
@@ -32,6 +33,15 @@ pass:
 test-gen: pass
 	GEN_LLVM=$$(scripts/llvm-bin.sh) GEN_SHADOW_PASS=$(CURDIR)/.build/shadow.so \
 		go test -count=1 -timeout 30m ./internal/goasm/...
+
+# The driver benchmarks (bench/README.md), for example
+# make bench ARGS="-count 2 -drivers liustack,mattn".
+bench:
+	cd bench && go run ./cmd/benchrun run $(ARGS)
+
+# The tables of docs/benchmarks*.md and the READMEs, from bench/published.
+bench-docs:
+	cd bench && go run ./cmd/benchrun docs
 
 # The vendored C is what its pinned release has.
 vendor-check:
