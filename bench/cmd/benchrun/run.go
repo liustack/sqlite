@@ -25,7 +25,10 @@ var drivers = []string{"liustack", "mattn", "modernc", "ncruces"}
 var cgo = map[string]bool{"mattn": true}
 
 // A Pair is one line of what a run records about itself.
-type Pair struct{ K, V string }
+type Pair struct {
+	K string `json:"k"`
+	V string `json:"v"`
+}
 
 // Meta is what a run records about itself, in order.
 type Meta []Pair
