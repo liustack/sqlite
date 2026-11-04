@@ -9,6 +9,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
@@ -249,6 +250,7 @@ type rows struct {
 
 var (
 	_ driver.Rows                           = (*rows)(nil)
+	_ driver.RowsColumnScanner              = (*rows)(nil)
 	_ driver.RowsColumnTypeDatabaseTypeName = (*rows)(nil)
 )
 
@@ -276,7 +278,8 @@ func (r *rows) Close() error {
 	return err
 }
 
-func (r *rows) Next(dest []driver.Value) error {
+// NextRow steps to the next row.
+func (r *rows) NextRow() error {
 	if r.done {
 		return io.EOF
 	}
@@ -289,38 +292,93 @@ func (r *rows) Next(dest []driver.Value) error {
 		r.done = true
 		return io.EOF
 	}
-	s := r.s.s
+	return nil
+}
+
+// Next is NextRow and the values of the row, for database/sql before Go
+// 1.27 calls ScanColumn.
+func (r *rows) Next(dest []driver.Value) error {
+	if err := r.NextRow(); err != nil {
+		return err
+	}
 	for i := range dest {
-		switch s.ColumnType(i) {
-		case csqlite.TypeInteger:
-			v := s.ColumnInt64(i)
-			if r.isTime(i) {
-				dest[i] = time.Unix(v, 0).UTC()
-			} else {
-				dest[i] = v
-			}
-		case csqlite.TypeFloat:
-			dest[i] = s.ColumnDouble(i)
-		case csqlite.TypeText:
-			v := s.ColumnText(i)
-			if r.isTime(i) {
-				if t, ok := parseTime(v); ok {
-					dest[i] = t
-					break
-				}
-			}
-			dest[i] = v
-		case csqlite.TypeBlob:
-			b := s.ColumnBlob(i)
-			if b == nil {
-				b = []byte{}
-			}
-			dest[i] = b
-		default:
-			dest[i] = nil
-		}
+		dest[i] = r.value(i)
 	}
 	return nil
+}
+
+// value is column i of the row as a driver.Value.
+func (r *rows) value(i int) driver.Value {
+	s := r.s.s
+	switch s.ColumnType(i) {
+	case csqlite.TypeInteger:
+		v := s.ColumnInt64(i)
+		if r.isTime(i) {
+			return time.Unix(v, 0).UTC()
+		}
+		return v
+	case csqlite.TypeFloat:
+		return s.ColumnDouble(i)
+	case csqlite.TypeText:
+		v := s.ColumnText(i)
+		if r.isTime(i) {
+			if t, ok := parseTime(v); ok {
+				return t
+			}
+		}
+		return v
+	case csqlite.TypeBlob:
+		b := s.ColumnBlob(i)
+		if b == nil {
+			b = []byte{}
+		}
+		return b
+	}
+	return nil
+}
+
+// ScanColumn stores column i of the row in dest. The common pairs of
+// column type and destination are stored directly, without putting the
+// value in an interface. Everything else, and every column of a time type,
+// goes through sql.ConvertAssign with the value Next gives, so both ways
+// give the same results.
+func (r *rows) ScanColumn(ctx driver.ScanContext, i int, dest any) error {
+	s := r.s.s
+	if !r.isTime(i) {
+		switch s.ColumnType(i) {
+		case csqlite.TypeInteger:
+			switch d := dest.(type) {
+			case *int64:
+				*d = s.ColumnInt64(i)
+				return nil
+			case *int:
+				*d = int(s.ColumnInt64(i)) // int is 64 bits on every target
+				return nil
+			case *sql.NullInt64:
+				d.Int64, d.Valid = s.ColumnInt64(i), true
+				return nil
+			}
+		case csqlite.TypeFloat:
+			switch d := dest.(type) {
+			case *float64:
+				*d = s.ColumnDouble(i)
+				return nil
+			case *sql.NullFloat64:
+				d.Float64, d.Valid = s.ColumnDouble(i), true
+				return nil
+			}
+		case csqlite.TypeText:
+			switch d := dest.(type) {
+			case *string:
+				*d = s.ColumnText(i)
+				return nil
+			case *sql.NullString:
+				d.String, d.Valid = s.ColumnText(i), true
+				return nil
+			}
+		}
+	}
+	return sql.ConvertAssign(ctx, dest, r.value(i))
 }
 
 func (r *rows) isTime(i int) bool { return r.s.isTime[i] }
