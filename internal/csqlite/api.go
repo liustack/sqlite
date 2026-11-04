@@ -446,11 +446,15 @@ func (s *Stmt) BindBlob(i int, v []byte) error {
 
 // stage copies n bytes from Go memory to where the C can read them: the
 // bottom of the shadow stack when they fit, malloc'd memory when not.
-func (c *Conn) stage(b *byte, n int) (uintptr, func(), error) {
+func (c *Conn) stage(b *byte, n int) (uintptr, func(), error) { return stageAt(c.sp, b, n) }
+
+// stageAt is stage from the shadow pointer sp, for a host callback that
+// calls the C again.
+func stageAt(sp uintptr, b *byte, n int) (uintptr, func(), error) {
 	src := unsafe.Slice(b, n)
 	if n <= big {
-		copy(bytesAt(c.sp, n), src)
-		return c.sp, func() {}, nil
+		copy(bytesAt(sp, n), src)
+		return sp, func() {}, nil
 	}
 	p := stageAlloc(uintptr(n))
 	if p == 0 {
