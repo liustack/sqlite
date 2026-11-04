@@ -621,3 +621,51 @@ func TestBusyTimeoutSetLater(t *testing.T) {
 		t.Fatalf("waited %v for busy_timeout 50 ms", d)
 	}
 }
+
+func TestSharedCacheRefused(t *testing.T) {
+	_, err := NewConnector("file::memory:?cache=shared")
+	if err == nil || !strings.Contains(err.Error(), "vfs=memdb") {
+		t.Fatalf("cache=shared: %v", err)
+	}
+	db := mOpen(t, "file:/shared-memdb?vfs=memdb")
+	db.SetMaxOpenConns(2)
+	c1, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c1.Close()
+	if _, err := c1.ExecContext(t.Context(), `CREATE TABLE t(x); INSERT INTO t VALUES (1)`); err != nil {
+		t.Fatal(err)
+	}
+	c2, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c2.Close()
+	var n int
+	if err := c2.QueryRowContext(t.Context(), `SELECT count(*) FROM t`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("a second connection to vfs=memdb: %d rows, %v", n, err)
+	}
+}
+
+func TestNilBytesAreNull(t *testing.T) {
+	db := mOpen(t, ":memory:")
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(x)`)
+	var b []byte
+	mExec(t, db, `INSERT INTO t VALUES (?), (?)`, b, []byte{})
+	var types []string
+	rows, err := db.Query(`SELECT typeof(x) FROM t ORDER BY rowid`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s string
+		rows.Scan(&s)
+		types = append(types, s)
+	}
+	if strings.Join(types, ",") != "null,blob" {
+		t.Fatalf("nil and empty []byte stored as %v, want null and blob", types)
+	}
+}

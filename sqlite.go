@@ -37,6 +37,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -98,6 +99,11 @@ func NewConnector(dsn string) (*Connector, error) {
 	case "", "sqlite":
 	default:
 		return nil, fmt.Errorf("sqlite: _time_format=%s: the only format is sqlite", f)
+	}
+	if q.Get("cache") == "shared" {
+		// SQLite is built without shared cache (engine/sqlite.c), and would
+		// open each connection its own database without a word.
+		return nil, errors.New("sqlite: cache=shared is not built in: use file:/name?vfs=memdb for a memory database that connections share")
 	}
 	for k := range q {
 		switch {

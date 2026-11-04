@@ -235,7 +235,11 @@ func (s *stmt) bind(args []driver.NamedValue) error {
 			}
 			err = s.s.BindInt64(i, n)
 		case []byte:
-			err = s.s.BindBlob(i, v)
+			if v == nil {
+				err = s.s.BindNull(i) // as mattn/go-sqlite3 does
+			} else {
+				err = s.s.BindBlob(i, v)
+			}
 		case string:
 			err = s.s.BindText(i, v)
 		case time.Time:
