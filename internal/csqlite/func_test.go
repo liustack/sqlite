@@ -353,3 +353,140 @@ func TestFunctionKeepsCallerFrames(t *testing.T) {
 		}
 	}
 }
+
+// gsum adds integers. It fails at a step of 13 and panics at one of 666.
+type gsum struct{ n int64 }
+
+func (g *gsum) Step(args []driver.Value) error {
+	v, _ := args[0].(int64)
+	switch v {
+	case 13:
+		return errors.New("unlucky")
+	case 666:
+		panic("devilish")
+	}
+	g.n += v
+	return nil
+}
+
+func (g *gsum) Final() (driver.Value, error) {
+	if g.n == 99 {
+		return nil, errors.New("final says no")
+	}
+	return g.n, nil
+}
+
+func liveAggs() int {
+	aggs.mu.Lock()
+	defer aggs.mu.Unlock()
+	return int(aggs.n) - len(aggs.free)
+}
+
+func TestAggregate(t *testing.T) {
+	c := open(t, ":memory:")
+	if err := c.CreateAggregate("gsum", 1, 0, func() Agg { return &gsum{} }); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Exec(`CREATE TABLE t(g, x); CREATE TABLE empty(x);
+		INSERT INTO t VALUES (1, 1), (1, 2), (2, 10), (2, 20), (3, 5)`); err != nil {
+		t.Fatal(err)
+	}
+	before := liveAggs()
+	if v := mustOne(t, c, "SELECT group_concat(g || ':' || s, ' ') FROM (SELECT g, gsum(x) AS s FROM t GROUP BY g ORDER BY g)"); v != "1:3 2:30 3:5" {
+		t.Fatalf("groups: %s", v)
+	}
+	// A group no row reached gets a state of its own for Final.
+	if v := mustOne(t, c, "SELECT gsum(x) FROM empty"); v != "0" {
+		t.Fatalf("empty: %s", v)
+	}
+	for sql, want := range map[string]string{
+		"SELECT gsum(x) FROM (SELECT 1 AS x UNION ALL SELECT 13)":  "unlucky",
+		"SELECT gsum(x) FROM (SELECT 1 AS x UNION ALL SELECT 666)": "devilish",
+		"SELECT gsum(x) FROM (SELECT 99 AS x)":                     "final says no",
+	} {
+		if _, err := one(t, c, sql); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v, want an error with %q", sql, err, want)
+		}
+	}
+	if c.Broken() {
+		t.Fatal("an error in an aggregate broke the connection")
+	}
+	// Every state was dropped, also of the statements that stopped early.
+	if n := liveAggs() - before; n != 0 {
+		t.Fatalf("%d aggregate states left", n)
+	}
+}
+
+func liveCollations() int {
+	collations.mu.Lock()
+	defer collations.mu.Unlock()
+	return int(collations.n) - len(collations.free)
+}
+
+func TestCollation(t *testing.T) {
+	before := liveCollations()
+	c, err := Open(":memory:", OpenReadWrite|OpenCreate, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reverse := func(a, b string) int { return strings.Compare(b, a) }
+	if err := c.CreateCollation("rev", reverse); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Exec(`CREATE TABLE t(x TEXT); INSERT INTO t VALUES ('b'), ('a'), ('c'), ('')`); err != nil {
+		t.Fatal(err)
+	}
+	if v := mustOne(t, c, "SELECT group_concat(x, ',') FROM (SELECT x FROM t ORDER BY x COLLATE rev)"); v != "c,b,a," {
+		t.Fatalf("order: %q", v)
+	}
+	// Replacing a collation while a statement runs is refused, and
+	// SQLite does not drop the handle of a refused one: the host does.
+	s, _, err := c.Prepare("SELECT x FROM t ORDER BY x COLLATE rev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row, err := s.Step(); err != nil || !row {
+		t.Fatalf("step: %v %v", row, err)
+	}
+	if err := c.CreateCollation("rev", reverse); err == nil {
+		t.Error("replacing a collation in use succeeded")
+	}
+	s.Finalize()
+	if n := liveCollations() - before; n != 1 {
+		t.Errorf("%d live collations, want 1", n)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if n := liveCollations() - before; n != 0 {
+		t.Errorf("%d live collations after close", n)
+	}
+}
+
+// A comparison cannot fail in SQLite, so a panic in one breaks the
+// connection: the statement it ran in returns the error, and no row of it.
+func TestCollationPanicBreaksConn(t *testing.T) {
+	c, err := Open(":memory:", OpenReadWrite|OpenCreate, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if err := c.CreateCollation("bad", func(a, b string) int { panic("cannot compare") }); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Exec(`CREATE TABLE t(x TEXT); INSERT INTO t VALUES ('b'), ('a')`); err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := c.Prepare("SELECT x FROM t ORDER BY x COLLATE bad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Finalize()
+	row, err := s.Step()
+	if row || err == nil || !strings.Contains(err.Error(), "cannot compare") {
+		t.Fatalf("step: %v %v", row, err)
+	}
+	if !c.Broken() {
+		t.Fatal("the connection is not broken")
+	}
+}

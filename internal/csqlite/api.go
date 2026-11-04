@@ -366,7 +366,13 @@ func (s *Stmt) Step() (bool, error) {
 	if err := s.c.brokenErr(); err != nil {
 		return false, err
 	}
-	switch r := int32(sqlite3_step(s.c.sp, s.p)); r {
+	r := int32(sqlite3_step(s.c.sp, s.p))
+	// A callback that panicked during the step leaves no trace in r: the
+	// row it gave, or its end, may be wrong.
+	if err := s.c.brokenErr(); err != nil {
+		return false, err
+	}
+	switch r {
 	case Row:
 		return true, nil
 	case Done:

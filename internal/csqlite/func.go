@@ -29,36 +29,85 @@ const (
 
 const utf8 = 1 // SQLITE_UTF8
 
+// Agg is the state of one group of an aggregate function written in Go:
+// Step for each row of the group, then Final once. Step's arguments are
+// copies, like a Func's.
+type Agg interface {
+	Step(args []driver.Value) error
+	Final() (driver.Value, error)
+}
+
+// A funcEntry is a function SQLite knows by handle: a scalar function or the
+// maker of an aggregate's states.
+type funcEntry struct {
+	fn     Func
+	newAgg func() Agg
+}
+
 // funcs holds the functions SQLite knows by handle. SQLite gives a handle
 // back to host_func_destroy when it drops the function.
-var funcs table[Func]
+var funcs table[funcEntry]
+
+// aggs holds the states of the groups being aggregated. A group's handle
+// is in its sqlite3_aggregate_context, 0 until its first row.
+var aggs table[Agg]
+
+// collations holds the comparisons SQLite knows by handle.
+var collations table[func(a, b string) int]
 
 // CreateFunction makes f the SQL function name of nArg arguments (-1 for any
 // number) on the connection, in place of one of the same name and nArg.
 func (c *Conn) CreateFunction(name string, nArg int, flags int, f Func) error {
+	return c.createFunc(name, nArg, flags, funcEntry{fn: f}, go_create_function)
+}
+
+// CreateAggregate makes an aggregate function name: newAgg makes the state
+// of each group.
+func (c *Conn) CreateAggregate(name string, nArg int, flags int, newAgg func() Agg) error {
+	return c.createFunc(name, nArg, flags, funcEntry{newAgg: newAgg}, go_create_aggregate)
+}
+
+func (c *Conn) createFunc(name string, nArg, flags int, e funcEntry, create func(sp, db, name, nArg, flags, h uintptr) uintptr) error {
 	if err := c.brokenErr(); err != nil {
 		return err
 	}
 	if len(name) > maxName {
 		return &Error{Code: 21, Msg: "function name too long"}
 	}
-	h := funcs.add(&f)
+	h := funcs.add(&e)
 	a := c.args()
 	z := a.str(name)
 	// SQLite gives h to host_func_destroy when this fails as well.
-	return c.err(int(int32(go_create_function(a.top, c.db, z, uintptr(nArg), uintptr(flags|utf8), h))))
+	return c.err(int(int32(create(a.top, c.db, z, uintptr(nArg), uintptr(flags|utf8), h))))
+}
+
+// CreateCollation makes cmp the collation name. cmp returns a negative
+// number, 0 or a positive number as a sorts before, with or after b.
+func (c *Conn) CreateCollation(name string, cmp func(a, b string) int) error {
+	if err := c.brokenErr(); err != nil {
+		return err
+	}
+	if len(name) > maxName {
+		return &Error{Code: 21, Msg: "collation name too long"}
+	}
+	h := collations.add(&cmp)
+	a := c.args()
+	z := a.str(name)
+	r := int32(go_create_collation(a.top, c.db, z, h))
+	if r != OK {
+		// SQLite drops a collation it refused without a word.
+		collations.remove(h)
+	}
+	return c.err(int(r))
 }
 
 // host_func runs the Go function of a call. Everything it hands the C is
 // written from sp, above the frames of the C that called it.
 func host_func(sp, ctx, argc, argv uintptr) {
 	defer failQuiet(sp)
-	f := *funcs.get(sqlite3_user_data(sp, ctx))
-	args := make([]driver.Value, int(int32(argc)))
-	for i := range args {
-		args[i] = value(sp, *(*uintptr)(at(argv + uintptr(i)*8)))
-	}
-	v, err := call(f, args)
+	f := funcs.get(sqlite3_user_data(sp, ctx)).fn
+	args := values(sp, argc, argv)
+	v, err := safely(func() (driver.Value, error) { return f(args) })
 	if err == nil {
 		err = result(sp, ctx, v)
 	}
@@ -67,20 +116,113 @@ func host_func(sp, ctx, argc, argv uintptr) {
 	}
 }
 
+// host_step runs Step of the group's state, made at its first row.
+func host_step(sp, ctx, argc, argv uintptr) {
+	defer failQuiet(sp)
+	p := sqlite3_aggregate_context(sp, ctx, 8)
+	if p == 0 {
+		sqlite3_result_error_nomem(sp, ctx)
+		return
+	}
+	slot := (*uintptr)(at(p))
+	if *slot == 0 {
+		a, err := newState(sp, ctx)
+		if err != nil {
+			resultError(sp, ctx, err.Error())
+			return
+		}
+		*slot = aggs.add(&a)
+	}
+	a := *aggs.get(*slot)
+	args := values(sp, argc, argv)
+	if _, err := safely(func() (driver.Value, error) { return nil, a.Step(args) }); err != nil {
+		resultError(sp, ctx, err.Error())
+	}
+}
+
+// host_final runs Final of the group's state and drops it. SQLite calls it
+// for every group that had a step, also when the statement stops early,
+// and for a group of no rows, which gets a state of its own.
+func host_final(sp, ctx uintptr) {
+	defer failQuiet(sp)
+	var a Agg
+	if p := sqlite3_aggregate_context(sp, ctx, 0); p != 0 && *(*uintptr)(at(p)) != 0 {
+		slot := (*uintptr)(at(p))
+		a = *aggs.get(*slot)
+		aggs.remove(*slot)
+		*slot = 0
+	} else {
+		var err error
+		if a, err = newState(sp, ctx); err != nil {
+			resultError(sp, ctx, err.Error())
+			return
+		}
+	}
+	v, err := safely(a.Final)
+	if err == nil {
+		err = result(sp, ctx, v)
+	}
+	if err != nil {
+		resultError(sp, ctx, err.Error())
+	}
+}
+
+// newState makes the state of a group.
+func newState(sp, ctx uintptr) (Agg, error) {
+	newAgg := funcs.get(sqlite3_user_data(sp, ctx)).newAgg
+	var a Agg
+	_, err := safely(func() (driver.Value, error) { a = newAgg(); return nil, nil })
+	if err == nil && a == nil {
+		err = fmt.Errorf("the state of an aggregate is nil")
+	}
+	return a, err
+}
+
 func host_func_destroy(sp, h uintptr) {
 	defer failQuiet(sp)
 	funcs.remove(h)
 }
 
-// call runs f and turns a panic in it into an error: the panic is the user's,
-// and the C under host_func is still whole.
-func call(f Func, args []driver.Value) (v driver.Value, err error) {
+// host_collate compares two strings with a Go collation. A comparison has no
+// way to fail, so a panic in one breaks the connection (failWith): Step then
+// returns the error instead of a row ordered by a comparison that did not
+// happen.
+func host_collate(sp, h, n1, p1, n2, p2 uintptr) (ret uintptr) {
+	defer failWith(sp, &ret, 0)
+	cmp := *collations.get(h)
+	r := cmp(string(bytesAt(p1, int(int32(n1)))), string(bytesAt(p2, int(int32(n2)))))
+	switch {
+	case r < 0:
+		return ^uintptr(0) // -1
+	case r > 0:
+		return 1
+	}
+	return 0
+}
+
+func host_collate_destroy(sp, h uintptr) {
+	defer failQuiet(sp)
+	collations.remove(h)
+}
+
+// values copies the arguments of a call into Go.
+func values(sp, argc, argv uintptr) []driver.Value {
+	args := make([]driver.Value, int(int32(argc)))
+	for i := range args {
+		args[i] = value(sp, *(*uintptr)(at(argv + uintptr(i)*8)))
+	}
+	return args
+}
+
+// safely runs user code and turns a panic in it into an error: the panic is
+// the user's, and the C under the callback is still whole.
+func safely(f func() (driver.Value, error)) (v driver.Value, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			v, err = nil, fmt.Errorf("panic in a Go function: %v", e)
 		}
 	}()
-	return f(args)
+	return f()
 }
 
 // SQLite's fundamental types (sqlite3.h).

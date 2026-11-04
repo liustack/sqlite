@@ -63,6 +63,28 @@ int go_create_function(sqlite3 *db, const char *name, int nArg, int flags, long 
   return sqlite3_create_function_v2(db, name, nArg, flags, (void *)h, goFunc, 0, 0, goFuncDestroy);
 }
 
+static void goStep(sqlite3_context *ctx, int argc, sqlite3_value **argv) { host_step(ctx, argc, argv); }
+static void goFinal(sqlite3_context *ctx) { host_final(ctx); }
+
+/* go_create_aggregate is go_create_function for an aggregate: SQLite calls
+   goStep for each row of a group and goFinal at its end, also when the
+   statement stops early. */
+int go_create_aggregate(sqlite3 *db, const char *name, int nArg, int flags, long h) {
+  return sqlite3_create_function_v2(db, name, nArg, flags, (void *)h, 0, goStep, goFinal, goFuncDestroy);
+}
+
+static int goCollate(void *h, int n1, const void *p1, int n2, const void *p2) {
+  return host_collate((long)h, n1, p1, n2, p2);
+}
+static void goCollateDestroy(void *h) { host_collate_destroy((long)h); }
+
+/* go_create_collation makes the Go comparison of handle h the collation
+   name. Unlike the functions, SQLite does not call goCollateDestroy when
+   this fails: the caller drops h then. */
+int go_create_collation(sqlite3 *db, const char *name, long h) {
+  return sqlite3_create_collation_v2(db, name, SQLITE_UTF8, (void *)h, goCollate, goCollateDestroy);
+}
+
 /* ---- statements for group commit ---- */
 
 /* goClassify is the authorizer the host installs on every connection. As a
