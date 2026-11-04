@@ -185,8 +185,8 @@ func host_func_destroy(sp, h uintptr) {
 
 // host_collate compares two strings with a Go collation. A comparison has no
 // way to fail: a panic in one is kept on the stack of the connection, the
-// comparison gives 0, and the pending word keeps the transaction from
-// committing (endCollatePanic says until when).
+// comparison gives 0, and SQLite is told to stop the statement as it does
+// when memory runs out (collatePanicked).
 func host_collate(sp, h, n1, p1, n2, p2 uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, 0)
 	cmp := *collations.get(h)
@@ -337,8 +337,8 @@ func compare(cmp func(a, b string) int, a, b string) (r int, err error) {
 	return cmp(a, b), nil
 }
 
-// collatePanicked keeps the first panic of a collation for Step or Exec and
-// sets the word that refuses commits.
+// collatePanicked keeps the first panic of a collation for the error of the
+// call (Conn.err), and has SQLite stop the statement as if memory ran out.
 func collatePanicked(sp uintptr, err error) {
 	v, ok := stacks.Load(stackBase(sp))
 	if !ok {
@@ -348,7 +348,7 @@ func collatePanicked(sp uintptr, err error) {
 	if s.collatePanic == "" {
 		s.collatePanic = errText(err)
 	}
-	*(*int32)(at(s.base + pendingOffset)) = 1
+	go_collate_failed(sp, s.db)
 }
 
 // errText is err.Error(), which is user code too.

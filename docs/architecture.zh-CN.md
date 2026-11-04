@@ -60,6 +60,7 @@ SQLite 有 31 个可写的全局变量：它的配置、分配器和页缓存的
 - **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
 - **文件。** `engine/os.c` 就是 VFS（名字叫 `go`）。它的每个方法都调用 `internal/vfs`。
 - **本地时间。** `localtime` 和 `utc` 修饰符调用 `engine/os.c` 里的 `localtime_r`，它去问 Go：时区就是 `time.Local`（`TZ` 环境变量，或者 `/etc/localtime`）。镜像里没有时区文件时得到 UTC，除非程序 import 了 `time/tzdata`。
+- **Go 代码 panic。** 函数或聚合 panic 时，和返回错误一样，让它所在的语句失败。排序规则没有办法报错，所以 panic 时 `engine/os.c` 调用 `sqlite3OomFault`，这是 SQLite 自己记录内存分配失败的函数：SQLite 以 `SQLITE_NOMEM` 中止语句，回滚这条语句或整个事务，走的是它对每次内存分配都测过的错误路径。这是宿主唯一调用的 SQLite 内部函数。
 
 ## 每个文件一个写入者
 

@@ -461,8 +461,9 @@ func TestMergeWithCollationPanic(t *testing.T) {
 }
 
 // In a transaction of database/sql, a panic in a collation fails the
-// statement. After a read the transaction goes on. After a write its Commit
-// fails, and nothing of it is kept.
+// statement, and SQLite rolls back the statement or the whole transaction.
+// Once the transaction is gone, its next statements and its Commit fail:
+// nothing runs on its own.
 func TestCollationPanicInTx(t *testing.T) {
 	pc := WithCollation("pc", func(a, b string) int {
 		if a == "zz" || b == "zz" {
@@ -478,36 +479,33 @@ func TestCollationPanicInTx(t *testing.T) {
 			t.Fatalf("%s: %v, want the panic", what, err)
 		}
 	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	mExec(t, tx, `INSERT INTO t VALUES ('before')`)
-	var x string
-	isPanic("read", tx.QueryRow(`SELECT x FROM u ORDER BY x COLLATE pc`).Scan(&x))
-	mExec(t, tx, `INSERT INTO t VALUES ('after')`)
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	if got := fString(t, db, `SELECT group_concat(x, ',') FROM t`); got != "before,after" {
-		t.Fatalf("after the read: %s", got)
-	}
-
-	tx, err = db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	mExec(t, tx, `INSERT INTO t VALUES ('b')`)
-	_, err = tx.Exec(`INSERT INTO t VALUES ('zz')`)
-	isPanic("write", err)
-	mExec(t, tx, `INSERT INTO u VALUES ('c')`)
-	isPanic("commit", tx.Commit())
-	if got := fString(t, db, `SELECT group_concat(x, ',') FROM t`); got != "before,after" {
-		t.Fatalf("after the write: %s", got)
-	}
-	if got := fString(t, db, `SELECT count(*) FROM u WHERE x = 'c'`); got != "0" {
-		t.Fatalf("u kept c")
+	for _, bad := range []string{
+		`SELECT x FROM u ORDER BY x COLLATE pc`,
+		`INSERT INTO t VALUES ('zz')`,
+	} {
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mExec(t, tx, `INSERT INTO t VALUES ('before')`)
+		_, err = tx.Exec(bad)
+		isPanic(bad, err)
+		_, after := tx.Exec(`INSERT INTO u VALUES ('after')`)
+		commit := tx.Commit()
+		if (after == nil) != (commit == nil) {
+			t.Fatalf("%s: the insert after gave %v, Commit %v", bad, after, commit)
+		}
+		want := "0"
+		if commit == nil {
+			want = "1" // only the statement was rolled back
+		}
+		if got := fString(t, db, `SELECT count(*) FROM t WHERE x = 'before'`); got != want {
+			t.Fatalf("%s: %s rows before, want %s", bad, got, want)
+		}
+		if got := fString(t, db, `SELECT count(*) FROM u WHERE x = 'after'`); got != want {
+			t.Fatalf("%s: %s rows after, want %s", bad, got, want)
+		}
+		mExec(t, db, `DELETE FROM t WHERE x = 'before'; DELETE FROM u WHERE x = 'after'`)
 	}
 	mExec(t, db, `INSERT INTO t VALUES ('d')`)
 	if got := fString(t, db, `PRAGMA integrity_check`); got != "ok" {

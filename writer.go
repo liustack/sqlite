@@ -445,16 +445,10 @@ func (c *conn) runOne(r *request) error {
 	if err == nil && c.c.DeferredFKs() {
 		err, undo = errForeignKey, true
 	}
-	// After a collation's panic SQLite went on, so what the statement
-	// wrote is still there, and the transaction cannot commit with it.
-	panicked := errors.Is(err, csqlite.ErrCollationPanic)
-	if undo || panicked {
+	if undo {
 		if e := c.execCached("ROLLBACK TO merge"); e != nil {
 			return c.abandon(e)
 		}
-	}
-	if panicked {
-		c.c.UndoCollationPanic()
 	}
 	if e := c.execCached("RELEASE merge"); e != nil {
 		return c.abandon(e)

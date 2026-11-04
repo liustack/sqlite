@@ -172,19 +172,13 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
 /* go_classify installs goClassify on db with the word it writes to. */
 int go_classify(sqlite3 *db, int *flags) { return sqlite3_set_authorizer(db, goClassify, flags); }
 
-/* A Go collation that panicked sets *pending, as the comparisons after the
-   panic returned 0 and what the statement wrote may be out of order: no
-   commit happens while it is set. Any rollback clears it, and so does the Go
-   side when nothing written is left that it must keep from committing. */
-static int goCommitHook(void *pending) { return *(volatile int *)pending != 0; }
-static void goRollbackHook(void *pending) { *(volatile int *)pending = 0; }
-
-/* go_guard_commits installs the hooks on db with the word they read. */
-int go_guard_commits(sqlite3 *db, int *pending) {
-  sqlite3_commit_hook(db, goCommitHook, pending);
-  sqlite3_rollback_hook(db, goRollbackHook, pending);
-  return SQLITE_OK;
-}
+/* go_collate_failed records the panic of a Go collation on db the way SQLite
+   records an allocation that failed: the comparisons after the panic gave 0,
+   so the statement must not finish. SQLite stops it with SQLITE_NOMEM and
+   rolls it back, or the whole transaction, on the error path it tests for
+   every allocation (commits, VACUUM and savepoints all take it). sqlite3OomFault
+   is internal to SQLite: this file is compiled with sqlite3.c (sqlite.c). */
+void go_collate_failed(sqlite3 *db) { sqlite3OomFault(db); }
 
 /* ---- files ---- */
 

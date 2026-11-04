@@ -12,7 +12,7 @@
 
 1. 从 https://sqlite.org/download.html 取 amalgamation zip 的 `PRODUCT` 那一行，里面有版本号、路径（带年份）和 SHA3-256。
 2. 把它们填进 `engine/vendor.sh` 开头的 `version`、`year` 和 `zip_sha3`，然后运行它。脚本会下载 zip、校验、复制 `sqlite3.c` 和 `sqlite3.h`，并写出 `engine/SQLITE.sha256`。
-3. 看发布说明里有没有编译选项的变化，对照检查 `engine/sqlite.c`。
+3. 看发布说明里有没有编译选项的变化，对照检查 `engine/sqlite.c`。`engine/os.c` 调用了 SQLite 的一个内部函数 `sqlite3OomFault`：检查它是否仍然设置 `mallocFailed`，语句是否仍然因此中止。
 4. 运行 `make gen` 和测试，把 C 文件、清单和生成的文件放进同一个提交。
 
 ## 新增 libc 函数

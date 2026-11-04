@@ -69,6 +69,7 @@ A C function `host_x` declared in `engine/host.h` becomes a call of the Go funct
 - **Threads.** SQLite runs in multi-thread mode: connections on many goroutines at once, each used by one at a time. `engine/os.c` installs mutexes that are Go `sync.Mutex` values (`SQLITE_CONFIG_MUTEX`, since SQLite 3.54 has no compile option for it).
 - **Files.** `engine/os.c` is the VFS (named `go`). Each method calls `internal/vfs`.
 - **Local time.** The `localtime` and `utc` modifiers call `localtime_r` in `engine/os.c`, which asks Go: the zone is `time.Local` (the `TZ` variable, or `/etc/localtime`). A program in an image without zone files gets UTC unless it imports `time/tzdata`.
+- **Go code that panics.** A function or aggregate that panics fails its statement, as an error would. A collation has no way to fail, so on a panic `engine/os.c` calls `sqlite3OomFault`, SQLite's own function for a failed allocation: SQLite stops the statement with `SQLITE_NOMEM` and rolls back the statement or the whole transaction, on the error path it tests for every allocation. It is the one internal function of SQLite the host calls.
 
 ## One writer per file
 
