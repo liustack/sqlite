@@ -28,6 +28,7 @@ The driver runs on linux and darwin, amd64 and arm64, and on windows/amd64. Grou
 - `internal/goversion/`: stops the build on a Go newer than the one the engine was checked with (`-tags sqlite_anygo` builds anyway). Supported: Go 1.26.6 to 1.27, see docs/upstream.md.
 - `internal/extapi/`: what the packages of `ext/` get from the driver and its users do not, such as a function that reads its BLOB arguments without a copy (`ext/vec`).
 - The root package: the `database/sql` driver.
+- `replica/internal/s3`: the S3 client of the replicator to come (SigV4, PUT, multipart upload, ranged GET, ListObjectsV2, DELETE, conditional PUT), no dependencies. See [docs/testing.md](docs/testing.md#the-s3-client) for its tests.
 - `bench/`: benchmarks against other drivers, a module of its own (see `bench/README.md`).
 - `scripts/`: `gen-engine.sh` (`make gen`, `make pass`), `check-gen.sh` (`make check-gen`), `go-versions.sh` (the tests with each supported Go), `docs-list.sh`, `llvm-bin.sh`.
 
