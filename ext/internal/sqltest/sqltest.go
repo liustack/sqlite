@@ -15,7 +15,7 @@ import (
 )
 
 // Open opens a memory database with opt on one connection.
-func Open(t *testing.T, opt sqlite.Option) *sql.DB {
+func Open(t testing.TB, opt sqlite.Option) *sql.DB {
 	t.Helper()
 	c, err := sqlite.NewConnector(":memory:", opt)
 	if err != nil {
