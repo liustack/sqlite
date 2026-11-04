@@ -9,7 +9,19 @@ read_when:
 
 # Architecture
 
+English · [简体中文](architecture.zh-CN.md)
+
 ## Layers
+
+```mermaid
+flowchart TB
+    app["Your program, through database/sql"] --> drv["Driver (root package)<br>one writer per file, group commit"]
+    drv --> api["internal/csqlite<br>the C API and the Go host:<br>shadow stacks, malloc, mutexes"]
+    api --> eng["SQLite as Go assembly<br>generated from engine/"]
+    eng -- "VFS and mutex calls" --> api
+    api --> vfs["internal/vfs<br>files, locks, shared memory"]
+    vfs --> os["The kernel"]
+```
 
 From the bottom up:
 
@@ -22,6 +34,16 @@ From the bottom up:
 ## From C to Go assembly
 
 `make gen` runs `scripts/gen-engine.sh`, which runs the generator over `engine/sqlite.c` and `engine/libc/string/*.c`:
+
+```mermaid
+flowchart LR
+    c["engine/<br>SQLite, os.c, libc"] -->|clang| ir["LLVM IR<br>per file"]
+    ir -->|"llvm-link, opt"| mod["one module"]
+    mod -->|"shadow-stack pass"| mod2["locals on the<br>shadow stack, polls"]
+    mod2 -->|llc| mc["machine code"]
+    mc -->|"generator"| goasm["Go assembly<br>internal/csqlite"]
+    goasm -->|"go build, then<br>the post-link check"| bin["binary"]
+```
 
 1. clang compiles each file to LLVM IR with the flags of `engine/flags.sh` and the generator's own (target, frame pointer, no tail calls, registers Go keeps).
 2. llvm-link joins the files, and the optimizer runs once more over the whole module.
@@ -43,7 +65,7 @@ A C function `host_x` declared in `engine/host.h` becomes a call of the Go funct
 
 - **Shadow stacks.** Each connection has a region of 32 MiB, aligned to its size and followed by a guard page, mapped with mmap and touched only as the C uses it. A call into the C passes a pointer into it. Strings and out-parameters of a call are written there too, so a call allocates nothing.
 - **Polls.** The C calls `host_poll` every 10000 ticks of its loops. Its stack check is where the Go runtime can stop the goroutine.
-- **Memory.** `malloc`, `realloc` and `free` are Go: size classes up to 64 KiB cut from 4 MiB mmap arenas, a mapping of its own above that. The garbage collector never sees SQLite's memory.
+- **Memory.** `malloc`, `realloc` and `free` are Go: size classes up to 256 KiB cut from 4 MiB mmap arenas, a mapping of its own above that. The garbage collector never sees SQLite's memory.
 - **Threads.** SQLite runs in multi-thread mode: connections on many goroutines at once, each used by one at a time. `engine/os.c` installs mutexes that are Go `sync.Mutex` values (`SQLITE_CONFIG_MUTEX`, since SQLite 3.54 has no compile option for it).
 - **Files.** `engine/os.c` is the VFS (named `go`). Each method calls `internal/vfs`.
 
@@ -56,6 +78,23 @@ Inside the driver, a connection takes its file's write lock before a statement t
 Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver takes the autocommit DML of many callers, runs it as one transaction and commits once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
 
 How it works (`writer.go`): a statement that comes to the file's write lock while another connection holds it joins the file's queue instead of waiting. The connection that gives the lock back runs the queue on itself, up to 256 statements: `BEGIN IMMEDIATE`, then each statement between `SAVEPOINT` and `RELEASE` (`ROLLBACK TO` when it fails, and its caller gets the error), then `COMMIT`, and only then does each caller get its result. When a failure ends the whole transaction, the statements that had run are run again in a new one. With no other writer a statement runs directly, so one writer pays nothing.
+
+```mermaid
+sequenceDiagram
+    participant A as goroutine A
+    participant B as goroutine B
+    participant C as goroutine C
+    participant L as the file's write lock
+    A->>L: Exec INSERT: the lock is free, A takes it
+    B->>L: Exec INSERT: the lock is held, B joins the queue
+    C->>L: Exec UPDATE: C joins the queue
+    Note over A: A's INSERT runs and commits
+    L->>A: before giving the lock back, A takes the queue
+    Note over A: BEGIN IMMEDIATE<br>SAVEPOINT, B's INSERT, RELEASE<br>SAVEPOINT, C's UPDATE, RELEASE<br>COMMIT
+    A-->>B: B's error, LastInsertId, RowsAffected
+    A-->>C: C's result
+    Note over A,C: each call returns only after the COMMIT
+```
 
 Which statements may join: the driver installs an authorizer in C (`goClassify` in `engine/os.c`) that sees each statement as it is prepared. A statement joins only when it writes tables of the main database and touches nothing only its own connection has: no other schema (temp, attached), no write from a trigger (it may be a temporary trigger), no `last_insert_rowid()`, `changes()` or `total_changes()`, and nothing that is not DML. Only `Exec` merges. A statement in a transaction never does.
 
@@ -79,11 +118,11 @@ A prototype of it in application code, on mattn/go-sqlite3 (WAL, one writer goro
 | 16 | FULL, fullfsync | 213 | 2.0k | 9.5x |
 | 256 | FULL, fullfsync | 150 | 34.8k | 232x |
 
-So it pays from about 16 concurrent writers up, most where a commit waits for the disk, and costs with one writer, where the queue only adds a hop: the driver must write directly when no one else is waiting. One commit per write is also unfair: some goroutines waited seconds and some got `SQLITE_BUSY`. The SAVEPOINT per statement halves the peak (it adds two calls per statement in the prototype). A failed constraint in SQLite already undoes only its own statement, so where the SAVEPOINT is really needed has yet to be shown. Each run took 3 seconds once, and runs of the same setup differed by up to 90%, so read gains under 1.5x as noise.
+So it pays from about 16 concurrent writers up, most where a commit waits for the disk, and costs with one writer, where the queue only adds a hop: the driver must write directly when no one else is waiting. One commit per write is also unfair: some goroutines waited seconds and some got `SQLITE_BUSY`. The SAVEPOINT per statement halves the peak (it adds two calls per statement in the prototype). A failed constraint in SQLite already undoes only its own statement, so where the SAVEPOINT is really needed has yet to be shown. It stays all the same: safety comes before speed. Each run took 3 seconds once, and runs of the same setup differed by up to 90%, so read gains under 1.5x as noise.
 
 ## Routes left out
 
 - **cgo** (mattn/go-sqlite3): needs a C compiler for every build and every target, and cross-compiling is hard. Not having to do this is the reason for the project.
-- **C translated to Go** (modernc.org/sqlite, made with ccgo): no cgo, but inserts are 3 to 4 times slower than with cgo in public benchmarks. slowjs went this way for QuickJS before and left it for the same reason.
-- **WebAssembly** (ncruces/go-sqlite3, now wasm2go): no cgo, but a second machine model between SQLite and the CPU.
+- **C translated to Go** (modernc.org/sqlite, made with ccgo): no cgo, but slower than cgo: 1.2 to 1.4 times as long as cgo on a point read and 1.6 to 2.4 times on a join (see [benchmarks.md](benchmarks.md)). slowjs went this way for QuickJS before and left it for the same reason.
+- **WebAssembly** (ncruces/go-sqlite3): SQLite compiled to wasm, which wasm2go translates to Go. No cgo, but the C passes through a second machine model on its way to the CPU.
 - **A shared library loaded with purego**: no single static binary, the SQLite version depends on the system, and each call costs more.

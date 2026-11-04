@@ -7,7 +7,7 @@ Compares SQLite drivers for Go's `database/sql` on the same workloads and the sa
 | `liustack` | github.com/liustack/sqlite (this repository) | C compiled to Go assembly |
 | `mattn`   | github.com/mattn/go-sqlite3     | cgo               |
 | `modernc` | modernc.org/sqlite              | C translated to Go |
-| `ncruces` | github.com/ncruces/go-sqlite3   | wasm on wazero    |
+| `ncruces` | github.com/ncruces/go-sqlite3   | wasm translated to Go (wasm2go) |
 
 Several of these register the driver name `sqlite` or `sqlite3`, so only one can be linked into a binary. A build tag picks the driver (`driver_<tag>.go`). Each file gives `DriverName`, `DriverTag` and `DSN(path)`. To add a driver, add a file with the same three things.
 

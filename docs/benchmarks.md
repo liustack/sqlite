@@ -8,6 +8,8 @@ read_when:
 
 # Benchmarks
 
+English · [简体中文](benchmarks.zh-CN.md)
+
 The workloads, the settings and how to run them are in [bench/README.md](../bench/README.md). In short: WAL, `synchronous=NORMAL`, one `*sql.DB` per benchmark, a fresh file each time, the same settings checked on every driver. Time per operation, lower is better, the median of 6 runs. The drivers took turns, one run of every benchmark each, so that other load on the machine fell on all of them alike.
 
 | Driver | Version | Built with |
@@ -15,7 +17,7 @@ The workloads, the settings and how to run them are in [bench/README.md](../benc
 | this driver | commit `beeea0d` | C compiled to Go assembly, `CGO_ENABLED=0` |
 | mattn/go-sqlite3 | v1.14.52 | cgo |
 | modernc.org/sqlite | v1.61.1 | C translated to Go |
-| ncruces/go-sqlite3 | v0.36.0 | wasm on wazero |
+| ncruces/go-sqlite3 | v0.36.0 | SQLite as wasm, translated to Go by wasm2go |
 
 ## linux/amd64
 

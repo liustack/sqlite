@@ -8,6 +8,8 @@ read_when:
 
 # Upstream
 
+English · [简体中文](upstream.zh-CN.md)
+
 | Code | From | Version | Kept by |
 | --- | --- | --- | --- |
 | `engine/sqlite3.c`, `engine/sqlite3.h` | The SQLite amalgamation, https://sqlite.org/download.html | 3.54.1 | `engine/vendor.sh` and `engine/SQLITE.sha256` |
