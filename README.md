@@ -107,7 +107,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 - **No C anywhere.** `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build` from a Mac works, and the binary runs in a `scratch` image.
 - **Many writers stop waiting on each other.** When goroutines write at the same time, the driver runs their autocommit `INSERT`, `UPDATE` and `DELETE` statements as one transaction and commits once. Each call still gets its own error, `LastInsertId` and `RowsAffected`, and returns only after the commit, so nothing is less durable. Transactions you open yourself are never merged. [How it works](docs/architecture.md#group-commit)
 - **Writers queue instead of failing with `database is locked`.** Inside the driver one connection of your program writes a file at a time, and the others queue for it, up to `busy_timeout`, instead of sleeping in SQLite's busy handler. A transaction that reads first and writes later can still fail when another wrote in between, so start such transactions with `_txlock=immediate`. Other processes still meet SQLite's own locks.
-- **Reads cost less.** A call into SQLite is a plain Go call, and scanning a number into your variable allocates nothing (a string costs one allocation, its own).
+- **Reads cost less.** A call into SQLite is a plain Go call, and on Go 1.27 scanning a number into your variable allocates nothing (a string costs one allocation, its own).
 
 ## Why you can trust it
 

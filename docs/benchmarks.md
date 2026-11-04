@@ -225,7 +225,7 @@ Allocations per op, lower is better:
 - **One writer** (Insert) is close to mattn on both machines. The time goes to the WAL write and the locks SQLite's protocol asks for, the same system calls for every driver.
 - **Join and group** (Aggregate), which is all work inside the engine, is 9% (linux) to 31% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
 - **Large text values** are read slower than with every other driver: 100 rows of 200 KB take 8.85 ms against 6.99 to 8.13 ms on linux. Where that time goes is not measured yet.
-- **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
+- **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`, Go 1.27), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
 - **Point on linux** includes one `fstat` per query, for every driver: when the WAL is empty, as it is in a fresh copy of the fixture, SQLite reads the size of the database file at the start of each read. A system call costs about 0.8 µs on this VM, which is most of the gap between linux and darwin in that row.
 
 ## Running them again

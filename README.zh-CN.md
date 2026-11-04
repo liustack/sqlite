@@ -107,7 +107,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 - **全程没有 C。** 在 Mac 上 `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build` 就行，出来的二进制能直接跑在 `scratch` 镜像里。
 - **多个写入方不再互相等。** 几个 goroutine 同时写时，驱动把它们自动提交的 `INSERT`、`UPDATE`、`DELETE` 放进一个事务，只提交一次。每次调用照样拿到自己的错误、`LastInsertId` 和 `RowsAffected`，并且提交完才返回，持久性一点不打折。你自己开的事务从不合并。[原理](docs/architecture.zh-CN.md#合并提交)
 - **写入方排队，不再动不动报 `database is locked`。** 驱动里同一个文件同一时刻只有你程序的一个连接在写，其余的排队等（最多等 `busy_timeout`），不在 SQLite 的忙等里睡。先读后写的事务，如果中间有别人写过，还是会失败，这种事务用 `_txlock=immediate` 开。别的进程照样遵守 SQLite 自己的锁。
-- **读更省。** 调 SQLite 就是一次普通的 Go 函数调用，把数字读进你的变量不分配内存（字符串只分配它自己那一次）。
+- **读更省。** 调 SQLite 就是一次普通的 Go 函数调用，在 Go 1.27 上把数字读进你的变量不分配内存（字符串只分配它自己那一次）。
 
 ## 凭什么信它
 
