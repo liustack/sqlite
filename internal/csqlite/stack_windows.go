@@ -32,8 +32,11 @@ func mapStack() (uintptr, error) {
 			return 0, err
 		}
 		got, err := windows.VirtualAlloc(base, stackSize+pageSize, windows.MEM_RESERVE|windows.MEM_COMMIT, windows.PAGE_READWRITE)
-		if err != nil {
+		if err == windows.ERROR_INVALID_ADDRESS {
 			continue // another thread took the address
+		}
+		if err != nil {
+			return 0, err // out of commit, most likely
 		}
 		var old uint32
 		if err := windows.VirtualProtect(got+stackSize, pageSize, windows.PAGE_NOACCESS, &old); err != nil {
