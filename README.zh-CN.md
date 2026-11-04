@@ -21,35 +21,42 @@
 
 每次操作的耗时，越低越好，取 6 轮的中位数。每行最快的加粗。全部用 WAL、`synchronous=NORMAL`，每个驱动的设置都核对过一致。
 
-**linux/amd64**（AMD EPYC 7B13，Go 1.27.2）：
+<!-- bench:readme-linux-amd64 -->
+**linux/amd64**（AMD EPYC 7B13，Go 1.27.2，提交 `cc1ede5`）：
 
 | 场景 | 本驱动 | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| 插入一行 | **18.4 µs** | 19.7 µs | 23.5 µs | 21.5 µs |
-| 一个事务插入 1000 行 | **1.25 ms** | 1.48 ms | 1.97 ms | 1.72 ms |
-| 按主键读一行 | **2.20 µs** | 5.87 µs | 7.36 µs | 5.84 µs |
-| 读 10 万行 | **34.8 ms** | 76.9 ms | 74.2 ms | 49.4 ms |
-| 连表加分组 | 2.90 ms | **2.73 ms** | 4.50 ms | 4.43 ms |
-| 按主键读，8 线程 | **1.47 µs** | 2.20 µs | 2.33 µs | 2.04 µs |
-| 8 个 goroutine 同时插入 | **9.74 µs** | 19.1 µs | 25.7 µs | 22.0 µs |
-| 64 个 goroutine 同时插入 | **2.97 µs** | 19.6 µs | 27.2 µs | 26.9 µs |
+| 插入一行 | **18.7 µs** | 19.6 µs | 23.4 µs | 21.5 µs |
+| 一个事务插入 1000 行 | **1.30 ms** | 1.47 ms | 1.94 ms | 1.67 ms |
+| 按主键读一行 | **3.58 µs** | 6.70 µs | 8.45 µs | 6.54 µs |
+| 读 10 万行 | **34.9 ms** | 73.4 ms | 76.4 ms | 50.2 ms |
+| 连表加分组 | 2.87 ms | **2.63 ms** | 4.51 ms | 4.37 ms |
+| 查一个用户和他的 400 条评论 | **509 µs** | 830 µs | 1.05 ms | 762 µs |
+| 读 100 行 200 KB 的文本 | 8.85 ms | **6.99 ms** | 8.13 ms | 8.02 ms |
+| 按主键读，8 线程 | **1.65 µs** | 2.00 µs | 2.18 µs | 2.29 µs |
+| 8 个 goroutine 同时插入 | **9.43 µs** | 19.4 µs | 24.2 µs | 21.9 µs |
+| 64 个 goroutine 同时插入 | **3.40 µs** | 20.2 µs | 27.0 µs | 27.0 µs |
+| 64 个 goroutine 同时插入，`synchronous=FULL` | **21.0 µs** | 2.48 ms | 5.31 ms | 1.12 ms |
+<!-- /bench:readme-linux-amd64 -->
 
-`synchronous=FULL`（每次提交都等磁盘落盘）时，64 个 goroutine 同时插入每条 **21 µs**，mattn 3.03 ms，modernc 4.37 ms，ncruces 1.09 ms。[测法](docs/benchmarks.zh-CN.md#linuxamd64)
+<!-- bench:readme-darwin-arm64 -->
+**darwin/arm64**（Apple M4，Go 1.27.2，提交 `90e0e83`，测的时候机器上还有别的任务，30% 以内的差别当噪声看）：
 
-**darwin/arm64**（Apple M4，Go 1.27.2，测的时候机器上还有别的任务，30% 以内的差别当噪声看）：
-
-| 场景 | 本驱动 | mattn（cgo） | modernc | ncruces |
+| 场景 | 本驱动 | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| 插入一行 | **8.92 µs** | 9.16 µs | 11.0 µs | 9.27 µs |
-| 一个事务插入 1000 行 | 723 µs | 837 µs | 915 µs | **634 µs** |
-| 按主键读一行 | **0.81 µs** | 1.76 µs | 2.50 µs | 1.71 µs |
-| 读 10 万行 | **15.3 ms** | 33.7 ms | 32.4 ms | 20.5 ms |
-| 连表加分组 | 1.48 ms | **1.23 ms** | 3.00 ms | 1.98 ms |
-| 按主键读，10 线程 | **1.25 µs** | 1.90 µs | 2.02 µs | 2.22 µs |
-| 8 个 goroutine 同时插入 | **3.45 µs** | 9.03 µs | 10.5 µs | 48.4 µs |
-| 64 个 goroutine 同时插入 | **1.42 µs** | 16.8 µs | 13.4 ms | 80.0 µs |
+| 插入一行 | 6.32 µs | **6.21 µs** | 7.96 µs | 7.00 µs |
+| 一个事务插入 1000 行 | **456 µs** | 594 µs | 748 µs | 583 µs |
+| 按主键读一行 | **1.12 µs** | 1.96 µs | 2.86 µs | 2.07 µs |
+| 读 10 万行 | **14.4 ms** | 31.6 ms | 30.1 ms | 20.7 ms |
+| 连表加分组 | 1.56 ms | **1.19 ms** | 2.65 ms | 1.90 ms |
+| 查一个用户和他的 400 条评论 | **236 µs** | 396 µs | 594 µs | 345 µs |
+| 读 100 行 200 KB 的文本 | 4.87 ms | **3.58 ms** | 3.99 ms | 3.64 ms |
+| 按主键读，10 线程 | **1.29 µs** | 1.69 µs | 1.79 µs | 2.49 µs |
+| 8 个 goroutine 同时插入 | **3.30 µs** | 6.94 µs | 8.12 µs | 43.5 µs |
+| 64 个 goroutine 同时插入 | **1.37 µs** | 9.53 µs | 8.28 ms | 83.3 µs |
+<!-- /bench:readme-darwin-arm64 -->
 
-cgo 驱动还赢的，是全在 SQLite 内部算的活（连表）：本驱动跑的是同一份 C，只是变成了 Go 汇编。读和多写为什么更快、各驱动的版本、怎么自己再跑一遍，见 [docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md)。
+别的驱动还赢的地方：全在 SQLite 内部算的活（连表），本驱动跑的是同一份 C，只是变成了 Go 汇编，还有读大文本。读和多写为什么更快、各驱动的版本、怎么自己再跑一遍，见 [docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md)。
 
 ## 安装
 
