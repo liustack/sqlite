@@ -20,15 +20,16 @@ import (
 
 // TestInteropShell has the sqlite3 shell, SQLite built from C with the VFS
 // of the system, write the same database as the driver at the same time,
-// with the rollback journal and with WAL: the driver writes for as long as
-// the shell does. No write may be lost and the database must stay whole.
+// with the rollback journal (deleted, truncated or kept after each
+// transaction) and with WAL: the driver writes for as long as the shell
+// does. No write may be lost and the database must stay whole.
 // Set SQLITE3 to the shell to run it.
 func TestInteropShell(t *testing.T) {
 	shell := os.Getenv("SQLITE3")
 	if shell == "" {
 		t.Skip("set SQLITE3 to the sqlite3 shell")
 	}
-	for _, mode := range []string{"delete", "wal"} {
+	for _, mode := range []string{"delete", "truncate", "persist", "wal"} {
 		t.Run(mode, func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "interop.db")
 			db, err := sql.Open("sqlite", "file:"+name+"?_pragma=busy_timeout(60000)&_pragma=journal_mode("+mode+")")
@@ -44,7 +45,7 @@ func TestInteropShell(t *testing.T) {
 			// keeps the other out, C or Go: the shell writes for a few
 			// seconds only, less than busy_timeout, even where fsync is slow.
 			rows, workers := 3000, 4
-			if mode == "delete" {
+			if mode != "wal" {
 				rows = 300
 			}
 			var script strings.Builder
