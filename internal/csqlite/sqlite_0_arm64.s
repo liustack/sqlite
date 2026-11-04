@@ -13496,7 +13496,7 @@ TEXT ·sqlite3Initialize(SB), $152-16
 	MOVD $·engine_rodata+3600(SB), R12
 	MOVD $·engine_rodata+168(SB), R10
 	WORD $0xf940014e
-	MOVD $·engine_rodata+64640(SB), R13
+	MOVD $·engine_rodata+64680(SB), R13
 	WORD $0xeb0d01df
 	WORD $0x54000540
 	WORD $0xb400054e
@@ -13526,7 +13526,7 @@ TEXT ·sqlite3Initialize(SB), $152-16
 	BL ·host_poll(SB)
 	WORD $0xa9463be9
 	WORD $0x52800328
-	MOVD $·engine_rodata+64640(SB), R13
+	MOVD $·engine_rodata+64680(SB), R13
 	WORD $0xb94073eb
 	WORD $0xf9403ff5
 	MOVD $·engine_rodata+168(SB), R10
@@ -20513,7 +20513,7 @@ TEXT ·goOpen(SB), $104-56
 	WORD $0x350004e0
 	WORD $0xf94037e9
 	WORD $0xf9402fea
-	MOVD $·engine_rodata+64808(SB), R22
+	MOVD $·engine_rodata+64848(SB), R22
 	WORD $0xf94027f5
 	WORD $0xb90047e0
 	WORD $0xf9400528
@@ -20541,7 +20541,7 @@ TEXT ·goOpen(SB), $104-56
 	WORD $0xa9452be9
 	WORD $0xb94047e0
 	WORD $0xb9001548
-	MOVD $·engine_rodata+64816(SB), R8
+	MOVD $·engine_rodata+64856(SB), R8
 	WORD $0xf9000148
 	WORD $0xf94037e8
 	WORD $0xb4000069
@@ -21392,7 +21392,7 @@ TEXT ·goFileControl(SB), $56-40
 	WORD $0x540007e0
 	WORD $0x710032df
 	WORD $0x54000961
-	MOVD $·engine_rodata+64635(SB), R9
+	MOVD $·engine_rodata+64672(SB), R9
 	WORD $0xaa1403e8
 	MOVD $·engine_rodata+1338(SB), R21
 	WORD $0xf8010509

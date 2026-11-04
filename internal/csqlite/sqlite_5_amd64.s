@@ -7950,7 +7950,7 @@ TEXT ·sqlite3SelectWrongNumTermsError(SB), NOSPLIT, $32-24
 	BYTE $0x0f
 	BYTE $0xb6
 	BYTE $0xc0
-	LEAQ ·engine_rodata+65464(SB), CX
+	LEAQ ·engine_rodata+65504(SB), CX
 	QUAD $0x8d4d14ebc1048b48
 	BYTE $0x67
 	BYTE $0x10

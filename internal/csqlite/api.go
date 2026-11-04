@@ -182,8 +182,9 @@ func (c *Conn) classifyWord() uintptr { return c.st.base + classifyOffset }
 
 // The bits goClassify writes (engine/os.c).
 const (
-	writesMain = 1
-	private    = 2
+	writesMain  = 1
+	private     = 2
+	changesConn = 4
 )
 
 // err is the error of result code r, with the connection's message.
@@ -281,6 +282,24 @@ func (c *Conn) Changes() int64 { return int64(sqlite3_changes64(c.sp, c.db)) }
 // LastInsertRowID is the rowid of the last row inserted.
 func (c *Conn) LastInsertRowID() int64 { return int64(sqlite3_last_insert_rowid(c.sp, c.db)) }
 
+// SetLastInsertRowID sets what LastInsertRowID and last_insert_rowid() give.
+func (c *Conn) SetLastInsertRowID(id int64) { sqlite3_set_last_insert_rowid(c.sp, c.db, uintptr(id)) }
+
+// DeferredFKs says foreign key constraints of the transaction are not
+// resolved yet (SQLITE_DBSTATUS_DEFERRED_FKS).
+func (c *Conn) DeferredFKs() bool {
+	a := c.args()
+	cur, hi := a.word(), a.word()
+	sqlite3_db_status(c.sp, c.db, 10, cur, hi, 0) // SQLITE_DBSTATUS_DEFERRED_FKS
+	return *(*int32)(at(cur)) != 0
+}
+
+// ReadOnly says the main database is open read-only.
+func (c *Conn) ReadOnly() bool {
+	a := c.args()
+	return int32(sqlite3_db_readonly(c.sp, c.db, a.str("main"))) == 1
+}
+
 // AutoCommit says whether no transaction is open.
 func (c *Conn) AutoCommit() bool { return int32(sqlite3_get_autocommit(c.sp, c.db)) != 0 }
 
@@ -303,6 +322,15 @@ type Stmt struct {
 // touches nothing only its connection has: run on another connection of
 // the same file, it does the same.
 func (s *Stmt) Mergeable() bool { return s.kind == writesMain }
+
+// ChangesConn says the statement changes the connection itself: a PRAGMA
+// that sets something, ATTACH, DETACH, or a temporary table, index, view or
+// trigger.
+func (s *Stmt) ChangesConn() bool { return s.kind&changesConn != 0 }
+
+// Reprepares is how many times SQLite prepared the statement again, after a
+// change of the schema.
+func (s *Stmt) Reprepares() int { return int(int32(sqlite3_stmt_status(s.c.sp, s.p, 5, 0))) } // SQLITE_STMTSTATUS_REPREPARE
 
 func (s *Stmt) err(r uintptr) error { return s.c.err(int(int32(r))) }
 
