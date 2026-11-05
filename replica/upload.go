@@ -113,24 +113,24 @@ func (r *Replica) upload(ctx context.Context) error {
 func (r *Replica) uploadFiles(ctx context.Context) error {
 	// Durable is 1 or more once capture.Open returns.
 	durable := r.c.Durable()
-	if err := r.conflict(); err != nil {
-		// What is staged can no longer go to the replica: only the last
-		// file is kept, which the capturer goes on from.
+	err := r.conflict()
+	for txid := r.uploaded() + 1; err == nil && txid <= durable; txid++ {
+		if err = r.put(ctx, txid); err == nil {
+			r.setStatus(func(s *Status) { s.Uploaded = uint64(txid) })
+		}
+	}
+	switch {
+	case err == nil:
+		return r.c.Done(r.uploaded())
+	case errors.Is(err, ErrConflict):
+		// What is staged can no longer go to the replica, from the first
+		// conflict on: only the last file is kept, which the capturer goes
+		// on from. Nothing is pending, so staging does not stop.
 		if derr := r.c.Done(durable); derr != nil {
 			return derr
 		}
-		return err
 	}
-	for txid := r.uploaded() + 1; txid <= durable; txid++ {
-		if err := r.put(ctx, txid); err != nil {
-			if errors.Is(err, ErrConflict) {
-				r.setStatus(func(s *Status) { s.Err = err })
-			}
-			return err
-		}
-		r.setStatus(func(s *Status) { s.Uploaded = uint64(txid) })
-	}
-	return r.c.Done(r.uploaded())
+	return err
 }
 
 // put uploads the staged file of txid as level 0.

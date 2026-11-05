@@ -351,7 +351,9 @@ func TestTwoReplicators(t *testing.T) {
 	if err := b.Sync(context.Background()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("the second replicator: %v, want ErrConflict", err)
 	}
-	if s := b.Status(); !errors.Is(s.Err, ErrConflict) {
+	// What it staged is dropped at once: nothing is pending, so that a
+	// staging stopped at its limit goes on.
+	if s := b.Status(); !errors.Is(s.Err, ErrConflict) || s.Pending != 0 {
 		t.Fatalf("status of the second: %+v", s)
 	}
 	// It stays stopped, and the program's writes go on.
