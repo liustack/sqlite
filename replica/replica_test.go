@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -421,5 +422,49 @@ func TestBackground(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the replica did not catch up: status %+v", r.Status())
 		}
+	}
+}
+
+// `litestream restore` reads the replica: the latest state, and an earlier
+// TXID. LITESTREAM names the binary (v0.5.18), else the test is skipped.
+func TestLitestreamRestore(t *testing.T) {
+	bin := os.Getenv("LITESTREAM")
+	if bin == "" {
+		if os.Getenv("S3_TEST_REQUIRED") != "" {
+			t.Fatal("LITESTREAM is not set, and S3_TEST_REQUIRED is")
+		}
+		t.Skip("LITESTREAM is not set")
+	}
+	cfg := testConfig(t)
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
+	syncNow(t, r)
+	early := r.Status().Uploaded
+	earlyDump := dump(t, name)
+	for i := range 20 {
+		run(t, db, fmt.Sprintf("INSERT INTO t VALUES (randomblob(%d))", 1000+i))
+	}
+	syncNow(t, r)
+	cr, err := cfg.Credentials.Credentials(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := func(args ...string) string {
+		t.Helper()
+		out := filepath.Join(t.TempDir(), "restored.db")
+		cmd := exec.Command(bin, append(append([]string{"restore", "-o", out}, args...), cfg.URL)...)
+		cmd.Env = append(os.Environ(), "AWS_ACCESS_KEY_ID="+cr.AccessKeyID, "AWS_SECRET_ACCESS_KEY="+cr.SecretAccessKey)
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("litestream restore %v: %v\n%s", args, err, b)
+		}
+		return out
+	}
+	if got, want := dump(t, restore()), dump(t, name); got != want {
+		t.Fatalf("litestream restored\n%s\nthe database\n%s", got, want)
+	}
+	if got := dump(t, restore("-txid", fmt.Sprintf("%016x", early))); got != earlyDump {
+		t.Fatalf("litestream restored at TXID %x\n%s\nthen\n%s", early, got, earlyDump)
 	}
 }

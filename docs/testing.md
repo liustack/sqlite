@@ -31,7 +31,7 @@ MINIO=$PWD/.build/minio go test ./replica/...
 
 The tests start it on a free port and stop it. `S3_TEST_ENDPOINT` (with `S3_TEST_REGION`, `S3_TEST_BUCKET`, `S3_TEST_ACCESS_KEY`, `S3_TEST_SECRET_KEY`) runs them against a store that runs already, such as R2. CI runs them in the job `s3`, where `S3_TEST_REQUIRED` makes a missing store fail instead of skip. `replica/internal/s3test` starts the store for the tests of other packages.
 
-The tests of `replica` rebuild the database from the files in the store, checking every checksum. `TestTwoReplicators` has two replicators with the same history write to one replica: the second must stop with `ErrConflict` at its first file, and the replica must hold the first one's database. `TestDiverged` checks that a replica written from another database is refused, and taken over with `FreshStart`.
+The tests of `replica` rebuild the database from the files in the store, checking every checksum. `TestTwoReplicators` has two replicators with the same history write to one replica: the second must stop with `ErrConflict` at its first file, and the replica must hold the first one's database. `TestDiverged` checks that a replica written from another database is refused, and taken over with `FreshStart`. With `LITESTREAM` naming a litestream binary (v0.5.18, `go install github.com/benbjohnson/litestream/cmd/litestream@v0.5.18`), `TestLitestreamRestore` has it restore the replica from the store, the latest state and an earlier TXID. CI sets it.
 
 ## Capture
 

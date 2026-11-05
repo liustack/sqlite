@@ -66,8 +66,9 @@ jobs:
         env:
           CGO_ENABLED: "1"
 
-  # The S3 client against MinIO. MinIO no longer publishes binaries or
-  # images, so it is built from the source of the pinned release.
+  # The S3 client and the replicator against MinIO. MinIO no longer
+  # publishes binaries or images, so it is built from the source of the
+  # pinned release. Litestream restores the replica the tests write.
   s3:
     name: s3 (linux/amd64, MinIO)
     runs-on: ubuntu-24.04
@@ -83,6 +84,10 @@ jobs:
         run: |
           GOBIN="$RUNNER_TEMP/bin" go install github.com/minio/minio@RELEASE.2025-09-07T16-13-09Z
           echo "MINIO=$RUNNER_TEMP/bin/minio" >> "$GITHUB_ENV"
+      - name: Litestream
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/benbjohnson/litestream/cmd/litestream@v0.5.18
+          echo "LITESTREAM=$RUNNER_TEMP/bin/litestream" >> "$GITHUB_ENV"
       - run: go test -count=1 -race ./replica/...
         env:
           CGO_ENABLED: "1"
