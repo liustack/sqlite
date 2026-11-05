@@ -7,6 +7,7 @@ package capture
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -190,4 +192,84 @@ func readFull(r io.ReaderAt, p []byte, off int64) error {
 		return io.ErrUnexpectedEOF
 	}
 	return err
+}
+
+// stagedFiles lists the staged files of dir in TXID order, from their
+// headers and trailers.
+func stagedFiles(dir string) ([]StagedFile, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []StagedFile
+	for _, e := range entries {
+		min, max, err := ltx.ParseFilename(e.Name())
+		if err != nil || min != max {
+			continue
+		}
+		f, err := readStaged(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if f.TXID != max {
+			return nil, fmt.Errorf("the staged file %s holds TXID %s", e.Name(), f.TXID)
+		}
+		files = append(files, f)
+	}
+	slices.SortFunc(files, func(a, b StagedFile) int { return cmp.Compare(a.TXID, b.TXID) })
+	return files, nil
+}
+
+// readStaged reads the header and trailer of the staged file name.
+func readStaged(name string) (StagedFile, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return StagedFile{}, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return StagedFile{}, err
+	}
+	var hb [ltx.HeaderSize]byte
+	var tb [ltx.TrailerSize]byte
+	if st.Size() < ltx.HeaderSize+ltx.TrailerSize {
+		return StagedFile{}, fmt.Errorf("the staged file %s is too short", name)
+	}
+	if err := readFull(f, hb[:], 0); err != nil {
+		return StagedFile{}, err
+	}
+	if err := readFull(f, tb[:], st.Size()-ltx.TrailerSize); err != nil {
+		return StagedFile{}, err
+	}
+	var h ltx.Header
+	var t ltx.Trailer
+	if err := h.UnmarshalBinary(hb[:]); err != nil {
+		return StagedFile{}, fmt.Errorf("the staged file %s: %w", name, err)
+	}
+	if err := t.UnmarshalBinary(tb[:]); err != nil {
+		return StagedFile{}, fmt.Errorf("the staged file %s: %w", name, err)
+	}
+	if h.MinTXID != h.MaxTXID {
+		return StagedFile{}, fmt.Errorf("the staged file %s holds TXIDs %s to %s", name, h.MinTXID, h.MaxTXID)
+	}
+	return StagedFile{TXID: h.MaxTXID, Pre: h.PreApplyChecksum, Post: t.PostApplyChecksum}, nil
+}
+
+// dropStaged removes the staged files of dir, and the temporary ones.
+func dropStaged(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if _, _, err := ltx.ParseFilename(name); err != nil && !strings.HasSuffix(name, ".tmp") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return err
+		}
+	}
+	return syncDir(dir)
 }

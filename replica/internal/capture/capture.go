@@ -43,6 +43,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/superfly/ltx"
@@ -64,6 +65,24 @@ type Options struct {
 	// and an error under ErrFullCopy for each full copy staged because the
 	// WAL could not be followed.
 	OnError func(error)
+	// Start, if set, is called once Open has the database, before it
+	// resumes, with the staged files in TXID order (their headers and
+	// trailers, not checked). An error stops Open. A Restart drops the
+	// staged files and starts over from it.
+	Start func(staged []StagedFile) (*Restart, error)
+}
+
+// A StagedFile is a staged LTX file, of one TXID.
+type StagedFile struct {
+	TXID      ltx.TXID
+	Pre, Post ltx.Checksum // the checksums of the database before and after it
+}
+
+// A Restart starts the staged files over: a full copy of the database as
+// TXID+1, whose pre-apply checksum is Post (a snapshot for TXID 0).
+type Restart struct {
+	TXID ltx.TXID
+	Post ltx.Checksum
 }
 
 // ErrFullCopy is under the error reported for a full copy of the database
@@ -109,6 +128,9 @@ type Capturer struct {
 	commitPage []byte // the page of the last commit frame scanned (capture)
 	fullCopies int
 	closed     bool
+
+	durable atomic.Uint64 // the last TXID whose name is synced
+	staged  chan struct{} // gets a value when durable moves
 }
 
 // Open starts staging the changes of the database name, before the driver
@@ -126,7 +148,7 @@ func Open(name string, opt Options) (*Capturer, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), done: make(chan struct{})}
+	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), done: make(chan struct{}), staged: make(chan struct{}, 1)}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	if err := c.open(); err != nil {
 		c.release()
@@ -173,7 +195,16 @@ func (c *Capturer) open() error {
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
 		return err
 	}
-	return c.start()
+	if err := c.start(); err != nil {
+		return err
+	}
+	// The last staged file may be from before a crash that left its name
+	// unsynced.
+	if err := syncDir(c.dir); err != nil {
+		return err
+	}
+	c.setDurable(c.txid)
+	return nil
 }
 
 // pragma is the value PRAGMA p gives.
@@ -202,6 +233,19 @@ func (c *Capturer) release() {
 
 // start resumes from the staged files, or stages a full copy.
 func (c *Capturer) start() error {
+	if c.opt.Start != nil {
+		files, err := stagedFiles(c.dir)
+		if err != nil {
+			return err
+		}
+		r, err := c.opt.Start(files)
+		if err != nil {
+			return err
+		}
+		if r != nil {
+			return c.restart(*r)
+		}
+	}
 	last, post, ok, err := lastStaged(c.dir)
 	if err != nil {
 		return err
@@ -336,6 +380,7 @@ func (c *Capturer) checkpoint(ctx context.Context) error {
 	if err := syncDir(c.dir); err != nil {
 		return err
 	}
+	c.setDurable(c.txid)
 	// TRUNCATE starts the WAL over, empty. With readers it cannot: the
 	// frames are still copied, and the next writer starts the WAL over.
 	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointTruncate); err != nil {
@@ -529,6 +574,9 @@ func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]versi
 	if !placed {
 		return err
 	}
+	if err == nil {
+		defer c.setDurable(h.MaxTXID)
+	}
 	if size < old {
 		c.sums = c.sums[:size]
 	} else {
@@ -599,6 +647,9 @@ func (c *Capturer) fullCopy(why error) error {
 	})
 	if !placed {
 		return err
+	}
+	if err == nil {
+		defer c.setDurable(hdr.MaxTXID)
 	}
 	c.txid, c.post, c.sums = hdr.MaxTXID, post, sums
 	c.gen, c.pos, c.cksum, c.change = h.Salt, h.MaxFrame, h.Checksum, h.Change
@@ -744,3 +795,29 @@ func (c *Capturer) resume(last ltx.Header, post ltx.Checksum) (bool, error) {
 	c.gen, c.pos, c.cksum, c.change = h.Salt, h.MaxFrame, h.Checksum, h.Change
 	return true, nil
 }
+
+// restart drops the staged files and stages a full copy as r.TXID+1.
+func (c *Capturer) restart(r Restart) error {
+	if err := dropStaged(c.dir); err != nil {
+		return err
+	}
+	c.txid, c.post = r.TXID, r.Post
+	return c.fullCopy(nil)
+}
+
+// setDurable records that the names of the staged files up to txid are
+// synced, and signals Staged.
+func (c *Capturer) setDurable(txid ltx.TXID) {
+	c.durable.Store(uint64(txid))
+	select {
+	case c.staged <- struct{}{}:
+	default:
+	}
+}
+
+// Durable is the last TXID staged whose name is synced: a crash keeps the
+// files up to it.
+func (c *Capturer) Durable() ltx.TXID { return ltx.TXID(c.durable.Load()) }
+
+// Staged gets a value when Durable moves on.
+func (c *Capturer) Staged() <-chan struct{} { return c.staged }
