@@ -190,7 +190,7 @@ func (c *Capturer) open() error {
 	if c.path = c.conn.Filename("main"); c.path == "" {
 		return errors.New("capture: a memory or temporary database cannot be replicated")
 	}
-	detach, err := replhook.Attach(c.path)
+	detach, err := replhook.Attach(c.path, nil)
 	if err != nil {
 		return err
 	}

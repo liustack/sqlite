@@ -21,7 +21,7 @@ func init() {
 }
 
 // attach is replhook.Attach.
-func attach(path string) (detach func(), err error) {
+func attach(path string, committed func(frames uint32)) (detach func(), err error) {
 	file, err := fileOf(path)
 	if err != nil {
 		return nil, err
@@ -35,10 +35,14 @@ func attach(path string) (detach func(), err error) {
 		return nil, errors.New("sqlite: " + path + " is open: replication starts before the database is opened")
 	}
 	l := &writeLock{refs: 1, attached: true, file: file}
+	if committed != nil {
+		l.committed.Store(&committed)
+	}
 	writeLocks.all = append(writeLocks.all, l)
 	return func() {
 		writeLocks.Lock()
 		l.attached = false
+		l.committed.Store(nil)
 		writeLocks.Unlock()
 		closeWriteLock(l)
 	}, nil

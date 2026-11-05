@@ -17,7 +17,14 @@ import "context"
 // another way (case, a short windows name) is covered too. It fails when the
 // driver has a connection to the file open, or the file is attached already.
 // detach ends it: connections opened after it are as before.
-var Attach func(path string) (detach func(), err error)
+//
+// committed, if not nil, is called each time a connection of the driver that
+// held the file's write lock ends its transaction, before the lock goes to
+// the next writer, with the frames in the WAL as that connection last saw
+// them (csqlite.Conn.WALFrames): after a commit, the WAL it left. It runs on
+// the writer's goroutine and holds the lock meanwhile: the writers of the
+// file wait for it, and it must not take the lock (Lock).
+var Attach func(path string, committed func(frames uint32)) (detach func(), err error)
 
 // Lock takes the driver's write lock of an attached file, as a writer does,
 // waiting until ctx is done: until unlock, no connection of this process
