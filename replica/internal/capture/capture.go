@@ -411,7 +411,7 @@ func (c *Capturer) step(ctx context.Context) error {
 		return c.checkpointLost(ctx)
 	}
 	if c.lost != nil {
-		return c.fullCopy(c.lost)
+		return c.copyLost()
 	}
 	return c.stageAndCheckpoint(ctx)
 }
@@ -421,11 +421,23 @@ func (c *Capturer) over() bool {
 	return c.opt.Limit > 0 && c.counted() > c.opt.Limit
 }
 
-// stop stops staging at the limit.
+// stop stops staging at the limit. Its error replaces why the WAL was lost,
+// if it was: the full copy follows all the same.
 func (c *Capturer) stop() {
 	c.full = true
-	c.lose(fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid))
+	c.lost = fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid)
 	c.report(c.lost)
+}
+
+// copyLost stages the full copy that follows a lost WAL, or stops staging
+// when the staged files not uploaded, the last full copy too, passed the
+// limit: the new copy would make that one count.
+func (c *Capturer) copyLost() error {
+	if c.opt.Limit > 0 && c.Pending() > c.opt.Limit {
+		c.stop()
+		return nil
+	}
+	return c.fullCopy(c.lost)
 }
 
 // The checkpoint of a step catches up with the writers before it takes the
@@ -454,7 +466,7 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 			err = gerr
 		}
 		if err == nil && c.lost != nil {
-			return c.fullCopy(c.lost)
+			return c.copyLost()
 		}
 		return err
 	}
@@ -473,7 +485,7 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 			return err
 		}
 		if c.lost != nil {
-			return c.fullCopy(c.lost)
+			return c.copyLost()
 		}
 		stepHook("caught up")
 		if c.over() {
@@ -530,7 +542,7 @@ func (c *Capturer) checkpoint(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		return c.fullCopy(c.lost)
+		return c.copyLost()
 	}
 	defer unlock()
 	// The names of the staged files are kept before the frames go.

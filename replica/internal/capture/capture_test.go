@@ -1038,9 +1038,8 @@ func TestStagingLimitLost(t *testing.T) {
 		if err := c.Sync(context.Background()); err != nil && !errors.Is(err, ErrStagingFull) {
 			t.Fatal(err)
 		}
-		// The last copy, which staging goes on from, and one step past the
-		// limit, a copy too.
-		if n := c.Pending(); n > opt.Limit+2*(st.Size()+8<<10) {
+		// One database more than the limit: the copy staging goes on from.
+		if n := c.Pending(); n > opt.Limit+st.Size()+8<<10 {
 			t.Fatalf("step %d: %d bytes pending, the limit is %d", i, n, opt.Limit)
 		}
 	}
