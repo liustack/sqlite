@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"strings"
@@ -213,7 +214,25 @@ type request struct {
 
 // do sends r and gives the answer when it is a success. The caller closes
 // its body.
+//
+// A store closes connections that wait idle in the pool, and a request
+// sent on one just as it closes fails without an answer. Go sends again
+// only GET and HEAD then. do sends any request again, once, on a new
+// connection: a body is read again from body, the requests other than PUT
+// and a multipart upload's completion change nothing when repeated, and a
+// repeated conditional PUT answers 412, which the replicator reads.
 func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
+	for try := 1; ; try++ {
+		resp, reused, err := c.send(ctx, r)
+		if errors.Is(err, ErrNoAnswer) && reused && try == 1 && ctx.Err() == nil {
+			continue
+		}
+		return resp, err
+	}
+}
+
+// send sends r once, and says whether it went on a connection used before.
+func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reused bool, err error) {
 	path := "/" + r.key
 	if c.pathStyle {
 		path = "/" + c.bucket
@@ -221,14 +240,15 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 			path += "/" + r.key
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, r.method, "", nil)
+	trace := &httptrace.ClientTrace{GotConn: func(i httptrace.GotConnInfo) { reused = i.Reused }}
+	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), r.method, "", nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.URL = &url.URL{Scheme: c.scheme, Host: c.host, Path: path, RawPath: escape(path, false), RawQuery: r.query}
 	req.Host = c.host
 	if r.header != nil {
-		req.Header = r.header
+		req.Header = r.header.Clone() // signed again on each try
 	}
 	hash := emptySHA256
 	if r.body != nil && r.size > 0 {
@@ -242,18 +262,18 @@ func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 	req.Header.Set("X-Amz-Content-Sha256", hash)
 	cr, err := c.creds.Credentials(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("s3: %s %s: credentials: %w", r.op, r.key, err)
+		return nil, false, fmt.Errorf("s3: %s %s: credentials: %w", r.op, r.key, err)
 	}
 	sign(req, cr, c.region, "s3", c.now(), hash)
-	resp, err := c.http.Do(req)
+	resp, err = c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("s3: %s %s: %w: %w", r.op, r.key, ErrNoAnswer, err)
+		return nil, reused, fmt.Errorf("s3: %s %s: %w: %w", r.op, r.key, ErrNoAnswer, err)
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
-		return nil, errorOf(resp, r.op, r.key, nil)
+		return nil, reused, errorOf(resp, r.op, r.key, nil)
 	}
-	return resp, nil
+	return resp, reused, nil
 }
 
 // errorOf reads the error the store answered. body is what was read of it
