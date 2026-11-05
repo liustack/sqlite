@@ -154,8 +154,7 @@ func TestAttachAlias(t *testing.T) {
 }
 
 // committed is called after each write, holding the write lock, with the
-// frames of the WAL the write left, for statements merged into one
-// transaction too.
+// frames of the WAL the write left.
 func TestAttachCommitted(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	path := realName(t, name)

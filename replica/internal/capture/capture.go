@@ -378,6 +378,12 @@ func (c *Capturer) Close() error {
 		err = nil
 	}
 	c.release()
+	// No step comes for the errors of the writes.
+	later := c.later
+	c.later = nil
+	for _, e := range later {
+		c.report(e)
+	}
 	return err
 }
 
@@ -403,11 +409,8 @@ func (c *Capturer) Dir() string { return c.dir }
 // and only checkpoints, until nothing staged is pending.
 func (c *Capturer) step(ctx context.Context) error {
 	// A staged file whose folder did not sync is not uploaded until it does.
-	if c.Durable() < c.txid {
-		if err := syncDir(c.dir); err != nil {
-			return err
-		}
-		c.setDurable(c.txid)
+	if err := c.syncNames(); err != nil {
+		return err
 	}
 	if err := c.goOn(); err != nil {
 		return err
@@ -488,8 +491,10 @@ func (c *Capturer) committed(frames uint32) {
 	if !c.full && c.over() {
 		c.later = append(c.later, c.stop())
 	}
-	var err error
+	// Even when staging stopped: the frames of the staged files go next.
+	err := c.syncNames()
 	switch {
+	case err != nil:
 	case c.full:
 		// Staging stopped: the frames are not staged, a full copy follows.
 		err = c.passive()
@@ -510,14 +515,23 @@ func (c *Capturer) checkpointHeld() error {
 	if _, err := c.capture(); err != nil || c.lost != nil {
 		return err
 	}
-	// The names of the staged files are kept before the frames go.
-	if c.Durable() < c.txid {
-		if err := syncDir(c.dir); err != nil {
-			return err
-		}
-		c.setDurable(c.txid)
+	if err := c.syncNames(); err != nil {
+		return err
 	}
 	return c.passive()
+}
+
+// syncNames makes the names of the staged files durable, which comes before
+// a checkpoint lets their frames go.
+func (c *Capturer) syncNames() error {
+	if c.Durable() >= c.txid {
+		return nil
+	}
+	if err := syncDir(c.dir); err != nil {
+		return err
+	}
+	c.setDurable(c.txid)
+	return nil
 }
 
 // passive checkpoints the WAL, PASSIVE: it never waits, and copies what no
