@@ -140,7 +140,7 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 		err = os.Chtimes(tmp, t, t)
 	}
 	if err == nil {
-		err = os.Rename(tmp, name)
+		err = rename(tmp, name)
 	}
 	if err != nil {
 		os.Remove(tmp)
@@ -152,8 +152,8 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 // syncDir makes the names in dir durable. Tests make it fail.
 var syncDir = syncDirFS
 
-// syncDirFS is syncDir. Windows has no way to, and needs none: NTFS logs its
-// metadata.
+// syncDirFS is syncDir. Windows has no way to, and needs none: rename writes
+// through there.
 func syncDirFS(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
