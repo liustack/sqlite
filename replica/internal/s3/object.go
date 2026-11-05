@@ -100,6 +100,7 @@ func (c *Client) putParts(ctx context.Context, key string, body io.ReaderAt, siz
 		return fmt.Errorf("s3: CreateMultipartUpload %s: no upload ID in the answer (%v)", key, err)
 	}
 	id := created.UploadId
+	shown := scrub(resp.Request, id) // in an error
 	defer func() {
 		if err == nil {
 			return
@@ -109,7 +110,7 @@ func (c *Client) putParts(ctx context.Context, key string, body io.ReaderAt, siz
 		defer cancel()
 		resp, aerr := c.do(actx, request{op: "AbortMultipartUpload", method: http.MethodDelete, key: key, query: query("uploadId", id)})
 		if aerr != nil {
-			err = fmt.Errorf("%w (and the upload %s was not aborted: %v)", err, id, aerr)
+			err = fmt.Errorf("%w (and the upload %s was not aborted: %v)", err, shown, aerr)
 			return
 		}
 		done(resp)
@@ -205,7 +206,7 @@ func (c *Client) Get(ctx context.Context, key string, off, n int64) (io.ReadClos
 		if resp.StatusCode != http.StatusPartialContent || !ok || start != off || end != want ||
 			resp.ContentLength >= 0 && resp.ContentLength != end-start+1 {
 			done(resp)
-			return nil, fmt.Errorf("s3: GET %s: asked for bytes from %d, got %d %q", key, off, resp.StatusCode, resp.Header.Get("Content-Range"))
+			return nil, fmt.Errorf("s3: GET %s: asked for bytes from %d, got %d %q", key, off, resp.StatusCode, scrub(resp.Request, resp.Header.Get("Content-Range")))
 		}
 	}
 	return resp.Body, nil
@@ -291,7 +292,7 @@ func (c *Client) List(ctx context.Context, prefix, startAfter string) iter.Seq2[
 				// Checked so that a store that loops or skips is an error,
 				// not a wrong list.
 				if !strings.HasPrefix(o.Key, prefix) || o.Key <= last {
-					yield(Object{}, fmt.Errorf("s3: LIST %s: key %q out of order after %q", prefix, o.Key, last))
+					yield(Object{}, fmt.Errorf("s3: LIST %s: key %q out of order after %q", prefix, scrub(resp.Request, o.Key), scrub(resp.Request, last)))
 					return
 				}
 				last = o.Key

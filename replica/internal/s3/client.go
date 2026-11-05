@@ -284,7 +284,7 @@ type signedWith struct{}
 
 // errorOf reads the error the store answered. body is what was read of it
 // already, nil if nothing was. A store may put headers of the request in
-// its message: the secret and the session token are taken out.
+// its answer: the secret and the session token are taken out.
 func (c *Client) errorOf(resp *http.Response, op, key string, body []byte) *Error {
 	if body == nil {
 		body, _ = io.ReadAll(io.LimitReader(resp.Body, 64<<10))
@@ -299,17 +299,26 @@ func (c *Client) errorOf(resp *http.Response, op, key string, body []byte) *Erro
 	if e.RequestID == "" {
 		e.RequestID = resp.Header.Get("X-Amz-Request-Id")
 	}
-	if cr, ok := resp.Request.Context().Value(signedWith{}).(Credentials); ok {
-		for _, s := range []string{cr.SecretAccessKey, cr.SessionToken} {
-			if s != "" {
-				e.Message = strings.ReplaceAll(e.Message, s, "<hidden>")
-			}
-		}
-	}
+	e.Code, e.Message, e.RequestID = scrub(resp.Request, e.Code), scrub(resp.Request, e.Message), scrub(resp.Request, e.RequestID)
 	if e.StatusCode/100 == 3 {
 		e.Message = strings.TrimSpace(e.Message + " The endpoint or region does not match the bucket's.")
 	}
 	return e
+}
+
+// scrub takes the secret and the session token that req was signed with
+// out of s, which the store sent.
+func scrub(req *http.Request, s string) string {
+	cr, ok := req.Context().Value(signedWith{}).(Credentials)
+	if !ok {
+		return s
+	}
+	for _, x := range []string{cr.SecretAccessKey, cr.SessionToken} {
+		if x != "" {
+			s = strings.ReplaceAll(s, x, "<hidden>")
+		}
+	}
+	return s
 }
 
 // done reads what is left of an answer, so that its connection is used

@@ -432,3 +432,57 @@ func TestErrorScrubsRotatedToken(t *testing.T) {
 		t.Fatalf("the error has the token: %v", err)
 	}
 }
+
+// A store may copy the token into any part of its answer: no error has it,
+// in what it prints or in the fields of an *Error.
+func TestErrorScrubsEveryField(t *testing.T) {
+	const token = "session-token-0123456789"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		io.Copy(io.Discard, req.Body)
+		tok := req.Header.Get("X-Amz-Security-Token")
+		switch {
+		case req.URL.Path == "/bkt/fields":
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintf(w, `<Error><Code>Bad%s</Code><Message>m %s</Message><RequestId>r%s</RequestId></Error>`, tok, tok, tok)
+		case req.URL.Path == "/bkt/header":
+			w.Header().Set("X-Amz-Request-Id", "r"+tok)
+			w.WriteHeader(http.StatusForbidden)
+		case req.URL.Path == "/bkt/range":
+			w.Header().Set("Content-Range", "bytes 0-1/"+tok)
+			w.WriteHeader(http.StatusPartialContent)
+			fmt.Fprint(w, "ab")
+		case req.Method == http.MethodPost && req.URL.Query().Has("uploads"):
+			fmt.Fprintf(w, `<InitiateMultipartUploadResult><UploadId>u%s</UploadId></InitiateMultipartUploadResult>`, tok)
+		default: // the part and the abort of the upload
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer srv.Close()
+	creds := Static(Credentials{AccessKeyID: "AKID", SecretAccessKey: "SECRET", SessionToken: token})
+	c, err := New(Config{Endpoint: srv.URL, Region: "us-east-1", Bucket: "bkt", Credentials: creds, AllowHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	check := func(what string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatalf("%s: no error", what)
+		}
+		if strings.Contains(err.Error(), token) {
+			t.Errorf("%s: the error has the token: %v", what, err)
+		}
+		var e *Error
+		if errors.As(err, &e) && strings.Contains(fmt.Sprintf("%+v", *e), token) {
+			t.Errorf("%s: a field of the error has the token: %+v", what, *e)
+		}
+	}
+	_, err = c.Get(ctx, "fields", 0, -1)
+	check("fields", err)
+	_, err = c.Get(ctx, "header", 0, -1)
+	check("header", err)
+	_, err = c.Get(ctx, "range", 0, 2)
+	check("range", err)
+	body := []byte("data")
+	check("upload", c.Put(ctx, "upload", bytes.NewReader(body), int64(len(body)), PutOptions{Multipart: true}))
+}
