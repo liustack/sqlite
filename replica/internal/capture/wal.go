@@ -65,14 +65,21 @@ func readWALHeader(r io.ReaderAt) (walHeader, error) {
 // walChecksum is SQLite's walChecksumBytes: the checksum s carried over the
 // 32-bit words of b, whose length is a multiple of 8.
 func walChecksum(bigEndian bool, s [2]uint32, b []byte) [2]uint32 {
-	var order binary.ByteOrder = binary.LittleEndian
-	if bigEndian {
-		order = binary.BigEndian
-	}
 	s1, s2 := s[0], s[1]
-	for i := 0; i+8 <= len(b); i += 8 {
-		s1 += order.Uint32(b[i:]) + s2
-		s2 += order.Uint32(b[i+4:]) + s1
+	// A loop for each byte order, 8 bytes at a time: the words are read
+	// without a call, and without a bounds check.
+	if bigEndian {
+		for ; len(b) >= 8; b = b[8:] {
+			x := binary.BigEndian.Uint64(b)
+			s1 += uint32(x>>32) + s2
+			s2 += uint32(x) + s1
+		}
+	} else {
+		for ; len(b) >= 8; b = b[8:] {
+			x := binary.LittleEndian.Uint64(b)
+			s1 += uint32(x) + s2
+			s2 += uint32(x>>32) + s1
+		}
 	}
 	return [2]uint32{s1, s2}
 }

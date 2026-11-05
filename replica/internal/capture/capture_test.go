@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"io"
 	"math/rand/v2"
@@ -1072,4 +1073,43 @@ func TestCheckpointGuard(t *testing.T) {
 		t.Fatalf("%d full copies: the WAL was lost", n)
 	}
 	sameAs(t, c, name)
+}
+
+// walChecksumRef is the WAL checksum as SQLite's walChecksumBytes writes it.
+func walChecksumRef(bigEndian bool, s [2]uint32, b []byte) [2]uint32 {
+	var order binary.ByteOrder = binary.LittleEndian
+	if bigEndian {
+		order = binary.BigEndian
+	}
+	s1, s2 := s[0], s[1]
+	for i := 0; i+8 <= len(b); i += 8 {
+		s1 += order.Uint32(b[i:]) + s2
+		s2 += order.Uint32(b[i+4:]) + s1
+	}
+	return [2]uint32{s1, s2}
+}
+
+func TestWALChecksum(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	for _, n := range []int{0, 8, 24, 4096, 65536} {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = byte(rng.Uint32())
+		}
+		for _, big := range []bool{false, true} {
+			s := [2]uint32{rng.Uint32(), rng.Uint32()}
+			if got, want := walChecksum(big, s, b), walChecksumRef(big, s, b); got != want {
+				t.Fatalf("%d bytes, big endian %t: %x, want %x", n, big, got, want)
+			}
+		}
+	}
+}
+
+func BenchmarkWALChecksum(b *testing.B) {
+	page := make([]byte, 4096)
+	b.SetBytes(int64(len(page)))
+	var s [2]uint32
+	for b.Loop() {
+		s = walChecksum(false, s, page)
+	}
 }
