@@ -191,7 +191,7 @@ func (c *Capturer) open() error {
 		return err
 	}
 	c.mode = st.Mode().Perm()
-	c.dir = stageDir(c.path)
+	c.dir = StageDir(c.path)
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
 		return err
 	}

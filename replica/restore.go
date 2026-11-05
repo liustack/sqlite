@@ -1,0 +1,370 @@
+// Copyright (c) 2026 The liustack/sqlite Authors.
+// SPDX-License-Identifier: MIT
+// Use of this source code is governed by the MIT license in LICENSE at the
+// root of this repository.
+
+package replica
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/superfly/ltx"
+
+	"github.com/liustack/sqlite/internal/csqlite"
+	"github.com/liustack/sqlite/replica/internal/capture"
+	"github.com/liustack/sqlite/replica/internal/s3"
+)
+
+// RestoreOptions says which state of the database Restore brings back:
+// the latest, the one at a TXID, or the one at a time.
+type RestoreOptions struct {
+	// TXID, if set, is the TXID to restore.
+	TXID uint64
+	// At, if set, restores the database as it was before that time: the
+	// files of the replica made before it, as litestream restore does. A
+	// file is made when its commits are staged, within SyncInterval of
+	// them, and may hold several commits.
+	At time.Time
+}
+
+// ErrNoReplica is the error of Restore when the replica holds no file.
+var ErrNoReplica = errors.New("replica: there is no replica at the URL")
+
+// Restore rebuilds the database name from the replica of cfg.URL, and
+// returns the TXID it holds. Only URL, Credentials and AllowHTTP of cfg
+// are used. Every file is checked: its checksum, and the checksum of the
+// database before and after it. Restore writes neither over a database
+// nor beside a WAL, journal or staged file of name that is there. It
+// leaves the replica's last file in the staging folder of name, so that
+// New goes on from the replica: after a restore to the latest state, New
+// goes on with no full copy, and after a restore to an earlier one New
+// fails with ErrDiverged unless Config.FreshStart.
+func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (uint64, error) {
+	if opt.TXID != 0 && !opt.At.IsZero() {
+		return 0, errors.New("replica: restore at a TXID or at a time, not both")
+	}
+	if err := restoreTarget(name); err != nil {
+		return 0, err
+	}
+	client, path, err := cfg.client()
+	if err != nil {
+		return 0, err
+	}
+	files, err := restorePlan(ctx, client, path, ltx.TXID(opt.TXID))
+	if err != nil {
+		return 0, err
+	}
+
+	var id [8]byte
+	rand.Read(id[:])
+	tmp := name + "." + hex.EncodeToString(id[:]) + ".restoring"
+	db, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return 0, err
+	}
+	defer os.Remove(tmp)
+	defer db.Close()
+	last, err := os.OpenFile(tmp+".ltx", os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return 0, err
+	}
+	defer os.Remove(last.Name())
+	defer last.Close()
+
+	a := applier{db: db, last: last}
+	for _, key := range files {
+		more, err := a.apply(ctx, client, key, opt.At)
+		if err != nil {
+			return 0, err
+		}
+		if !more {
+			break
+		}
+	}
+	if a.txid == 0 {
+		return 0, fmt.Errorf("replica: the replica has no file from before %s", opt.At.Format(time.RFC3339Nano))
+	}
+	if err := db.Sync(); err != nil {
+		return 0, err
+	}
+	if err := integrityCheck(db); err != nil {
+		return 0, err
+	}
+	if err := db.Close(); err != nil {
+		return 0, err
+	}
+	if err := last.Sync(); err != nil {
+		return 0, err
+	}
+	if err := last.Close(); err != nil {
+		return 0, err
+	}
+
+	// The database goes in place first, without writing over one: once it
+	// is there, the restore is done. Its staged file follows.
+	if err := os.Link(tmp, name); err != nil {
+		return 0, fmt.Errorf("replica: placing the restored database: %w", err)
+	}
+	if err := capture.Stage(name, last.Name(), a.txid); err != nil {
+		os.Remove(name)
+		return 0, err
+	}
+	return uint64(a.txid), nil
+}
+
+// restoreTarget checks that nothing of a database is at name: the file,
+// its WAL (which SQLite would apply to the restored file), its journal,
+// or staged files.
+func restoreTarget(name string) error {
+	for _, n := range []string{name, name + "-wal", name + "-journal"} {
+		if _, err := os.Lstat(n); err == nil {
+			return fmt.Errorf("replica: %s is there: Restore does not write over it", n)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	dir := capture.StageDir(name)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".tmp") {
+			return fmt.Errorf("replica: %s holds staged files of another database: remove it to restore", dir)
+		}
+	}
+	return nil
+}
+
+// restorePlan lists the files to apply, in order, to restore TXID txid, the
+// last when 0: the level 0 files from TXID 1, with no gap.
+func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID) ([]string, error) {
+	var keys []string
+	var end ltx.TXID
+	for o, err := range c.List(ctx, path+"/0000/", "") {
+		if err != nil {
+			return nil, err
+		}
+		min, max, err := ltx.ParseFilename(strings.TrimPrefix(o.Key, path+"/0000/"))
+		if err != nil {
+			continue
+		}
+		if txid != 0 && end >= txid {
+			break // what comes after the target does not matter
+		}
+		if min != max || min != end+1 {
+			return nil, fmt.Errorf("replica: %s follows TXID %s: the replica is not whole", o.Key, end)
+		}
+		keys, end = append(keys, o.Key), max
+	}
+	switch {
+	case end == 0:
+		return nil, ErrNoReplica
+	case txid != 0 && end != txid:
+		return nil, fmt.Errorf("replica: the replica ends at TXID %s, before %s", end, txid)
+	}
+	return keys, nil
+}
+
+// An applier applies LTX files to the database it restores, checking them.
+type applier struct {
+	db   *os.File
+	last *os.File // a copy of the last file applied
+
+	txid     ltx.TXID
+	pageSize uint32
+	sums     []ltx.Checksum // of each page, 0 for one not written yet
+	sum      ltx.Checksum   // of the database
+	unset    int            // pages up to the end not written yet, but the lock page
+	page     []byte
+}
+
+// apply downloads and applies the file key, unless it was made at or
+// after at (when set): more is false then. The file is downloaded whole
+// and its checksum checked before anything of it is used.
+func (a *applier) apply(ctx context.Context, c *s3.Client, key string, at time.Time) (more bool, err error) {
+	fail := func(err error) (bool, error) { return false, fmt.Errorf("replica: %s: %w", key, err) }
+	body, err := c.Get(ctx, key, 0, -1)
+	if err != nil {
+		return false, err
+	}
+	defer body.Close()
+	var hb [ltx.HeaderSize]byte
+	if _, err := io.ReadFull(body, hb[:]); err != nil {
+		return fail(err)
+	}
+	var stamp ltx.Header
+	if err := stamp.UnmarshalBinary(hb[:]); err != nil {
+		return fail(err)
+	}
+	if !at.IsZero() && !time.UnixMilli(stamp.Timestamp).Before(at) {
+		return false, nil
+	}
+	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
+		return false, err
+	}
+	if err := a.last.Truncate(0); err != nil {
+		return false, err
+	}
+	w := bufio.NewWriterSize(a.last, 1<<20)
+	if _, err := io.Copy(w, io.MultiReader(bytes.NewReader(hb[:]), body)); err != nil {
+		return false, err
+	}
+	if err := w.Flush(); err != nil {
+		return false, err
+	}
+	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
+		return false, err
+	}
+	if err := ltx.NewDecoder(bufio.NewReaderSize(a.last, 1<<20)).Verify(); err != nil {
+		return fail(err)
+	}
+	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
+		return false, err
+	}
+	if err := a.applyFile(bufio.NewReaderSize(a.last, 1<<20)); err != nil {
+		return fail(err)
+	}
+	return true, nil
+}
+
+// applyFile applies the LTX file in r, whose checksum was checked.
+func (a *applier) applyFile(r io.Reader) error {
+	dec := ltx.NewDecoder(r)
+	if err := dec.DecodeHeader(); err != nil {
+		return err
+	}
+	h := dec.Header()
+	switch {
+	case h.MinTXID != a.txid+1 || h.MaxTXID != h.MinTXID:
+		return fmt.Errorf("holds TXIDs %s to %s after %s", h.MinTXID, h.MaxTXID, a.txid)
+	case a.txid > 0 && h.PreApplyChecksum != a.checksum():
+		return fmt.Errorf("the database's checksum before it is %s, the database's is %s", h.PreApplyChecksum, a.checksum())
+	case a.txid > 0 && h.PageSize != a.pageSize:
+		return fmt.Errorf("page size %d after %d", h.PageSize, a.pageSize)
+	}
+	a.pageSize = h.PageSize
+	if len(a.page) != int(h.PageSize) {
+		a.page = make([]byte, h.PageSize)
+	}
+	lock := ltx.LockPgno(h.PageSize)
+	a.resize(max(h.Commit, uint32(len(a.sums))), lock)
+	for {
+		var ph ltx.PageHeader
+		if err := dec.DecodePage(&ph, a.page); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return err
+		}
+		// ltx writes neither: a guard for the index below.
+		if ph.Pgno == 0 || ph.Pgno > h.Commit || ph.Pgno == lock {
+			return fmt.Errorf("page %d of a database of %d", ph.Pgno, h.Commit)
+		}
+		if _, err := a.db.WriteAt(a.page, int64(ph.Pgno-1)*int64(h.PageSize)); err != nil {
+			return err
+		}
+		s := &a.sums[ph.Pgno-1]
+		if *s == 0 {
+			a.unset--
+		}
+		a.sum ^= *s
+		*s = ltx.ChecksumPage(ph.Pgno, a.page)
+		a.sum ^= *s
+	}
+	if err := dec.Close(); err != nil {
+		return err
+	}
+	a.resize(h.Commit, lock)
+	if err := a.db.Truncate(int64(h.Commit) * int64(h.PageSize)); err != nil {
+		return err
+	}
+	if a.unset > 0 {
+		return fmt.Errorf("%d pages of the database were never written", a.unset)
+	}
+	if post := dec.Trailer().PostApplyChecksum; post != a.checksum() {
+		return fmt.Errorf("the database's checksum after it is %s, the database's is %s", post, a.checksum())
+	}
+	a.txid = h.MaxTXID
+	return nil
+}
+
+// resize makes the database n pages long in the checksums.
+func (a *applier) resize(n, lock uint32) {
+	for p := uint32(len(a.sums)); p > n; p-- {
+		s := a.sums[p-1]
+		if s == 0 && p != lock {
+			a.unset--
+		}
+		a.sum ^= s
+	}
+	for p := uint32(len(a.sums)) + 1; p <= n; p++ {
+		if p != lock {
+			a.unset++
+		}
+	}
+	if int(n) <= cap(a.sums) {
+		old := len(a.sums)
+		a.sums = a.sums[:n]
+		if int(n) > old {
+			clear(a.sums[old:])
+		}
+		return
+	}
+	a.sums = append(a.sums, make([]ltx.Checksum, int(n)-len(a.sums))...)
+}
+
+// checksum is the checksum of the database.
+func (a *applier) checksum() ltx.Checksum { return ltx.ChecksumFlag | a.sum }
+
+// integrityCheck runs PRAGMA integrity_check on the database in f. It is
+// opened in rollback journal mode, so that SQLite makes no WAL or
+// shared memory file beside it, and given its journal mode back after.
+func integrityCheck(f *os.File) error {
+	var mode [2]byte
+	if _, err := f.ReadAt(mode[:], 18); err != nil {
+		return err
+	}
+	if _, err := f.WriteAt([]byte{1, 1}, 18); err != nil {
+		return err
+	}
+	err := func() error {
+		conn, err := csqlite.Open(f.Name(), csqlite.OpenReadOnly|csqlite.OpenNoMutex, "")
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		s, _, err := conn.Prepare("PRAGMA integrity_check")
+		if err != nil {
+			return err
+		}
+		defer s.Finalize()
+		row, err := s.Step()
+		if err != nil {
+			return err
+		}
+		if !row || s.ColumnText(0) != "ok" {
+			return fmt.Errorf("replica: the restored database fails integrity_check: %s", s.ColumnText(0))
+		}
+		return nil
+	}()
+	if _, werr := f.WriteAt(mode[:], 18); err == nil {
+		err = werr
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	return err
+}
