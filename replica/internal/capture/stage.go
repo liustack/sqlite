@@ -27,8 +27,8 @@ import (
 // Litestream lays a replica out: <db>-replica/ltx/0/<min>-<max>.ltx, so that
 // `litestream restore file://<db>-replica` also reads it.
 
-// stageDir is the folder of the level 0 files of the database path.
-func stageDir(path string) string { return filepath.Join(path+"-replica", "ltx", "0") }
+// StageDir is the folder of the level 0 files of the database path.
+func StageDir(path string) string { return filepath.Join(path+"-replica", "ltx", "0") }
 
 // lastStaged is the header and post-apply checksum of the staged file with
 // the highest TXID, ok false when there is none. Files left from a write
@@ -255,4 +255,35 @@ func dropStaged(dir string, drop func(ltx.TXID) bool) error {
 		}
 	}
 	return syncDir(dir)
+}
+
+// Stage moves the LTX file from, which holds TXID txid and leaves the
+// database path as it is now, into the staging folder of path, so that
+// Open goes on from it. The folder must hold no LTX file. The folders it
+// makes are synced, up to the folder of path.
+func Stage(path, from string, txid ltx.TXID) error {
+	dir := StageDir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if _, _, err := ltx.ParseFilename(e.Name()); err == nil {
+			return fmt.Errorf("capture: %s holds staged files already", dir)
+		}
+	}
+	if err := rename(from, filepath.Join(dir, ltx.FormatFilename(txid, txid))); err != nil {
+		return err
+	}
+	for d := dir; ; d = filepath.Dir(d) {
+		if err := syncDir(d); err != nil {
+			return err
+		}
+		if d == filepath.Dir(path) {
+			return nil
+		}
+	}
 }

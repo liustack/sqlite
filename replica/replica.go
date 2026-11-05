@@ -118,15 +118,7 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if cfg.SyncInterval <= 0 {
 		cfg.SyncInterval = time.Second
 	}
-	scfg, path, err := parseURL(cfg.URL)
-	if err != nil {
-		return nil, err
-	}
-	scfg.Credentials, scfg.AllowHTTP = cfg.Credentials, cfg.AllowHTTP
-	if scfg.Credentials == nil {
-		scfg.Credentials = s3.EnvCredentials{}
-	}
-	client, err := s3.New(scfg)
+	client, path, err := cfg.client()
 	if err != nil {
 		return nil, err
 	}
@@ -239,4 +231,19 @@ func (r *Replica) Close() error {
 		err = uerr
 	}
 	return err
+}
+
+// client is the client of the store of cfg.URL and the path of the replica
+// in the bucket.
+func (cfg Config) client() (*s3.Client, string, error) {
+	scfg, path, err := parseURL(cfg.URL)
+	if err != nil {
+		return nil, "", err
+	}
+	scfg.Credentials, scfg.AllowHTTP = cfg.Credentials, cfg.AllowHTTP
+	if scfg.Credentials == nil {
+		scfg.Credentials = s3.EnvCredentials{}
+	}
+	client, err := s3.New(scfg)
+	return client, path, err
 }

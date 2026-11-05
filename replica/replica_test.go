@@ -6,6 +6,7 @@
 package replica
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -29,6 +30,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if name := os.Getenv(killEnvDB); name != "" {
+		os.Exit(killHelper(name, os.Getenv(killEnvURL)))
+	}
 	code := m.Run()
 	s3test.Stop()
 	os.Exit(code)
@@ -442,17 +446,7 @@ func TestLitestreamRestore(t *testing.T) {
 		t.Skip("LITESTREAM is not set")
 	}
 	cfg := testConfig(t)
-	name := filepath.Join(t.TempDir(), "x.db")
-	r := newReplica(t, name, cfg)
-	db := openDB(t, name)
-	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
-	syncNow(t, r)
-	early := r.Status().Uploaded
-	earlyDump := dump(t, name)
-	for i := range 20 {
-		run(t, db, fmt.Sprintf("INSERT INTO t VALUES (randomblob(%d))", 1000+i))
-	}
-	syncNow(t, r)
+	name, points := history(t, cfg)
 	cr, err := cfg.Credentials.Credentials(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -467,11 +461,42 @@ func TestLitestreamRestore(t *testing.T) {
 		}
 		return out
 	}
-	if got, want := dump(t, restore()), dump(t, name); got != want {
+	theirs := restore()
+	if got, want := dump(t, theirs), dump(t, name); got != want {
 		t.Fatalf("litestream restored\n%s\nthe database\n%s", got, want)
 	}
-	if got := dump(t, restore("-txid", fmt.Sprintf("%016x", early))); got != earlyDump {
-		t.Fatalf("litestream restored at TXID %x\n%s\nthen\n%s", early, got, earlyDump)
+	ours, _ := restoreTo(t, cfg, RestoreOptions{})
+	sameFile(t, ours, theirs)
+	// The same bytes at every TXID, and at the time after each.
+	for _, p := range points {
+		ours, _ := restoreTo(t, cfg, RestoreOptions{TXID: p.txid})
+		theirs := restore("-txid", fmt.Sprintf("%016x", p.txid))
+		sameFile(t, ours, theirs)
+		if got := dump(t, theirs); got != p.dump {
+			t.Fatalf("litestream restored at TXID %d\n%s\nthen\n%s", p.txid, got, p.dump)
+		}
+		// litestream restore refuses a time after the last file.
+		if p.txid != points[len(points)-1].txid {
+			ours, _ = restoreTo(t, cfg, RestoreOptions{At: p.at})
+			sameFile(t, ours, restore("-timestamp", p.at.UTC().Format(time.RFC3339Nano)))
+		}
+	}
+}
+
+// sameFile checks that the files a and b hold the same bytes. It is called
+// before either is opened.
+func sameFile(t *testing.T, a, b string) {
+	t.Helper()
+	ab, err := os.ReadFile(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bb, err := os.ReadFile(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(ab, bb) {
+		t.Fatalf("%s (%d bytes) and %s (%d bytes) differ", a, len(ab), b, len(bb))
 	}
 }
 

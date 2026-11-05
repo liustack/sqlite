@@ -1,10 +1,10 @@
 ---
-summary: 'The checks every commit passes, the check of the generated engine, the tests of the S3 client, the tests of the capture of changes for replication, the tests of the generator that run LLVM, and the ones that only run on linux/amd64'
+summary: 'The checks every commit passes, the check of the generated engine, the tests of the S3 client and the replica, the tests of the capture of changes for replication, the tests of the generator that run LLVM, and the ones that only run on linux/amd64'
 read_when:
   - Getting ready to commit
   - Changing the generator, its LLVM pass, engine/ or engine/flags.sh
   - A test of internal/goasm/gen fails
-  - Changing replica/internal/s3, or running its tests against MinIO
+  - Changing replica or replica/internal/s3, or running their tests against MinIO
   - Changing replica/internal/capture or internal/replhook
 ---
 
@@ -43,7 +43,7 @@ docker stop sqlite-minio
 
 `TestCreateBucket` only runs against a MinIO the tests start, so it never makes buckets in another store. CI runs them in the job `s3`, where `S3_TEST_REQUIRED` makes a missing store fail instead of skip. `replica/internal/s3test` starts the store for the tests of other packages.
 
-The tests of `replica` rebuild the database from the files in the store, checking every checksum. `TestTwoReplicators` has two replicators with the same history write to one replica: the second must stop with `ErrConflict` at its first file, and the replica must hold the first one's database. `TestDiverged` checks that a replica written from another database is refused, and taken over with `FreshStart`. With `LITESTREAM` naming a litestream binary (v0.5.18, `go install github.com/benbjohnson/litestream/cmd/litestream@v0.5.18`), `TestLitestreamRestore` has it restore the replica from the store, the latest state and an earlier TXID. CI sets it.
+The tests of `replica` rebuild the database from the files in the store, checking every checksum. `TestTwoReplicators` has two replicators with the same history write to one replica: the second must stop with `ErrConflict` at its first file, and the replica must hold the first one's database. `TestDiverged` checks that a replica written from another database is refused, and taken over with `FreshStart`. The tests of `Restore` restore every TXID and the time after each, refuse a replica with a missing, damaged or wrong file (also one whose checksums all agree but that `integrity_check` fails), and go on replicating from a restored database. `TestKill` kills a process that writes and replicates, ten times: after each kill the replica must restore a whole database with every transaction entirely there or not at all, and the commits made a second before the kill. `-short` skips it. With `LITESTREAM` naming a litestream binary (v0.5.18, `go install github.com/benbjohnson/litestream/cmd/litestream@v0.5.18`), `TestLitestreamRestore` has it restore the replica at every TXID and time, and checks that it gives the same bytes as `Restore`. CI sets it.
 
 ## Capture
 

@@ -204,7 +204,7 @@ func TestKill(t *testing.T) {
 			}
 		}
 
-		out, txid := rebuild(t, stageDir(realPath(t, name)))
+		out, txid := rebuild(t, StageDir(realPath(t, name)))
 		k := check(t, out)
 		if k < staged {
 			t.Fatalf("round %d: the staged files hold writer 0 to k=%d, k=%d was committed %v before the kill", round, k, staged, safe)

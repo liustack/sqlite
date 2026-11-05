@@ -763,7 +763,7 @@ func TestRestartStopped(t *testing.T) {
 	if !errors.Is(err, fail) {
 		t.Fatalf("Open: %v", err)
 	}
-	files, err := stagedFiles(stageDir(realPath(t, name)))
+	files, err := stagedFiles(StageDir(realPath(t, name)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,5 +774,31 @@ func TestRestartStopped(t *testing.T) {
 	c = open(t, name, opt)
 	if c.TXID() != 3 || c.FullCopies() != 0 {
 		t.Fatalf("TXID %s, %d full copies", c.TXID(), c.FullCopies())
+	}
+}
+
+// Stage places a file in an empty staging folder, and refuses one that
+// holds a staged file.
+func TestStage(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	from := name + ".ltx"
+	if err := os.WriteFile(from, []byte("ltx"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Stage(name, from, 7); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(StageDir(name), ltx.FormatFilename(7, 7))
+	if b, err := os.ReadFile(staged); err != nil || string(b) != "ltx" {
+		t.Fatalf("staged: %q %v", b, err)
+	}
+	if err := os.WriteFile(from, []byte("other"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Stage(name, from, 8); err == nil {
+		t.Fatal("Stage into a folder with a staged file: no error")
+	}
+	if _, err := os.Stat(filepath.Join(StageDir(name), ltx.FormatFilename(8, 8))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the second file was staged: %v", err)
 	}
 }
