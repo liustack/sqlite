@@ -88,6 +88,9 @@ type Config struct {
 
 	schedule func(*schedule) // set by tests: changes the schedule
 	// OnError, if set, gets the errors of the work done in the background.
+	// It is called with no lock held, from a goroutine of the replica (or
+	// from New), and may call the replica. What it has not got when Close
+	// runs, Close returns.
 	OnError func(error)
 }
 
@@ -279,10 +282,7 @@ func (r *Replica) Close() error {
 	err := r.c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), closeUpload)
 	defer cancel()
-	if uerr := r.upload(ctx); err == nil {
-		err = uerr
-	}
-	return err
+	return errors.Join(err, r.upload(ctx))
 }
 
 // client is the client of the store of cfg.URL and the path of the replica
