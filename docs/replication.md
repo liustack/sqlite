@@ -97,7 +97,7 @@ A replica must have one replicator writing to it.
 
 ## What the store holds
 
-The replica of `s3://bucket/path` is LTX files under `path/`: level 0 holds one file per upload, level 1 merges them each minute, level 2 merges level 1 each hour, and level 9 holds the snapshots. Level 0 files go 30 minutes after a level 1 file holds them. Snapshots older than `Retention` go, the newest always kept, and with them the files only they needed. A database that is idle makes no request once this work is done. A busy one makes at most about one upload each `SyncInterval`, plus the merges.
+The replica of `s3://bucket/path` is LTX files under `path/`: level 0 holds one file per upload, level 1 merges them each minute, level 2 merges level 1 each hour, and level 9 holds the snapshots. Level 0 files go 30 minutes after a level 1 file holds them, so a restore to a time further back gives the state at the end of the last level 1 file made before that time, up to about a minute earlier. Snapshots older than `Retention` go, the newest always kept, and with them the files only they needed. A database that is idle makes no request once this work is done. A busy one makes at most about one upload each `SyncInterval`, plus the merges.
 
 `litestream restore` v0.5.18 rebuilds the same database from it, at every TXID and time. The tests check this ([testing.md](testing.md#the-s3-client-and-the-replica)).
 
