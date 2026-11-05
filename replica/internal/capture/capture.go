@@ -77,9 +77,10 @@ type Options struct {
 	// OnError, if set, gets the errors of the reads made in the background,
 	// and an error under ErrFullCopy for each full copy staged because the
 	// WAL could not be followed. Open, Close and the goroutine of the
-	// background steps call it with no lock of the capturer held. It must
-	// not call Close, which waits for that goroutine, nor wait for a write
-	// to the database: the caller of Close may hold the write lock.
+	// background steps call it with no lock of the capturer held. It should
+	// return soon, as a log does, and must not call Close, which waits for
+	// that goroutine, nor wait for a write to the database: the caller of
+	// Close may hold the write lock.
 	OnError func(error)
 	// Start, if set, is called once Open has the database, before it
 	// resumes, with the staged files in TXID order (their headers and
@@ -508,7 +509,7 @@ func (c *Capturer) committed(frames uint32) {
 	if c.closed {
 		return
 	}
-	// The writer waits: OnError, which may write, runs after the next step.
+	// The writer holds its lock: OnError runs after the next step, with none.
 	if !c.full && c.over() {
 		c.note(c.stop())
 	}
