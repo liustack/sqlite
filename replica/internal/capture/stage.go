@@ -101,7 +101,8 @@ func setWALPos(h *ltx.Header, salt [8]byte, from, to uint32) {
 func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(pgno uint32, data []byte) error) (ltx.Checksum, error)) (placed bool, err error) {
 	name := filepath.Join(dir, ltx.FormatFilename(h.MinTXID, h.MaxTXID))
 	tmp := name + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	// A file of that name left by a write that failed is written over.
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return false, err
 	}

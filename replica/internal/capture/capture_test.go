@@ -544,8 +544,8 @@ func TestSyncDirFails(t *testing.T) {
 	sameAs(t, c, name)
 }
 
-// A checkpoint that finds the WAL lost stages a full copy before it
-// checkpoints. The connection that writes and checkpoints behind the
+// A checkpoint that finds the WAL lost stages a full copy, and the next
+// one checkpoints. The connection that writes and checkpoints behind the
 // capturer's back is not the driver's, so nothing guards it.
 func TestCheckpointLost(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
@@ -561,11 +561,13 @@ func TestCheckpointLost(t *testing.T) {
 	if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)"); err != nil {
 		t.Fatal(err)
 	}
-	c.mu.Lock()
-	err = c.checkpoint(context.Background())
-	c.mu.Unlock()
-	if err != nil {
-		t.Fatal(err)
+	for range 2 {
+		c.mu.Lock()
+		err = c.checkpoint(context.Background())
+		c.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	if c.FullCopies() != 1 {
 		t.Fatalf("%d full copies", c.FullCopies())
@@ -610,4 +612,18 @@ func TestCloseBusy(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// A temporary file left by a write that failed does not stop the next one.
+func TestStaleTemp(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	tmp := filepath.Join(c.Dir(), ltx.FormatFilename(c.TXID()+1, c.TXID()+1)+".tmp")
+	if err := os.WriteFile(tmp, []byte("left"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	sameAs(t, c, name)
 }

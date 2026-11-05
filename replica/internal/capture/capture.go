@@ -316,21 +316,22 @@ func (c *Capturer) step(ctx context.Context) error {
 }
 
 // checkpoint stages the WAL to its end under the driver's write lock of the
-// file and checkpoints it.
+// file and checkpoints it. When the WAL was lost, it stages a full copy
+// instead, after the lock, so that writers do not wait for it, and leaves
+// the checkpoint to a later step.
 func (c *Capturer) checkpoint(ctx context.Context) error {
 	unlock, err := replhook.Lock(ctx, c.path)
 	if err != nil {
 		return err
 	}
-	defer unlock()
-	if _, err := c.capture(); err != nil {
-		return err
-	}
-	if c.lost != nil {
-		if err := c.fullCopy(c.lost); err != nil {
+	if _, err := c.capture(); err != nil || c.lost != nil {
+		unlock()
+		if err != nil {
 			return err
 		}
+		return c.fullCopy(c.lost)
 	}
+	defer unlock()
 	// The names of the staged files are kept before the frames go.
 	if err := syncDir(c.dir); err != nil {
 		return err
