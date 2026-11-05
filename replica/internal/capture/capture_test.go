@@ -1046,6 +1046,42 @@ func TestStagingLimitLost(t *testing.T) {
 	}
 }
 
+// The staged file whose folder did not sync when staging stopped is
+// uploaded all the same, so that staging goes on after.
+func TestStagingLimitSyncDir(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.Limit = 1
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	run(t, db, "INSERT INTO t VALUES (1)")
+	if err := c.Sync(context.Background()); !errors.Is(err, fail) {
+		t.Fatalf("Sync: %v", err)
+	}
+	syncDir = syncDirFS
+	if err := c.Sync(context.Background()); !errors.Is(err, ErrStagingFull) {
+		t.Fatalf("Sync: %v, want ErrStagingFull", err)
+	}
+	if c.Durable() != c.TXID() {
+		t.Fatalf("durable TXID %s after stopping at %s", c.Durable(), c.TXID())
+	}
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	step(t, c)
+	if c.FullCopies() != 1 {
+		t.Fatalf("%d full copies after the upload", c.FullCopies())
+	}
+}
+
 // Writers go on through every step and checkpoint: no frame is checkpointed
 // away before it is staged, so the WAL is followed throughout and the staged
 // files rebuild the database.

@@ -402,7 +402,7 @@ func (c *Capturer) step(ctx context.Context) error {
 		c.report(c.lost)
 	}
 	if c.full {
-		return c.checkpointLost(ctx)
+		return c.stopped(ctx)
 	}
 	if c.lost != nil {
 		return c.fullCopy(c.lost)
@@ -413,6 +413,19 @@ func (c *Capturer) step(ctx context.Context) error {
 // over says whether the staged files not uploaded passed Options.Limit.
 func (c *Capturer) over() bool {
 	return c.opt.Limit > 0 && c.counted() > c.opt.Limit
+}
+
+// stopped is a step while staging is stopped: the names of the staged files
+// are synced, so that all of them can be uploaded, and the WAL is
+// checkpointed when it is long enough.
+func (c *Capturer) stopped(ctx context.Context) error {
+	if c.Durable() < c.txid {
+		if err := syncDir(c.dir); err != nil {
+			return err
+		}
+		c.setDurable(c.txid)
+	}
+	return c.checkpointLost(ctx)
 }
 
 // The checkpoint of a step catches up with the writers before it takes the
