@@ -76,11 +76,22 @@ type Config struct {
 	// restore goes back that far at least. A snapshot of the database is
 	// uploaded every Retention or every day, the more often. Default 24h.
 	Retention time.Duration
+	// StagingLimit is the most bytes of changes staged and not uploaded
+	// yet, such as while the store is down. Past it, staging stops (an error
+	// under ErrStagingFull) and keeps what it has: checkpoints go on, so the
+	// WAL stays bounded, and writes never wait. Once what is staged is
+	// uploaded, a full copy of the database follows it. The changes in
+	// between have no point of their own to restore to. Default 1 GiB.
+	StagingLimit int64
 
 	schedule func(*schedule) // set by tests: changes the schedule
 	// OnError, if set, gets the errors of the work done in the background.
 	OnError func(error)
 }
+
+// ErrStagingFull is under the error given to Config.OnError when staging
+// stops at Config.StagingLimit, and the error of Sync while it is stopped.
+var ErrStagingFull = capture.ErrStagingFull
 
 // ErrDiverged is under the error of New when the replica does not end
 // where the staged files do. Config.FreshStart goes on from the replica.
@@ -90,6 +101,7 @@ var ErrDiverged = errors.New("replica: the replica and the database went apart")
 type Status struct {
 	Staged   uint64 // the last TXID in the staging folder
 	Uploaded uint64 // the last TXID in the replica
+	Pending  int64  // the bytes staged and not uploaded yet
 	// Err is the error of the last upload, nil once one succeeds. It is
 	// under ErrConflict when uploads stopped for good.
 	Err error
@@ -134,6 +146,9 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if cfg.Retention <= 0 {
 		cfg.Retention = 24 * time.Hour
 	}
+	if cfg.StagingLimit <= 0 {
+		cfg.StagingLimit = 1 << 30
+	}
 	client, path, err := cfg.client()
 	if err != nil {
 		return nil, err
@@ -158,6 +173,8 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	r.status.Uploaded = uint64(end.txid)
 	r.c, err = capture.Open(name, capture.Options{
 		Interval: cfg.SyncInterval,
+		Limit:    cfg.StagingLimit,
+		Uploaded: end.txid,
 		OnError:  r.report,
 		Start: func(staged []capture.StagedFile) (*capture.Restart, error) {
 			return startFrom(end, staged, cfg.FreshStart)
@@ -230,6 +247,7 @@ func (r *Replica) Status() Status {
 	s := r.status
 	r.mu.Unlock()
 	s.Staged = uint64(r.c.Durable())
+	s.Pending = r.c.Pending()
 	return s
 }
 

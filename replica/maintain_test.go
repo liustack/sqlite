@@ -158,6 +158,9 @@ func TestRetention(t *testing.T) {
 type counter struct {
 	n    atomic.Int64
 	puts sync.Map // key: count
+	// down makes the store fail: 1 answers 503, 2 closes the connection
+	// without an answer.
+	down atomic.Int32
 }
 
 func countingStore(t *testing.T, cfg Config) (Config, *counter) {
@@ -182,6 +185,16 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		cnt.n.Add(1)
+		switch cnt.down.Load() {
+		case 1:
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		case 2:
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close()
+			}
+			return
+		}
 		if req.Method == http.MethodPut {
 			cnt.puts.Store(req.URL.Path, true)
 		}
