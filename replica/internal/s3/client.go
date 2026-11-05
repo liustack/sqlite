@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -59,6 +60,9 @@ type Client struct {
 	now          func() time.Time
 	partSize     int64 // the size of a part, and the largest object sent in one PUT
 	listPage     int   // max-keys of a LIST, 0 for the store's own (1000)
+	// The credentials of the last request, which errorOf takes out of what
+	// the store answers.
+	seen *atomic.Pointer[Credentials]
 }
 
 // New checks cfg and makes a client. It makes no request.
@@ -106,6 +110,7 @@ func New(cfg Config) (*Client, error) {
 		creds:    cfg.Credentials,
 		now:      time.Now,
 		partSize: 64 << 20,
+		seen:     new(atomic.Pointer[Credentials]),
 		http: &http.Client{
 			Transport: t,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -264,6 +269,9 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	if err != nil {
 		return nil, false, fmt.Errorf("s3: %s %s: credentials: %w", r.op, r.key, err)
 	}
+	if p := c.seen.Load(); p == nil || *p != cr {
+		c.seen.Store(&cr)
+	}
 	sign(req, cr, c.region, "s3", c.now(), hash)
 	resp, err = c.http.Do(req)
 	if err != nil {
@@ -271,14 +279,15 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
-		return nil, reused, errorOf(resp, r.op, r.key, nil)
+		return nil, reused, c.errorOf(resp, r.op, r.key, nil)
 	}
 	return resp, reused, nil
 }
 
 // errorOf reads the error the store answered. body is what was read of it
-// already, nil if nothing was.
-func errorOf(resp *http.Response, op, key string, body []byte) *Error {
+// already, nil if nothing was. A store may put headers of the request in
+// its message: the secret and the session token are taken out.
+func (c *Client) errorOf(resp *http.Response, op, key string, body []byte) *Error {
 	if body == nil {
 		body, _ = io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	}
@@ -291,6 +300,13 @@ func errorOf(resp *http.Response, op, key string, body []byte) *Error {
 	e := &Error{Op: op, Key: key, StatusCode: resp.StatusCode, Code: x.Code, Message: x.Message, RequestID: x.RequestID}
 	if e.RequestID == "" {
 		e.RequestID = resp.Header.Get("X-Amz-Request-Id")
+	}
+	if p := c.seen.Load(); p != nil {
+		for _, s := range []string{p.SecretAccessKey, p.SessionToken} {
+			if s != "" {
+				e.Message = strings.ReplaceAll(e.Message, s, "<hidden>")
+			}
+		}
 	}
 	if e.StatusCode/100 == 3 {
 		e.Message = strings.TrimSpace(e.Message + " The endpoint or region does not match the bucket's.")
