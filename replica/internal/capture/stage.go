@@ -297,7 +297,13 @@ func Stage(path, from string, min, max ltx.TXID) error {
 	if err := rename(from, filepath.Join(dir, ltx.FormatFilename(min, max))); err != nil {
 		return err
 	}
-	for d := dir; ; d = filepath.Dir(d) {
+	return syncUp(path)
+}
+
+// syncUp syncs the staging folder of path and each folder above it, up to
+// the folder of path, so that the folders made for staging stay.
+func syncUp(path string) error {
+	for d := StageDir(path); ; d = filepath.Dir(d) {
 		if err := syncDir(d); err != nil {
 			return err
 		}

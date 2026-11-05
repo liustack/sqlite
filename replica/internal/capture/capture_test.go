@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1534,6 +1535,32 @@ func TestVerifyTruncated(t *testing.T) {
 	for n := range len(b) {
 		if _, _, err := Verify(bytes.NewReader(b[:n])); err == nil {
 			t.Fatalf("cut at %d of %d bytes: no error", n, len(b))
+		}
+	}
+}
+
+// The first Open makes the staging folder: before a staged file counts as
+// durable, every folder it made is synced, up to the database's.
+func TestOpenSyncsFolders(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	var mu sync.Mutex
+	synced := map[string]bool{}
+	syncDir = func(dir string) error {
+		mu.Lock()
+		synced[dir] = true
+		mu.Unlock()
+		return syncDirFS(dir)
+	}
+	t.Cleanup(func() { syncDir = syncDirFS })
+	c := open(t, name, testOptions(t))
+	mu.Lock()
+	defer mu.Unlock()
+	for d := StageDir(c.path); ; d = filepath.Dir(d) {
+		if !synced[d] {
+			t.Errorf("%s not synced", d)
+		}
+		if d == filepath.Dir(c.path) {
+			break
 		}
 	}
 }

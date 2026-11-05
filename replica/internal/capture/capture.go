@@ -248,8 +248,8 @@ func (c *Capturer) open() error {
 		return err
 	}
 	// The last staged file may be from before a crash that left its name
-	// unsynced.
-	if err := syncDir(c.dir); err != nil {
+	// unsynced, and the folders may be new.
+	if err := syncUp(c.path); err != nil {
 		return err
 	}
 	c.setDurable(c.txid)
