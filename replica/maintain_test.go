@@ -334,31 +334,95 @@ func testFile(level int, min, max ltx.TXID, at time.Time) remoteFile {
 	return remoteFile{level: level, min: min, max: max, key: levelKey("p", level, min, max), modified: at}
 }
 
-// Level 0 files go once level 1 holds them and they are older than
-// keepL0, but the last.
+// The level 0 files a level 1 file holds go together, once it is older than
+// keepL0, but the last. Until then a restore to a time inside it needs them
+// all.
 func TestDropLevel0(t *testing.T) {
 	r, deleted := deleteStore(t)
 	now := time.Now()
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 	r.files = []remoteFile{
-		testFile(0, 1, 1, ago(time.Hour)), testFile(0, 2, 2, ago(10*time.Minute)), testFile(0, 3, 3, ago(time.Minute)),
-		testFile(0, 4, 4, ago(time.Hour)), testFile(0, 5, 5, ago(time.Hour)),
-		testFile(1, 1, 5, ago(time.Minute)),
+		testFile(0, 1, 1, ago(time.Hour)), testFile(0, 2, 2, ago(time.Hour)), testFile(0, 3, 3, ago(10*time.Minute)),
+		testFile(0, 4, 4, ago(time.Hour)), testFile(0, 5, 5, ago(time.Hour)), testFile(0, 6, 6, ago(time.Minute)),
+		testFile(0, 7, 7, ago(time.Hour)), testFile(0, 8, 8, ago(time.Hour)),
+		testFile(1, 1, 3, ago(10*time.Minute)),
+		testFile(1, 4, 6, ago(time.Minute)), // 4 and 5 are old, but 6 is not
+		testFile(1, 7, 8, ago(time.Hour)),   // 8 is the last
 	}
 	next, err := r.dropLevel0(context.Background(), now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 3 is too young, 5 is the last.
-	want := []string{levelKey("p", 0, 1, 1), levelKey("p", 0, 2, 2), levelKey("p", 0, 4, 4)}
+	want := []string{levelKey("p", 0, 1, 1), levelKey("p", 0, 2, 2), levelKey("p", 0, 3, 3), levelKey("p", 0, 7, 7)}
 	if fmt.Sprint(*deleted) != fmt.Sprint(want) {
 		t.Fatalf("deleted %v, want %v", *deleted, want)
 	}
 	if !next.Equal(ago(time.Minute).Add(r.sched.keepL0)) {
-		t.Fatalf("next at %v, want when TXID 3 is old enough", next)
+		t.Fatalf("next at %v, want when level 1 file 4-6 is old enough", next)
 	}
-	if len(r.files) != 3 {
+	if len(r.files) != 7 {
 		t.Fatalf("%d files left", len(r.files))
+	}
+}
+
+// Between the drops of level 0, the replica restores each time after a
+// commit to that commit, and after the drop to a state the database had.
+func TestDropLevel0Restore(t *testing.T) {
+	var mu sync.Mutex
+	clock := time.Now()
+	now := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return clock
+	}
+	tick := func(d time.Duration) {
+		mu.Lock()
+		clock = clock.Add(d)
+		mu.Unlock()
+	}
+	cfg := testConfig(t)
+	cfg.schedule = func(s *schedule) { s.levels, s.now = nil, now }
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	syncNow(t, r)
+	dumps := map[uint64]string{r.Status().Uploaded: dump(t, name)}
+	compactNow(t, r, 0, 1)
+	var points []point
+	for i := range 6 {
+		tick(10 * time.Second)
+		run(t, db, fmt.Sprintf("INSERT INTO t VALUES (randomblob(%d))", 300+i*100))
+		syncNow(t, r)
+		time.Sleep(3 * time.Millisecond)
+		p := point{txid: r.Status().Uploaded, at: time.Now(), dump: dump(t, name)}
+		points, dumps[p.txid] = append(points, p), p.dump
+		time.Sleep(3 * time.Millisecond)
+	}
+	compactNow(t, r, 0, 1) // the inserts, a minute after the first file of level 1
+	drop := func() {
+		r.busy <- struct{}{}
+		defer func() { <-r.busy }()
+		if _, err := r.dropLevel0(context.Background(), now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg.schedule = nil
+	// The first inserts are older than keepL0, the level 1 file of all of
+	// them is not.
+	tick(r.sched.keepL0 - 30*time.Second)
+	drop()
+	for _, p := range points {
+		if out, txid := restoreTo(t, cfg, RestoreOptions{At: p.at}); txid != p.txid || dump(t, out) != p.dump {
+			t.Fatalf("restored TXID %d at the time after TXID %d", txid, p.txid)
+		}
+	}
+	tick(time.Minute)
+	drop()
+	for _, p := range points {
+		if out, txid := restoreTo(t, cfg, RestoreOptions{At: p.at}); txid > p.txid || dump(t, out) != dumps[txid] {
+			t.Fatalf("restored TXID %d at the time after TXID %d", txid, p.txid)
+		}
 	}
 }
 

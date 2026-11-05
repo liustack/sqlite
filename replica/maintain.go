@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/superfly/ltx"
@@ -22,8 +23,8 @@ type schedule struct {
 	// Level i+1 is compacted from level i every levels[i], at multiples
 	// of it: 1 minute, then 1 hour.
 	levels []time.Duration
-	// keepL0 is how long a level 0 file stays once level 1 holds it, for
-	// restores to a time in between.
+	// keepL0 is how long the level 0 files a level 1 file holds stay after
+	// it, for restores to a time in between.
 	keepL0 time.Duration
 	// A snapshot is taken every snapshots, at multiples of it, when the
 	// database changed since the last.
@@ -134,22 +135,29 @@ func (r *Replica) remove(ctx context.Context, drop func(remoteFile) bool) error 
 	return err
 }
 
-// dropLevel0 deletes the level 0 files level 1 holds that are older than
-// keepL0, but the last. It returns when the next one can go.
+// dropLevel0 deletes the level 0 files a level 1 file holds, all of them
+// at once when it is older than keepL0, but the last level 0 file. A
+// restore to a time inside a level 1 file needs every level 0 file it
+// holds, so they never go one by one. It returns when the next can go.
 func (r *Replica) dropLevel0(ctx context.Context, now time.Time) (time.Time, error) {
-	l1, l0 := r.last(1), r.last(0)
+	l0 := r.last(0)
+	holds := func(l1, f remoteFile) bool {
+		return f.level == 0 && f.max != l0 && f.min >= l1.min && f.max <= l1.max
+	}
 	var next time.Time
+	var old []remoteFile
+	for _, l1 := range r.files {
+		if l1.level != 1 {
+			continue
+		}
+		if t := l1.modified.Add(r.sched.keepL0); !now.Before(t) {
+			old = append(old, l1)
+		} else if (next.IsZero() || t.Before(next)) && slices.ContainsFunc(r.files, func(f remoteFile) bool { return holds(l1, f) }) {
+			next = t
+		}
+	}
 	err := r.remove(ctx, func(f remoteFile) bool {
-		if f.level != 0 || f.max > l1 || f.max == l0 {
-			return false
-		}
-		if t := f.modified.Add(r.sched.keepL0); now.Before(t) {
-			if next.IsZero() || t.Before(next) {
-				next = t
-			}
-			return false
-		}
-		return true
+		return slices.ContainsFunc(old, func(l1 remoteFile) bool { return holds(l1, f) })
 	})
 	return next, err
 }
