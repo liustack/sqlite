@@ -8,6 +8,7 @@ package replica
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -536,5 +537,39 @@ func TestRestoreLevels(t *testing.T) {
 	again, txid2 := restoreTo(t, cfg, RestoreOptions{})
 	if txid2 != txid+1 || dump(t, again) != dump(t, out) {
 		t.Fatalf("restored TXID %d after going on from %d", txid2, txid)
+	}
+}
+
+// A time restore reads the times of the files it leaves out from their
+// headers, which their checksum covers: a damaged time that hides the last
+// state is an error, not an older state.
+func TestRestoreBadTime(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t)
+	_, points := history(t, cfg)
+	c, path := client(t, cfg)
+	last := ltx.TXID(points[len(points)-1].txid)
+	key := levelKey(path, 0, last, last)
+	body, err := c.Get(ctx, key, 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(body)
+	body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary.BigEndian.PutUint64(b[32:], uint64(time.Now().Add(time.Hour).UnixMilli()))
+	if err := c.Put(ctx, key, bytes.NewReader(b), int64(len(b)), s3.PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "restored.db")
+	_, err = Restore(ctx, out, cfg, RestoreOptions{At: time.Now().Add(time.Minute)})
+	if err == nil {
+		t.Fatal("Restore: no error")
+	}
+	t.Logf("Restore: %v", err)
+	if entries, _ := os.ReadDir(filepath.Dir(out)); len(entries) != 0 {
+		t.Fatalf("Restore left %v", entries)
 	}
 }

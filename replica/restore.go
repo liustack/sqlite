@@ -215,6 +215,27 @@ func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID, 
 		}
 		plan, end = append(plan, *f), f.max
 	}
+	// The times of the files left out come from their headers, unchecked:
+	// the one that ends first is checked whole, so that a damaged time does
+	// not hide a state. The times of a history only grow, so the files that
+	// end after it are after at too.
+	if !at.IsZero() {
+		var first *remoteFile
+		for i := range files {
+			f := &files[i]
+			if f.min > end+1 || f.max <= end || txid != 0 && f.max > txid {
+				continue
+			}
+			if first == nil || f.max < first.max || f.max == first.max && f.level < first.level {
+				first = f
+			}
+		}
+		if first != nil {
+			if err := madeAfter(ctx, c, *first, at); err != nil {
+				return nil, err
+			}
+		}
+	}
 	switch {
 	case end == 0 && !at.IsZero():
 		return nil, fmt.Errorf("replica: the replica has no state from before %s", at.Format(time.RFC3339Nano))
@@ -238,11 +259,35 @@ func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID, 
 		if ok {
 			return nil, fmt.Errorf("replica: %s follows TXID %s: the replica is not whole", gap.key, end)
 		}
+		// As above: its time hides the gap only when it is checked.
+		if err := madeAfter(ctx, c, *gap, at); err != nil {
+			return nil, err
+		}
 	}
 	if end == 0 {
 		return nil, errors.New("replica: the replica is not whole: it has no snapshot and no file from TXID 1")
 	}
 	return plan, nil
+}
+
+// madeAfter checks the LTX file f whole, and that it was made at or after
+// at, as its header read alone said.
+func madeAfter(ctx context.Context, c *s3.Client, f remoteFile, at time.Time) error {
+	body, err := c.Get(ctx, f.key, 0, -1)
+	if err != nil {
+		return err
+	}
+	defer body.Close()
+	h, _, err := capture.Verify(body)
+	switch {
+	case err != nil:
+		return fmt.Errorf("replica: %s: %w", f.key, err)
+	case h.MinTXID != f.min || h.MaxTXID != f.max:
+		return fmt.Errorf("replica: %s holds TXIDs %s to %s, not those of its name", f.key, h.MinTXID, h.MaxTXID)
+	case time.UnixMilli(h.Timestamp).Before(at):
+		return fmt.Errorf("replica: %s changed during the restore", f.key)
+	}
+	return nil
 }
 
 // fileTime is the time in the header of the LTX file key.
