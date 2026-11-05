@@ -36,9 +36,10 @@ type schedule struct {
 	// stay.
 	keepProbe time.Duration
 	// recheck is how old the last check that the replica ends where this
-	// replicator uploaded last may be before an upload. keepL0 must be
-	// longer than it and the 15 minutes a signed request is good for, so
-	// that a replicator cut off finds the level 0 files of another.
+	// replicator uploaded last may be before an upload. keepL0 is longer
+	// than it and the 15 minutes a signed request is good for, so that a
+	// replicator that was cut off for a while most often finds the level 0
+	// files of another. It is a check, not a fence (see recheck).
 	recheck time.Duration
 }
 

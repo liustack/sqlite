@@ -35,7 +35,9 @@ type RestoreOptions struct {
 	// At, if set, restores the database as it was before that time: the
 	// files of the replica made before it, as litestream restore does. A
 	// file is made when its commits are staged, within SyncInterval of
-	// them, and may hold several commits.
+	// them, and may hold several commits. Its time is the one in its header,
+	// from the clock of the replicator: Restore checks the first file it
+	// leaves out of each level and trusts the times of the files after it.
 	At time.Time
 }
 
@@ -241,8 +243,10 @@ func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID, 
 	// the one of each level that ends first is checked whole, so that a
 	// damaged time does not hide a state. Along a level the times grow
 	// with the TXIDs, so the files of the level that end after it are after
-	// at too. Across levels they need not: a snapshot reads its time after
-	// its TXID.
+	// at too, as long as the replicator's clock does not go back. Across
+	// levels they need not: a snapshot reads its time after its TXID. The
+	// times of the other files left out are trusted, as litestream restore
+	// trusts them.
 	if !at.IsZero() {
 		first := map[int]*remoteFile{}
 		for i := range files {

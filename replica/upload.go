@@ -27,6 +27,16 @@ import (
 // the replica has another file of that TXID: another replicator writes to
 // the same path. The replicator stops uploading. Staging and checkpoints go
 // on, and the program's writes are not touched.
+//
+// The replicator finds another one when the store refuses one of its
+// uploads, and, before an upload, when it has not checked for 5 minutes
+// that the replica ends where it left it. This finds a second replicator
+// in normal running and after one of them could not reach the store, but
+// it is not a fence: in some races both still get files into the replica,
+// such as when the level 0 files one would find were deleted in between
+// its check and its upload. When a database moves to another
+// machine, make sure the old replicator stopped first (Config.SingleWriter
+// and a lock or lease of the program's own).
 var ErrConflict = errors.New("replica: another replicator writes to the replica")
 
 // run uploads the staged files as the capturer stages them, and then does
@@ -136,12 +146,15 @@ func (r *Replica) uploadFiles(ctx context.Context) error {
 	return err
 }
 
-// recheck makes sure, when it last did longer than sched.recheck ago, that
-// the replica still ends where this replicator knows it does. Another
-// replicator from the same history may have gone on meanwhile, while this
-// one could not reach the store, and deleted the level 0 files that an
-// upload of this one would find: the conditional upload alone would take
-// the key.
+// recheck checks, when it last did longer than sched.recheck ago, that the
+// replica still ends where this replicator left it. It is a check made in
+// passing, not a fence: it finds another replicator that went on from the
+// same history while this one could not reach the store, and deleted the
+// level 0 files that an upload of this one would find, where the
+// conditional upload alone would take the key. It cannot rule out every
+// race, such as one that starts after the check. Files past the end it
+// knows of that are its own staged files (an upload whose answer was lost)
+// are not another replicator's.
 func (r *Replica) recheck(ctx context.Context) error {
 	if r.sched.now().Sub(r.checked) < r.sched.recheck {
 		return nil
@@ -154,13 +167,52 @@ func (r *Replica) recheck(ctx context.Context) error {
 	for _, f := range files {
 		end = max(end, f.max)
 	}
-	if end != r.top {
+	ok := end == r.top
+	if end > r.top {
+		ok = true
+		for _, f := range files {
+			if f.max <= r.top {
+				continue
+			}
+			if ok, err = r.ours(ctx, f); err != nil {
+				return err
+			}
+			if !ok {
+				break
+			}
+		}
+	}
+	if !ok {
 		err := fmt.Errorf("%w: the replica ends at TXID %s, not at %s where this replicator left it", ErrConflict, end, r.top)
 		r.setStatus(func(s *Status) { s.Err = err })
 		return err
 	}
 	r.checked = r.sched.now()
 	return nil
+}
+
+// ours reports whether f is a staged file of this replicator, uploaded as
+// level 0.
+func (r *Replica) ours(ctx context.Context, f remoteFile) (bool, error) {
+	if f.level != 0 || f.min != f.max {
+		return false, nil
+	}
+	file, err := os.Open(filepath.Join(r.c.Dir(), ltx.FormatFilename(f.min, f.max)))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	digest, err := sha256File(file)
+	if err != nil {
+		return false, err
+	}
+	info, err := r.client.Head(ctx, f.key)
+	if err != nil {
+		return false, err
+	}
+	return info.Metadata[metaSHA256] == digest, nil
 }
 
 // put uploads the staged file of txid as level 0.
@@ -189,11 +241,10 @@ func (r *Replica) putFile(ctx context.Context, level int, name string) error {
 	if err := h.UnmarshalBinary(hb[:]); err != nil {
 		return fmt.Errorf("replica: %s: %w", name, err)
 	}
-	sum := sha256.New()
-	if _, err := io.Copy(sum, io.NewSectionReader(f, 0, st.Size())); err != nil {
+	digest, err := sha256File(f)
+	if err != nil {
 		return err
 	}
-	digest := hex.EncodeToString(sum.Sum(nil))
 	key := levelKey(r.path, level, h.MinTXID, h.MaxTXID)
 	err = r.client.Put(ctx, key, f, st.Size(), s3.PutOptions{
 		IfNoneMatch: true,
@@ -227,4 +278,18 @@ func (r *Replica) addFile(f remoteFile) {
 	if !found {
 		r.files = slices.Insert(r.files, i, f)
 	}
+}
+
+// sha256File is the SHA-256 of the file f, in hex. It reads f from its start
+// and leaves its offset as it was.
+func sha256File(f *os.File) (string, error) {
+	st, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.New()
+	if _, err := io.Copy(sum, io.NewSectionReader(f, 0, st.Size())); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
 }

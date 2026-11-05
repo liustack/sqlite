@@ -721,3 +721,36 @@ func TestStaleReplicator(t *testing.T) {
 		t.Fatal("the replica is not the first replicator's database")
 	}
 }
+
+// An upload whose answer was lost is the replicator's own: the check that
+// the replica ends where the replicator left it does not take it for
+// another replicator's, however long the store was away.
+func TestRecheckLostAnswer(t *testing.T) {
+	cfg, cnt := countingStore(t, testConfig(t))
+	cfg.schedule = func(s *schedule) {
+		s.levels = nil
+		s.recheck = 50 * time.Millisecond
+	}
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	syncNow(t, r)
+
+	cnt.down.Store(3)
+	run(t, db, "INSERT INTO t VALUES (1)")
+	if err := r.Sync(context.Background()); err == nil {
+		t.Fatal("Sync got an answer the store did not send")
+	}
+	time.Sleep(100 * time.Millisecond)
+	cnt.down.Store(0)
+	run(t, db, "INSERT INTO t VALUES (2)")
+	syncNow(t, r)
+	if err := r.Status().Err; err != nil {
+		t.Fatal(err)
+	}
+	out, _ := restoreTo(t, cfg, RestoreOptions{})
+	if dump(t, out) != dump(t, name) {
+		t.Fatal("the replica is not the database")
+	}
+}

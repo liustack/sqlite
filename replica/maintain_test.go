@@ -162,7 +162,8 @@ type counter struct {
 	n    atomic.Int64
 	puts sync.Map // key: count
 	// down makes the store fail: 1 answers 503, 2 closes the connection
-	// without an answer.
+	// without an answer, 3 sends the request to the store and then
+	// closes the connection without its answer.
 	down atomic.Int32
 	// get, if set, runs before each GET of an object, given its path.
 	get atomic.Pointer[func(path string)]
@@ -195,6 +196,12 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 			http.Error(w, "down", http.StatusServiceUnavailable)
 			return
 		case 2:
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close()
+			}
+			return
+		case 3:
+			proxy.ServeHTTP(httptest.NewRecorder(), req)
 			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
 				conn.Close()
 			}
