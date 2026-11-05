@@ -26,6 +26,10 @@ type PutOptions struct {
 	// IfNoneMatch writes the object only if the key has none: Put fails
 	// with ErrPreconditionFailed when it has.
 	IfNoneMatch bool
+	// Multipart sends the object as a multipart upload even when it fits
+	// one PUT, as one part: a probe of whether the store makes the
+	// completion of an upload conditional too.
+	Multipart bool
 	// Metadata is stored with the object as x-amz-meta-<name>. Names are
 	// lower case letters, digits and '-', values printable ASCII.
 	Metadata map[string]string
@@ -64,7 +68,7 @@ func (c *Client) Put(ctx context.Context, key string, body io.ReaderAt, size int
 	if err != nil {
 		return err
 	}
-	if size > c.partSize {
+	if size > c.partSize || opt.Multipart && size > 0 {
 		return c.putParts(ctx, key, body, size, opt.IfNoneMatch, h)
 	}
 	hash, err := hashOf(body, 0, size)
@@ -341,4 +345,20 @@ func (c *Client) Head(ctx context.Context, key string) (Info, error) {
 		}
 	}
 	return info, nil
+}
+
+// CreateBucket makes the client's bucket, in its region.
+func (c *Client) CreateBucket(ctx context.Context) error {
+	r := request{op: "CreateBucket", method: http.MethodPut}
+	if c.region != "" && c.region != "us-east-1" && c.region != "auto" {
+		b := []byte("<CreateBucketConfiguration><LocationConstraint>" + c.region + "</LocationConstraint></CreateBucketConfiguration>")
+		sum := sha256.Sum256(b)
+		r.body, r.size, r.hash = bytes.NewReader(b), int64(len(b)), hex.EncodeToString(sum[:])
+	}
+	resp, err := c.do(ctx, r)
+	if err != nil {
+		return err
+	}
+	done(resp)
+	return nil
 }

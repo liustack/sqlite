@@ -11,7 +11,10 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"math"
+	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,6 +45,7 @@ type writeLock struct {
 	waiters []chan struct{} // writers that wait for the lock, in order
 	queue   []*request      // statements to merge, in order
 	refs    int             // connections of the file, and 1 while attached
+	file    os.FileInfo     // the file, whatever name it is opened by
 	// attached says the file is replicated (replhook.Attach). Guarded by
 	// writeLocks.
 	attached bool
@@ -79,34 +83,62 @@ type request struct {
 // maxBatch is the most statements one transaction of the queue takes.
 const maxBatch = 256
 
+// writeLocks holds the write lock of each file open. A file is found by
+// what it is, not by its name: one file has more than one name (case on a
+// file system that ignores it, a short 8.3 name on windows).
 var writeLocks struct {
 	sync.Mutex
-	m map[string]*writeLock
+	all []*writeLock
+}
+
+// fileOf is the file named path, for writeLocks.
+func fileOf(path string) (os.FileInfo, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	// On windows the identity of the file is read when first compared:
+	// read it now, while path names it. A FileInfo whose identity could not
+	// be read is the same as no file.
+	if !os.SameFile(fi, fi) {
+		return nil, fmt.Errorf("sqlite: %s: cannot read what file it is", path)
+	}
+	return fi, nil
+}
+
+// findWriteLock is the write lock of file, nil if none. writeLocks is held.
+func findWriteLock(file os.FileInfo) *writeLock {
+	for _, l := range writeLocks.all {
+		if os.SameFile(l.file, file) {
+			return l
+		}
+	}
+	return nil
 }
 
 // openWriteLock is the write lock of path for a new connection, and whether
 // the file is replicated.
-func openWriteLock(path string) (l *writeLock, attached bool) {
+func openWriteLock(path string) (l *writeLock, attached bool, err error) {
+	file, err := fileOf(path)
+	if err != nil {
+		return nil, false, err
+	}
 	writeLocks.Lock()
 	defer writeLocks.Unlock()
-	if writeLocks.m == nil {
-		writeLocks.m = map[string]*writeLock{}
-	}
-	l = writeLocks.m[path]
-	if l == nil {
-		l = &writeLock{}
-		writeLocks.m[path] = l
+	if l = findWriteLock(file); l == nil {
+		l = &writeLock{file: file}
+		writeLocks.all = append(writeLocks.all, l)
 	}
 	l.refs++
-	return l, l.attached
+	return l, l.attached, nil
 }
 
-func closeWriteLock(path string, l *writeLock) {
+func closeWriteLock(l *writeLock) {
 	writeLocks.Lock()
 	defer writeLocks.Unlock()
 	l.refs--
 	if l.refs == 0 {
-		delete(writeLocks.m, path)
+		writeLocks.all = slices.DeleteFunc(writeLocks.all, func(x *writeLock) bool { return x == l })
 	}
 }
 

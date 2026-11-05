@@ -22,7 +22,6 @@ type conn struct {
 	begin  string
 	closed bool
 
-	path        string     // the database file, "" for memory
 	wl          *writeLock // the file's write lock, nil for memory
 	writing     bool       // the connection holds wl
 	busyTimeout time.Duration
@@ -122,7 +121,7 @@ func (c *conn) Close() error {
 		s.Close()
 	}
 	if c.wl != nil {
-		closeWriteLock(c.path, c.wl)
+		closeWriteLock(c.wl)
 	}
 	return c.c.Close()
 }

@@ -132,12 +132,7 @@ func startStore() {
 		store.err = err
 		return
 	}
-	resp, err := c.do(context.Background(), request{op: "CreateBucket", method: http.MethodPut})
-	if err != nil {
-		store.err = err
-		return
-	}
-	done(resp)
+	store.err = c.CreateBucket(context.Background())
 }
 
 func freeAddr() string {
@@ -356,5 +351,49 @@ func TestMissingBucket(t *testing.T) {
 	_, err := get(t, &other, "x", 0, -1)
 	if err == nil || errors.Is(err, ErrNotFound) {
 		t.Errorf("Get from a missing bucket: %v, want an error that is not ErrNotFound", err)
+	}
+}
+
+// Multipart sends a small object as a multipart upload of one part, whose
+// completion is conditional too.
+func TestMultipartSmall(t *testing.T) {
+	c, prefix := testStore(t)
+	ctx := context.Background()
+	key := prefix + "probe"
+	opt := PutOptions{IfNoneMatch: true, Multipart: true}
+	if err := c.Put(ctx, key, bytes.NewReader([]byte("first")), 5, opt); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Put(ctx, key, bytes.NewReader([]byte("second")), 6, opt); !errors.Is(err, ErrPreconditionFailed) {
+		t.Fatalf("second conditional Put: %v, want ErrPreconditionFailed", err)
+	}
+	if got, err := get(t, c, key, 0, -1); err != nil || string(got) != "first" {
+		t.Errorf("Get: %q, %v", got, err)
+	}
+	if n := uploads(t, c, key); n != 0 {
+		t.Errorf("%d multipart uploads left", n)
+	}
+}
+
+// CreateBucket makes a bucket, and says when it exists already.
+func TestCreateBucket(t *testing.T) {
+	c, _ := testStore(t)
+	if store.cmd == nil {
+		t.Skip("makes buckets: only on a MinIO of the test")
+	}
+	other := *c
+	other.bucket = fmt.Sprintf("made-%08x", rand.Uint32())
+	ctx := context.Background()
+	if err := other.CreateBucket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Put(ctx, "x", bytes.NewReader([]byte("x")), 1, PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.CreateBucket(ctx); err == nil {
+		t.Error("CreateBucket of a bucket that exists: no error")
+	}
+	if err := other.Delete(ctx, "x"); err != nil {
+		t.Fatal(err)
 	}
 }

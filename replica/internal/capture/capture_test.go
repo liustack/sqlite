@@ -627,3 +627,152 @@ func TestStaleTemp(t *testing.T) {
 	step(t, c)
 	sameAs(t, c, name)
 }
+
+// Durable is the last TXID whose name is synced, and Staged signals it.
+func TestDurable(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	if c.Durable() != 1 {
+		t.Fatalf("Durable %s after open", c.Durable())
+	}
+	<-c.Staged()
+	db := openApp(t, name)
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	run(t, db, "CREATE TABLE t(x)")
+	if err := c.Sync(context.Background()); !errors.Is(err, fail) {
+		t.Fatalf("Sync: %v", err)
+	}
+	if c.TXID() != 2 || c.Durable() != 1 {
+		t.Fatalf("TXID %s, Durable %s", c.TXID(), c.Durable())
+	}
+	select {
+	case <-c.Staged():
+		t.Fatal("signaled a file whose name is not synced")
+	default:
+	}
+	syncDir = syncDirFS
+	run(t, db, "INSERT INTO t VALUES (1)")
+	step(t, c)
+	if c.Durable() != 3 {
+		t.Fatalf("Durable %s, want 3", c.Durable())
+	}
+	<-c.Staged()
+}
+
+// Start sees the staged files, and a restart drops them and stages a full
+// copy as the TXID after the one it names.
+func TestStartRestart(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	for i := range 3 {
+		run(t, db, "CREATE TABLE t"+strconv.Itoa(i)+"(x)")
+		step(t, c)
+	}
+	post := c.post
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	var seen []StagedFile
+	opt := testOptions(t)
+	opt.Start = func(files []StagedFile) (*Restart, error) {
+		seen = files
+		return nil, nil
+	}
+	c = open(t, name, opt)
+	if len(seen) != 4 {
+		t.Fatalf("Start saw %d files, want 4", len(seen))
+	}
+	for i, f := range seen {
+		if f.TXID != ltx.TXID(i+1) || (i > 0 && f.Pre != seen[i-1].Post) {
+			t.Fatalf("file %d: %+v", i, f)
+		}
+	}
+	if seen[3].Post != post {
+		t.Fatalf("the last post %s, want %s", seen[3].Post, post)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	stop := errors.New("refused")
+	opt.Start = func([]StagedFile) (*Restart, error) { return nil, stop }
+	if _, err := Open(name, opt); !errors.Is(err, stop) {
+		t.Fatalf("Open with a Start that fails: %v", err)
+	}
+
+	opt.Start = func([]StagedFile) (*Restart, error) { return &Restart{TXID: 10, Post: post}, nil }
+	c = open(t, name, opt)
+	entries, err := os.ReadDir(c.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != ltx.FormatFilename(11, 11) {
+		t.Fatalf("staged after a restart: %v", entries)
+	}
+	if c.TXID() != 11 || c.FullCopies() != 0 {
+		t.Fatalf("TXID %s, %d full copies", c.TXID(), c.FullCopies())
+	}
+	f, err := os.Open(filepath.Join(c.Dir(), entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	dec := ltx.NewDecoder(f)
+	if err := dec.Verify(); err != nil {
+		t.Fatal(err)
+	}
+	if h := dec.Header(); h.PreApplyChecksum != post || h.Commit == 0 {
+		t.Fatalf("header %+v", h)
+	}
+}
+
+// A restart into the staged files that stops once the full copy is placed
+// (here, its folder fails to sync) leaves the copy to go on from: the files
+// after it are gone already.
+func TestRestartStopped(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	for i := range 3 {
+		run(t, db, "CREATE TABLE t"+strconv.Itoa(i)+"(x)")
+		step(t, c)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	const post = ltx.ChecksumFlag | 12345
+	opt := testOptions(t)
+	opt.Start = func([]StagedFile) (*Restart, error) { return &Restart{TXID: 2, Post: post}, nil }
+	fail := errors.New("no sync")
+	n := 0 // the first sync is of the drop of the files after TXID 2
+	syncDir = func(string) error {
+		if n++; n == 1 {
+			return nil
+		}
+		return fail
+	}
+	_, err := Open(name, opt)
+	syncDir = syncDirFS
+	if !errors.Is(err, fail) {
+		t.Fatalf("Open: %v", err)
+	}
+	files, err := stagedFiles(stageDir(realPath(t, name)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 || files[2].TXID != 3 || files[2].Pre != post {
+		t.Fatalf("staged after the stopped restart: %+v", files)
+	}
+	opt.Start = nil
+	c = open(t, name, opt)
+	if c.TXID() != 3 || c.FullCopies() != 0 {
+		t.Fatalf("TXID %s, %d full copies", c.TXID(), c.FullCopies())
+	}
+}
