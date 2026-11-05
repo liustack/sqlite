@@ -23,6 +23,31 @@
 // within SyncInterval and uploaded from there. Writes never wait for S3.
 // The replica is laid out as Litestream lays it out, so `litestream
 // restore` reads it too.
+//
+// # One replicator per replica
+//
+// A replica must have one replicator writing to it. On one machine this is
+// enforced: New fails while another process replicates the database. Across
+// machines it is the program's job. S3 has no way to let only the owner of
+// a lease write, so no replicator can enforce it there, Litestream
+// included. What New and the uploads do find is a second replicator in
+// normal running and after an outage: they stop it with ErrConflict. In
+// some races they do not, such as when the old machine still runs while a
+// new one takes over. Two histories may then end up in the replica: a
+// restore checks every checksum, so it never builds a mix of the two, but
+// it may fail or bring back the old machine's history. When a database
+// moves to another machine, stop the old replicator before the new one
+// starts, with a lock or lease of the program's own, and set
+// Config.SingleWriter.
+//
+// # Restoring to a time
+//
+// RestoreOptions.At picks files by the time in their headers, which comes
+// from the clock of the machine that staged them. Restore checks the first
+// file it leaves out of each level and trusts the times of the rest, as
+// litestream restore does. If that clock went back, a restore to a time
+// may give a state a little before or after it. A restore to a TXID or to
+// the latest state does not use the times.
 package replica
 
 import (
