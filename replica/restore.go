@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -236,22 +238,24 @@ func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID, 
 		plan, end = append(plan, *f), f.max
 	}
 	// The times of the files left out come from their headers, unchecked:
-	// the one that ends first is checked whole, so that a damaged time does
-	// not hide a state. The times of a history only grow, so the files that
-	// end after it are after at too.
+	// the one of each level that ends first is checked whole, so that a
+	// damaged time does not hide a state. Along a level the times grow
+	// with the TXIDs, so the files of the level that end after it are after
+	// at too. Across levels they need not: a snapshot reads its time after
+	// its TXID.
 	if !at.IsZero() {
-		var first *remoteFile
+		first := map[int]*remoteFile{}
 		for i := range files {
 			f := &files[i]
 			if f.min > end+1 || f.max <= end || txid != 0 && f.max > txid {
 				continue
 			}
-			if first == nil || f.max < first.max || f.max == first.max && f.level < first.level {
-				first = f
+			if g := first[f.level]; g == nil || f.max < g.max {
+				first[f.level] = f
 			}
 		}
-		if first != nil {
-			if err := madeAfter(ctx, c, *first, at); err != nil {
+		for _, level := range slices.Sorted(maps.Keys(first)) {
+			if err := madeAfter(ctx, c, *first[level], at); err != nil {
 				return nil, err
 			}
 		}

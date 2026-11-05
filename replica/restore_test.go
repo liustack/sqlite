@@ -617,3 +617,54 @@ func TestRestoreFileGone(t *testing.T) {
 		t.Fatal("the restored database differs")
 	}
 }
+
+// Times grow along a level, not across levels: a time restore checks the
+// first file it leaves out of each level. Here level 0 has a file made
+// after the time asked for, and level 1 one whose time was damaged.
+func TestRestoreBadTimeLevels(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t)
+	_, points := history(t, cfg)
+	c, path := client(t, cfg)
+	n := ltx.TXID(points[len(points)-1].txid)
+	get := func(key string) []byte {
+		body, err := c.Get(ctx, key, 0, -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer body.Close()
+		b, err := io.ReadAll(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	put := func(key string, b []byte) {
+		if err := c.Put(ctx, key, bytes.NewReader(b), int64(len(b)), s3.PutOptions{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, last := get(levelKey(path, 0, n-1, n-1)), get(levelKey(path, 0, n, n))
+	var l1 bytes.Buffer
+	comp, err := ltx.NewCompactor(&l1, []io.Reader{bytes.NewReader(before), bytes.NewReader(last)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := comp.Compact(ctx); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour).UnixMilli()
+	damaged := l1.Bytes()
+	binary.BigEndian.PutUint64(damaged[32:], uint64(later))
+	put(levelKey(path, 1, n-1, n), damaged)
+	put(levelKey(path, 0, n-1, n-1), reencode(t, before, func(h *ltx.Header) { h.Timestamp = later }, nil, false))
+	if err := c.Delete(ctx, levelKey(path, 0, n, n)); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "restored.db")
+	if txid, err := Restore(ctx, out, cfg, RestoreOptions{At: time.Now().Add(time.Minute)}); err == nil {
+		t.Fatalf("Restore: TXID %d, no error", txid)
+	} else {
+		t.Logf("Restore: %v", err)
+	}
+}
