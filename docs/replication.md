@@ -48,7 +48,7 @@ The settings you are most likely to change:
 - **The database is in WAL mode,** and the replicator runs its checkpoints. While it runs, `PRAGMA wal_checkpoint`, setting `wal_autocheckpoint`, a `journal_mode` other than WAL and `locking_mode=EXCLUSIVE` give an error. The replicator checkpoints once the WAL holds 4000 frames, about 16 MB with 4 KiB pages. As with any checkpoint, frames a read transaction still uses stay, so a read that never ends lets the WAL grow.
 - **Only this driver, in this process, is followed.** Open the database with this driver after `New`. If another process (the sqlite3 shell, another program) writes and checkpoints the file, the replicator notices that the WAL went on in a way it did not see, stages a full copy of the database, and reports it to `OnError`. Nothing is lost, but a full copy costs an upload of the whole file.
 - **One process replicates a database file at a time.** A second `New` on the same file fails while the first one runs.
-- **Disk:** the staging folder holds what is not uploaded yet and the last full copy of the database. Staging stops once what waits passes `StagingLimit`, so the last copy into it (a large transaction) can take it further, and merges and snapshots use the folder for a while too. Leave room for `StagingLimit`, the largest transaction and a few copies of the database.
+- **Disk:** the staging folder holds what is not uploaded yet and the last full copy of the database. Staging stops once what waits passes `StagingLimit`, so the last copy into it (a large transaction) can take it further, and snapshots and merges use the folder for a while too. A snapshot is one copy of the database. A merge downloads all its input files, up to 256, before it writes its output beside them, so a database that rewrites most of its pages every minute may need many copies of itself for the hourly merge. Leave room for `StagingLimit`, the largest transaction, a snapshot and the largest merge.
 - **CPU:** copying each commit costs a little on the writer's side. [Benchmarks](benchmarks.md#replication) has the numbers.
 
 ## How far behind the copy is
@@ -103,7 +103,7 @@ The replica of `s3://bucket/path` is LTX files under `path/`: level 0 holds one 
 
 A database that is idle makes no request once this work is done. A busy one uploads a file each `SyncInterval`, one each time the WAL reaches 4000 frames, and one for each `Sync`, plus the merges.
 
-`litestream restore` v0.5.18 rebuilds the same database from it at every TXID a kept file ends at, and at the times both accept. The tests check this ([testing.md](testing.md#the-s3-client-and-the-replica)).
+`litestream restore` v0.5.18 rebuilds the same database from it at every point the replica can still be restored to, by TXID, and by any time both accept. The tests check this ([testing.md](testing.md#the-s3-client-and-the-replica)).
 
 ## Stores
 

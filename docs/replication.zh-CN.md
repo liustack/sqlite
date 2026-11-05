@@ -48,7 +48,7 @@ db, err := sql.Open("sqlite", "app.db")
 - **数据库是 WAL 模式，**检查点由复制器来做。复制期间，`PRAGMA wal_checkpoint`、设置 `wal_autocheckpoint`、WAL 以外的 `journal_mode` 和 `locking_mode=EXCLUSIVE` 会报错。WAL 满 4000 帧（4 KiB 的页约 16 MB）时复制器做检查点。和所有检查点一样，读事务还在用的帧会留着，所以一个一直不结束的读会让 WAL 变长。
 - **只跟踪本进程里这个驱动的写入。** 在 `New` 之后用这个驱动打开数据库。如果别的进程（sqlite3 命令行、别的程序）写了文件还做了检查点，复制器会发现 WAL 的变化它没跟上，于是暂存一份整库，并报告给 `OnError`。数据不会丢，但整库要整个上传一次。
 - **一个数据库文件同一时刻只有一个进程在复制。** 第一个还在跑时，同一个文件上的第二个 `New` 会失败。
-- **磁盘：**暂存目录放着还没上传的变更和最近一份整库。等待的变更超过 `StagingLimit` 时暂存才停下，所以最后那次复制（比如一个大事务）会让它超出一些，合并和快照也会临时用这个目录。给它留出 `StagingLimit`、最大的事务和几份整库的空间。
+- **磁盘：**暂存目录放着还没上传的变更和最近一份整库。等待的变更超过 `StagingLimit` 时暂存才停下，所以最后那次复制（比如一个大事务）会让它超出一些，快照和合并也会临时用这个目录。一份快照就是一份整库。合并会先把全部输入文件（最多 256 个）下载下来，再在旁边写输出，所以一个每分钟都改写大部分页的数据库，每小时那次合并可能要占好多份整库。给它留出 `StagingLimit`、最大的事务、一份快照和最大一次合并的空间。
 - **CPU：**复制每次提交，会在写入方这边多花一点。数字见[基准测试](benchmarks.zh-CN.md#复制)。
 
 ## 副本落后多少
@@ -103,7 +103,7 @@ txid, err := replica.Restore(ctx, "app.db", replica.Config{URL: url}, replica.Re
 
 空闲的数据库在这些工作做完后不再发请求。繁忙的数据库每个 `SyncInterval` 上传一个文件，WAL 每满 4000 帧再传一个，每次 `Sync` 也传一个，外加合并。
 
-`litestream restore` v0.5.18 能从它恢复出同样的数据库，在保留的文件结尾的每个 TXID 上，以及两边都接受的时间点上都一样，测试会核对这一点（[testing.md](testing.md#the-s3-client-and-the-replica)，英文）。
+`litestream restore` v0.5.18 能从它恢复出同样的数据库，在副本还能恢复到的每个点上都一样，按 TXID 恢复，或按两边都接受的时间恢复，测试会核对这一点（[testing.md](testing.md#the-s3-client-and-the-replica)，英文）。
 
 ## 存储
 
