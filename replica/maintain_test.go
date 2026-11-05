@@ -362,10 +362,10 @@ func TestDropLevel0(t *testing.T) {
 	now := time.Now()
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 	r.files = []remoteFile{
-		testFile(0, 1, 1, ago(time.Hour)), testFile(0, 2, 2, ago(time.Hour)), testFile(0, 3, 3, ago(10*time.Minute)),
+		testFile(0, 1, 1, ago(time.Hour)), testFile(0, 2, 2, ago(time.Hour)), testFile(0, 3, 3, ago(40*time.Minute)),
 		testFile(0, 4, 4, ago(time.Hour)), testFile(0, 5, 5, ago(time.Hour)), testFile(0, 6, 6, ago(time.Minute)),
 		testFile(0, 7, 7, ago(time.Hour)), testFile(0, 8, 8, ago(time.Hour)),
-		testFile(1, 1, 3, ago(10*time.Minute)),
+		testFile(1, 1, 3, ago(40*time.Minute)),
 		testFile(1, 4, 6, ago(time.Minute)), // 4 and 5 are old, but 6 is not
 		testFile(1, 7, 8, ago(time.Hour)),   // 8 is the last
 	}

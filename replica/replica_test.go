@@ -662,3 +662,62 @@ func TestNoSecrets(t *testing.T) {
 		}
 	}
 }
+
+// A replicator cut off from the store while another one, from the same
+// history, uploads, compacts and deletes the level 0 files it would write
+// over: once back, it stops with ErrConflict and publishes nothing.
+func TestStaleReplicator(t *testing.T) {
+	cfg := testConfig(t)
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES ('both')")
+	db.Close()
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	base := ltx.TXID(r.Status().Uploaded)
+	other := copyDB(t, name)
+
+	cfgA := cfg
+	cfgA.schedule = func(s *schedule) {
+		s.levels = []time.Duration{50 * time.Millisecond, time.Hour}
+		s.keepL0 = 100 * time.Millisecond
+	}
+	cfgB, cnt := countingStore(t, cfg)
+	cfgB.schedule = func(s *schedule) { s.recheck = 50 * time.Millisecond }
+	a := newReplica(t, name, cfgA)
+	b := newReplica(t, other, cfgB)
+	cnt.down.Store(1)
+	dbB := openDB(t, other)
+	run(t, dbB, "INSERT INTO t VALUES ('b')")
+
+	// A goes on until the level 0 file of base+1 is gone.
+	c, path := client(t, cfg)
+	key := levelKey(path, 0, base+1, base+1)
+	dbA := openDB(t, name)
+	gone := false
+	for i := 0; !gone && i < 200; i++ {
+		run(t, dbA, "INSERT INTO t VALUES ('a')")
+		syncNow(t, a)
+		time.Sleep(20 * time.Millisecond)
+		_, err := c.Head(context.Background(), key)
+		gone = errors.Is(err, s3.ErrNotFound)
+	}
+	if !gone {
+		t.Fatal("the level 0 file was not deleted")
+	}
+
+	cnt.down.Store(0)
+	if err := b.Sync(context.Background()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("the replicator cut off: %v, want ErrConflict", err)
+	}
+	if _, err := c.Head(context.Background(), key); !errors.Is(err, s3.ErrNotFound) {
+		t.Fatalf("%s is back: %v", key, err)
+	}
+	syncNow(t, a)
+	out, _ := restoreTo(t, cfg, RestoreOptions{})
+	if dump(t, out) != dump(t, name) {
+		t.Fatal("the replica is not the first replicator's database")
+	}
+}

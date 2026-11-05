@@ -115,6 +115,9 @@ func (r *Replica) uploadFiles(ctx context.Context) error {
 	durable := r.c.Durable()
 	err := r.conflict()
 	for txid := r.uploaded() + 1; err == nil && txid <= durable; txid++ {
+		if err = r.recheck(ctx); err != nil {
+			break
+		}
 		if err = r.put(ctx, txid); err == nil {
 			r.setStatus(func(s *Status) { s.Uploaded = uint64(txid) })
 		}
@@ -131,6 +134,33 @@ func (r *Replica) uploadFiles(ctx context.Context) error {
 		}
 	}
 	return err
+}
+
+// recheck makes sure, when it last did longer than sched.recheck ago, that
+// the replica still ends where this replicator knows it does. Another
+// replicator from the same history may have gone on meanwhile, while this
+// one could not reach the store, and deleted the level 0 files that an
+// upload of this one would find: the conditional upload alone would take
+// the key.
+func (r *Replica) recheck(ctx context.Context) error {
+	if r.sched.now().Sub(r.checked) < r.sched.recheck {
+		return nil
+	}
+	files, err := listRemote(ctx, r.client, r.path)
+	if err != nil {
+		return err
+	}
+	var end ltx.TXID
+	for _, f := range files {
+		end = max(end, f.max)
+	}
+	if end != r.top {
+		err := fmt.Errorf("%w: the replica ends at TXID %s, not at %s where this replicator left it", ErrConflict, end, r.top)
+		r.setStatus(func(s *Status) { s.Err = err })
+		return err
+	}
+	r.checked = r.sched.now()
+	return nil
 }
 
 // put uploads the staged file of txid as level 0.
@@ -187,6 +217,7 @@ func (r *Replica) putFile(ctx context.Context, level int, name string) error {
 		return err
 	}
 	r.addFile(remoteFile{level: level, min: h.MinTXID, max: h.MaxTXID, key: key, size: st.Size(), modified: r.sched.now()})
+	r.top = max(r.top, h.MaxTXID)
 	return nil
 }
 

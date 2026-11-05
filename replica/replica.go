@@ -132,6 +132,10 @@ type Replica struct {
 	// A snapshot taken and not uploaded yet, under busy.
 	snap     string
 	snapTXID ltx.TXID
+	// Under busy: the last TXID of a file of the replica this replicator
+	// knows of, and when it last saw that the replica ends there.
+	top     ltx.TXID
+	checked time.Time
 
 	mu     sync.Mutex
 	status Status
@@ -179,6 +183,7 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		cfg.schedule(&r.sched)
 	}
 	r.status.Uploaded = uint64(end.txid)
+	r.top, r.checked = end.txid, r.sched.now()
 	r.c, err = capture.Open(name, capture.Options{
 		Interval:         cfg.SyncInterval,
 		CheckpointFrames: cfg.checkpointFrames,
