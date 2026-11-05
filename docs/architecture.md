@@ -1,5 +1,5 @@
 ---
-summary: 'How the driver is built: the layers from the SQLite C to database/sql, how the C becomes Go assembly, what the Go host gives SQLite, group commit, and the routes that were left out and why'
+summary: 'How the driver is built: the layers from the SQLite C to database/sql, how the C becomes Go assembly, what the Go host gives SQLite, group commit, how replication follows the database, and the routes that were left out and why'
 read_when:
   - Starting work in this repository
   - Changing the generator, the C tree or the compile options of SQLite
@@ -130,6 +130,31 @@ A prototype of it in application code, on mattn/go-sqlite3 (WAL, one writer goro
 | 256 | FULL, fullfsync | 150 | 34.8k | 232x |
 
 So it pays from about 16 concurrent writers up, most where a commit waits for the disk, and costs with one writer, where the queue only adds a hop: the driver must write directly when no one else is waiting. One commit per write is also unfair: some goroutines waited seconds and some got `SQLITE_BUSY`. The SAVEPOINT per statement halves the peak (it adds two calls per statement in the prototype). A failed constraint in SQLite already undoes only its own statement, so where the SAVEPOINT is really needed has yet to be shown. It stays all the same: safety comes before speed. Each run took 3 seconds once, and runs of the same setup differed by up to 90%, so read gains under 1.5x as noise.
+
+## Replication
+
+The `replica` package copies a database to S3-compatible storage as it changes. How to use it and what it guarantees is in [replication.md](replication.md). It has four parts:
+
+| Package | Job |
+| --- | --- |
+| `internal/replhook` | What the driver gives the replicator and not its users: a file attached for replication, the driver's write lock of it, and a call each time a writer gives that lock back |
+| `replica/internal/capture` | Copies each change of the database into a local staging folder as an LTX file, and runs the checkpoints |
+| `replica/internal/s3` | The S3 client: SigV4, PUT, multipart upload, ranged GET, LIST, DELETE, conditional PUT. No dependencies |
+| `replica` | The API: uploads, compaction, snapshots, retention, restore |
+
+**Capture inside the driver.** Litestream follows a database from outside: it reads the WAL every second, holds a long read transaction so that no checkpoint runs past it, and works out from salts and the last page what other connections did. Its open bugs that lose or damage data come from that guessing (a transaction that never committed replicated, a WAL rewound by a power loss not seen, rows dropped after a checkpoint it did not run). Here the driver owns every connection to the file, so the replicator does not guess:
+
+- An attached file gets no automatic checkpoints, and the PRAGMAs that would checkpoint or leave WAL mode give an error.
+- The capturer reads the new frames of the WAL up to the last commit frame, checking salts and frame checksums as SQLite's recovery does, writes them as one LTX file, and syncs it before it counts as staged. Frames after the last commit are never read.
+- Checkpoints run under the driver's write lock of the file, after the WAL is staged to its end, so no frame is copied into the database or written over before it is staged. Once the WAL holds 4000 frames, the writer that gives the lock back stages and checkpoints, as SQLite's own automatic checkpoint runs in the writer that commits.
+- A WAL that went on in a way the driver did not make (other salts, a shorter WAL, frames it never saw) means another process wrote: the capturer stages a full copy of the database and reports it.
+- A snapshot takes the write lock only to stage the WAL and open a read transaction, then reads the pages without stopping writers.
+
+**Upload from the staging folder.** Writes never wait for the store. Each LTX file is uploaded once, with `If-None-Match: *`, so a second replicator gets 412 and stops instead of writing over the first. At start the replicator reads where the replica ends and goes on only when the staged files go on from there. Staging has a limit: past it, staging stops, checkpoints go on, and a full copy follows once the store is back, so neither the disk nor the WAL grows without end while the store is down.
+
+**Litestream's format.** The replica is LTX files (github.com/superfly/ltx) in Litestream's layout, so `litestream restore` is a second way back, and the tests check that it gives the same bytes. LTX files carry a checksum of the whole database before and after them, which Litestream leaves off and this replicator turns on: a restore checks every file against the one before it, not only the last.
+
+**Left out on purpose.** Client-side encryption (`litestream restore` could not read the replica). Other storage than S3. Synchronous replication, where a commit returns once it is in the store: capture already runs at commit, so it can come later, paid once per group commit batch. A fence that keeps a second machine out: S3 has none, see [replication.md](replication.md#one-replicator-per-replica).
 
 ## Routes left out
 
