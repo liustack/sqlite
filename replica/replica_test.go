@@ -662,3 +662,192 @@ func TestNoSecrets(t *testing.T) {
 		}
 	}
 }
+
+// A replicator cut off from the store while another one, from the same
+// history, uploads, compacts and deletes the level 0 files it would write
+// over: once back, it stops with ErrConflict and publishes nothing.
+func TestStaleReplicator(t *testing.T) {
+	cfg := testConfig(t)
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES ('both')")
+	db.Close()
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	base := ltx.TXID(r.Status().Uploaded)
+	other := copyDB(t, name)
+
+	cfgA := cfg
+	cfgA.schedule = func(s *schedule) {
+		s.levels = []time.Duration{50 * time.Millisecond, time.Hour}
+		s.keepL0 = 100 * time.Millisecond
+	}
+	cfgB, cnt := countingStore(t, cfg)
+	cfgB.schedule = func(s *schedule) { s.recheck = 50 * time.Millisecond }
+	a := newReplica(t, name, cfgA)
+	b := newReplica(t, other, cfgB)
+	cnt.down.Store(1)
+	dbB := openDB(t, other)
+	run(t, dbB, "INSERT INTO t VALUES ('b')")
+
+	// A goes on until the level 0 file of base+1 is gone.
+	c, path := client(t, cfg)
+	key := levelKey(path, 0, base+1, base+1)
+	dbA := openDB(t, name)
+	gone := false
+	for i := 0; !gone && i < 200; i++ {
+		run(t, dbA, "INSERT INTO t VALUES ('a')")
+		syncNow(t, a)
+		time.Sleep(20 * time.Millisecond)
+		_, err := c.Head(context.Background(), key)
+		gone = errors.Is(err, s3.ErrNotFound)
+	}
+	if !gone {
+		t.Fatal("the level 0 file was not deleted")
+	}
+
+	cnt.down.Store(0)
+	if err := b.Sync(context.Background()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("the replicator cut off: %v, want ErrConflict", err)
+	}
+	if _, err := c.Head(context.Background(), key); !errors.Is(err, s3.ErrNotFound) {
+		t.Fatalf("%s is back: %v", key, err)
+	}
+	syncNow(t, a)
+	out, _ := restoreTo(t, cfg, RestoreOptions{})
+	if dump(t, out) != dump(t, name) {
+		t.Fatal("the replica is not the first replicator's database")
+	}
+}
+
+// An upload whose answer was lost is the replicator's own: the check that
+// the replica ends where the replicator left it does not take it for
+// another replicator's, however long the store was away.
+func TestRecheckLostAnswer(t *testing.T) {
+	cfg, cnt := countingStore(t, testConfig(t))
+	cfg.manual = true // no upload but the Syncs of the test
+	var clock atomic.Int64
+	clock.Store(time.Now().UnixNano())
+	cfg.schedule = func(s *schedule) {
+		s.levels = nil
+		s.now = func() time.Time { return time.Unix(0, clock.Load()) }
+	}
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	syncNow(t, r)
+
+	// The clock stands still: the upload comes before any check.
+	cnt.down.Store(3)
+	run(t, db, "INSERT INTO t VALUES (1)")
+	if err := r.Sync(context.Background()); err == nil {
+		t.Fatal("Sync got an answer the store did not send")
+	}
+	cnt.down.Store(0)
+	c, path := client(t, cfg)
+	lost := ltx.TXID(r.Status().Uploaded) + 1
+	if _, err := c.Head(context.Background(), levelKey(path, 0, lost, lost)); err != nil {
+		t.Fatalf("the store did not take the upload whose answer was lost: %v", err)
+	}
+
+	clock.Add(int64(2 * r.sched.recheck))
+	run(t, db, "INSERT INTO t VALUES (2)")
+	syncNow(t, r)
+	if err := r.Status().Err; err != nil {
+		t.Fatal(err)
+	}
+	out, _ := restoreTo(t, cfg, RestoreOptions{})
+	if dump(t, out) != dump(t, name) {
+		t.Fatal("the replica is not the database")
+	}
+}
+
+// Close uploads what it staged before another process can stage the
+// database: the staging folder stays locked until then.
+func TestCloseHoldsStaging(t *testing.T) {
+	base := testConfig(t)
+	cfg, cnt := countingStore(t, base)
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
+	db.Close()
+
+	other := base
+	other.SingleWriter = true
+	var newErr error
+	tried := false
+	put := func(string) {
+		if tried {
+			return
+		}
+		tried = true
+		var s *Replica
+		if s, newErr = New(context.Background(), name, other); newErr == nil {
+			s.Close()
+		}
+	}
+	cnt.put.Store(&put)
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cnt.put.Store(nil)
+	if !tried {
+		t.Fatal("Close uploaded nothing")
+	}
+	if newErr == nil || !strings.Contains(newErr.Error(), "another process replicates") {
+		t.Fatalf("New while Close uploads: %v, want the staging folder locked", newErr)
+	}
+	r = newReplica(t, name, cfg)
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Close ends a Sync whose upload hangs before it lets another process stage
+// the database: once Close returns, nothing of the replicator uploads.
+func TestCloseEndsSync(t *testing.T) {
+	cfg, cnt := countingStore(t, testConfig(t))
+	cfg.manual = true // the PUT held is the one of the Sync
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
+
+	held := make(chan struct{})
+	free := make(chan struct{})
+	defer close(free)
+	var once sync.Once
+	put := func(string) {
+		once.Do(func() {
+			close(held)
+			<-free
+		})
+	}
+	cnt.put.Store(&put)
+	synced := make(chan error, 1)
+	go func() { synced <- r.Sync(context.Background()) }()
+	<-held
+
+	closed := make(chan error, 1)
+	go func() { closed <- r.Close() }()
+	select {
+	case <-closed:
+	case <-time.After(closeUpload + 5*time.Second):
+		t.Fatal("Close did not return")
+	}
+	select {
+	case err := <-synced:
+		if err == nil {
+			t.Fatal("the Sync Close ended did not fail")
+		}
+	default:
+		t.Fatal("Close returned while a Sync still uploads")
+	}
+	if err := r.Sync(context.Background()); err == nil {
+		t.Fatal("Sync after Close")
+	}
+}

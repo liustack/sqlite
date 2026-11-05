@@ -8,12 +8,14 @@ package replica
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -274,6 +276,17 @@ func TestRestoreBad(t *testing.T) {
 		{"pre", 0, "checksum before it", func(t *testing.T, body []byte) []byte {
 			return reencode(t, body, func(h *ltx.Header) { h.PreApplyChecksum ^= 1 }, nil, false)
 		}},
+		{"cut", 0, "a damaged file", func(t *testing.T, body []byte) []byte {
+			// Cut less than 8 bytes after the pages, where ltx's decoder
+			// panics.
+			for n := len(body) - 1; n > 0; n-- {
+				if _, _, err := capture.Verify(bytes.NewReader(body[:n])); err != nil && strings.Contains(err.Error(), "a damaged file") {
+					return body[:n]
+				}
+			}
+			t.Fatal("no cut that ltx panics on")
+			return nil
+		}},
 		{"corrupt", 0, "integrity_check", func(t *testing.T, body []byte) []byte {
 			// Every checksum agrees with the pages, which SQLite cannot
 			// read: a b-tree page of no type.
@@ -525,5 +538,133 @@ func TestRestoreLevels(t *testing.T) {
 	again, txid2 := restoreTo(t, cfg, RestoreOptions{})
 	if txid2 != txid+1 || dump(t, again) != dump(t, out) {
 		t.Fatalf("restored TXID %d after going on from %d", txid2, txid)
+	}
+}
+
+// A time restore reads the times of the files it leaves out from their
+// headers, which their checksum covers: a damaged time that hides the last
+// state is an error, not an older state.
+func TestRestoreBadTime(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t)
+	_, points := history(t, cfg)
+	c, path := client(t, cfg)
+	last := ltx.TXID(points[len(points)-1].txid)
+	key := levelKey(path, 0, last, last)
+	body, err := c.Get(ctx, key, 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(body)
+	body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary.BigEndian.PutUint64(b[32:], uint64(time.Now().Add(time.Hour).UnixMilli()))
+	if err := c.Put(ctx, key, bytes.NewReader(b), int64(len(b)), s3.PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "restored.db")
+	_, err = Restore(ctx, out, cfg, RestoreOptions{At: time.Now().Add(time.Minute)})
+	if err == nil {
+		t.Fatal("Restore: no error")
+	}
+	t.Logf("Restore: %v", err)
+	if entries, _ := os.ReadDir(filepath.Dir(out)); len(entries) != 0 {
+		t.Fatalf("Restore left %v", entries)
+	}
+}
+
+// Retention deletes a file a restore planned to read: the restore plans
+// again, to the same state, from the files left.
+func TestRestoreFileGone(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t)
+	_, points := history(t, cfg)
+	c, path := client(t, cfg)
+	last := ltx.TXID(points[len(points)-1].txid)
+	// A file of level 1 the restore takes over the one of level 0.
+	l0, l1 := levelKey(path, 0, last, last), levelKey(path, 1, last, last)
+	body, err := c.Get(ctx, l0, 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(body)
+	body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Put(ctx, l1, bytes.NewReader(b), int64(len(b)), s3.PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, cnt := countingStore(t, cfg)
+	var once sync.Once
+	get := func(p string) {
+		if strings.HasSuffix(p, "/"+l1) {
+			once.Do(func() {
+				if err := c.Delete(ctx, l1); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+	}
+	cnt.get.Store(&get)
+	out, txid := restoreTo(t, cfg, RestoreOptions{})
+	if txid != uint64(last) {
+		t.Fatalf("restored TXID %d, want %d", txid, last)
+	}
+	if got, want := dump(t, out), points[len(points)-1].dump; got != want {
+		t.Fatal("the restored database differs")
+	}
+}
+
+// Times grow along a level, not across levels: a time restore checks the
+// first file it leaves out of each level. Here level 0 has a file made
+// after the time asked for, and level 1 one whose time was damaged.
+func TestRestoreBadTimeLevels(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t)
+	_, points := history(t, cfg)
+	c, path := client(t, cfg)
+	n := ltx.TXID(points[len(points)-1].txid)
+	get := func(key string) []byte {
+		body, err := c.Get(ctx, key, 0, -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer body.Close()
+		b, err := io.ReadAll(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	put := func(key string, b []byte) {
+		if err := c.Put(ctx, key, bytes.NewReader(b), int64(len(b)), s3.PutOptions{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, last := get(levelKey(path, 0, n-1, n-1)), get(levelKey(path, 0, n, n))
+	var l1 bytes.Buffer
+	comp, err := ltx.NewCompactor(&l1, []io.Reader{bytes.NewReader(before), bytes.NewReader(last)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := comp.Compact(ctx); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour).UnixMilli()
+	damaged := l1.Bytes()
+	binary.BigEndian.PutUint64(damaged[32:], uint64(later))
+	put(levelKey(path, 1, n-1, n), damaged)
+	put(levelKey(path, 0, n-1, n-1), reencode(t, before, func(h *ltx.Header) { h.Timestamp = later }, nil, false))
+	if err := c.Delete(ctx, levelKey(path, 0, n, n)); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "restored.db")
+	if txid, err := Restore(ctx, out, cfg, RestoreOptions{At: time.Now().Add(time.Minute)}); err == nil {
+		t.Fatalf("Restore: TXID %d, no error", txid)
+	} else {
+		t.Logf("Restore: %v", err)
 	}
 }

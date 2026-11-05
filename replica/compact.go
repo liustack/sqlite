@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 
 	"github.com/superfly/ltx"
+
+	"github.com/liustack/sqlite/replica/internal/capture"
 )
 
 // maxCompactInputs is the most files one compaction merges, so that it
@@ -67,8 +69,8 @@ func (r *Replica) compact(ctx context.Context, from, to int) (bool, error) {
 		return false, nil
 	}
 
-	dir, err := os.MkdirTemp(filepath.Dir(r.c.Dir()), "compact-")
-	if err != nil {
+	dir := r.c.CompactDir()
+	if err := makeCompactDir(dir); err != nil {
 		return false, err
 	}
 	defer os.RemoveAll(dir)
@@ -111,13 +113,12 @@ func (r *Replica) compact(ctx context.Context, from, to int) (bool, error) {
 	if _, err := out.Seek(0, io.SeekStart); err != nil {
 		return false, err
 	}
-	dec := ltx.NewDecoder(bufio.NewReaderSize(out, 1<<20))
-	if err := dec.Verify(); err != nil {
+	h, tr, err := capture.Verify(out)
+	if err != nil {
 		return false, fmt.Errorf("replica: the file compacted into level %d: %w", to, err)
 	}
-	h := dec.Header()
 	if h.MinTXID != first.MinTXID || h.MaxTXID != last.MaxTXID || h.PreApplyChecksum != first.PreApplyChecksum ||
-		dec.Trailer().PostApplyChecksum != post || h.Timestamp != last.Timestamp {
+		tr.PostApplyChecksum != post || h.Timestamp != last.Timestamp {
 		return false, fmt.Errorf("replica: the file compacted into level %d does not match the files merged", to)
 	}
 	if err := r.putFile(ctx, to, name); err != nil {
@@ -157,11 +158,10 @@ func (r *Replica) download(ctx context.Context, f remoteFile, dir string) (*os.F
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return fail(err)
 	}
-	dec := ltx.NewDecoder(bufio.NewReaderSize(file, 1<<20))
-	if err := dec.Verify(); err != nil {
+	h, t, err := capture.Verify(file)
+	if err != nil {
 		return fail(fmt.Errorf("replica: %s: %w", f.key, err))
 	}
-	h, t := dec.Header(), dec.Trailer()
 	if h.MinTXID != f.min || h.MaxTXID != f.max {
 		return fail(fmt.Errorf("replica: %s holds TXIDs %s to %s, not those of its name", f.key, h.MinTXID, h.MaxTXID))
 	}
@@ -170,4 +170,14 @@ func (r *Replica) download(ctx context.Context, f remoteFile, dir string) (*os.F
 	}
 	ok = true
 	return file, h, t, nil
+}
+
+// makeCompactDir makes dir, the folder a compaction downloads and writes
+// its files in, empty. Compactions run one at a time. The files are copies
+// of the database: only the user reads them.
+func makeCompactDir(dir string) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	return os.Mkdir(dir, 0o700)
 }

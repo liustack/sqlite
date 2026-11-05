@@ -8,6 +8,7 @@ package replica
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,6 +26,7 @@ import (
 
 	"github.com/superfly/ltx"
 
+	"github.com/liustack/sqlite/replica/internal/capture"
 	"github.com/liustack/sqlite/replica/internal/s3"
 )
 
@@ -159,8 +162,14 @@ type counter struct {
 	n    atomic.Int64
 	puts sync.Map // key: count
 	// down makes the store fail: 1 answers 503, 2 closes the connection
-	// without an answer.
+	// without an answer, 3 sends each PUT to the store and then closes
+	// the connection without its answer, and lets the other requests
+	// through.
 	down atomic.Int32
+	// get, if set, runs before each GET of an object, given its path.
+	get atomic.Pointer[func(path string)]
+	// put, if set, runs before each PUT, given its path.
+	put atomic.Pointer[func(path string)]
 }
 
 func countingStore(t *testing.T, cfg Config) (Config, *counter) {
@@ -194,9 +203,23 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 				conn.Close()
 			}
 			return
+		case 3:
+			if req.Method == http.MethodPut {
+				proxy.ServeHTTP(httptest.NewRecorder(), req)
+				if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+					conn.Close()
+				}
+				return
+			}
 		}
 		if req.Method == http.MethodPut {
 			cnt.puts.Store(req.URL.Path, true)
+			if f := cnt.put.Load(); f != nil {
+				(*f)(req.URL.Path)
+			}
+		}
+		if f := cnt.get.Load(); f != nil && req.Method == http.MethodGet && req.URL.RawQuery == "" {
+			(*f)(req.URL.Path)
 		}
 		proxy.ServeHTTP(w, req)
 	}))
@@ -355,10 +378,10 @@ func TestDropLevel0(t *testing.T) {
 	now := time.Now()
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 	r.files = []remoteFile{
-		testFile(0, 1, 1, ago(time.Hour)), testFile(0, 2, 2, ago(time.Hour)), testFile(0, 3, 3, ago(10*time.Minute)),
+		testFile(0, 1, 1, ago(time.Hour)), testFile(0, 2, 2, ago(time.Hour)), testFile(0, 3, 3, ago(40*time.Minute)),
 		testFile(0, 4, 4, ago(time.Hour)), testFile(0, 5, 5, ago(time.Hour)), testFile(0, 6, 6, ago(time.Minute)),
 		testFile(0, 7, 7, ago(time.Hour)), testFile(0, 8, 8, ago(time.Hour)),
-		testFile(1, 1, 3, ago(10*time.Minute)),
+		testFile(1, 1, 3, ago(40*time.Minute)),
 		testFile(1, 4, 6, ago(time.Minute)), // 4 and 5 are old, but 6 is not
 		testFile(1, 7, 8, ago(time.Hour)),   // 8 is the last
 	}
@@ -544,5 +567,82 @@ func TestCompactOverlap(t *testing.T) {
 	out, txid := restoreTo(t, cfg, RestoreOptions{})
 	if txid != uint64(r.last(1)) || dump(t, out) != dump(t, name) {
 		t.Fatal("the replica does not restore the database")
+	}
+}
+
+// What a compaction killed on the way left is removed when the next New
+// starts.
+func TestCompactLeftovers(t *testing.T) {
+	// A name that is no glob pattern.
+	dir := filepath.Join(t.TempDir(), "a[b*")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(dir, "x.db")
+	ltxDir := filepath.Join(name+"-replica", "ltx")
+	left := []string{filepath.Join(ltxDir, "compact"), filepath.Join(ltxDir, "compact-123")}
+	for _, d := range left {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "0000000000000001-0000000000000009.ltx"), []byte("left"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newReplica(t, name, testConfig(t))
+	for _, d := range left {
+		if _, err := os.Stat(d); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s is left (%v)", d, err)
+		}
+	}
+}
+
+// The files of a compaction are copies of the database: only the user of
+// the process reads them.
+func TestCompactDirMode(t *testing.T) {
+	dir := capture.CompactDir(filepath.Join(t.TempDir(), "x.db"))
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := makeCompactDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && st.Mode().Perm() != 0o700 {
+		t.Fatalf("mode %v, want 0700", st.Mode().Perm())
+	}
+}
+
+// The leftovers of a compaction are found where the staging is, also when
+// the database is named through a link.
+func TestCompactLeftoversLink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("links need rights on windows")
+	}
+	dir := t.TempDir()
+	real, link := filepath.Join(dir, "real.db"), filepath.Join(dir, "link.db")
+	db := openDB(t, real)
+	run(t, db, "CREATE TABLE t(x)")
+	db.Close()
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	left := filepath.Join(real+"-replica", "ltx", "compact")
+	if err := os.MkdirAll(left, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := newReplica(t, link, testConfig(t))
+	want, err := filepath.EvalSymlinks(filepath.Dir(left))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(r.c.Dir(), want) {
+		t.Skipf("the staging is %s: the link is not followed", r.c.Dir())
+	}
+	if _, err := os.Stat(left); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("%s is left (%v)", left, err)
 	}
 }

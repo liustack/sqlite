@@ -14,6 +14,7 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -65,15 +66,14 @@ func lastStaged(dir string) (hdr ltx.Header, post ltx.Checksum, ok bool, err err
 		return hdr, 0, false, err
 	}
 	defer f.Close()
-	dec := ltx.NewDecoder(bufio.NewReaderSize(f, 1<<20))
-	if err := dec.Verify(); err != nil {
+	hdr, trailer, err := Verify(f)
+	if err != nil {
 		return hdr, 0, false, fmt.Errorf("the staged file %s: %w", last, err)
 	}
-	hdr = dec.Header()
 	if hdr.MinTXID != min || hdr.MaxTXID != max {
 		return hdr, 0, false, fmt.Errorf("the staged file %s holds TXIDs %s to %s", last, hdr.MinTXID, hdr.MaxTXID)
 	}
-	return hdr, dec.Trailer().PostApplyChecksum, true, nil
+	return hdr, trailer.PostApplyChecksum, true, nil
 }
 
 // walPos is where in the WAL a staged file ends: generation salt, frame end.
@@ -282,6 +282,11 @@ func dropStaged(dir string, drop func(ltx.TXID) bool) error {
 // Open goes on from it. The folder must hold no LTX file. The folders it
 // makes are synced, up to the folder of path.
 func Stage(path, from string, min, max ltx.TXID) error {
+	unlock, err := lockStaging(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := StageDir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -298,7 +303,13 @@ func Stage(path, from string, min, max ltx.TXID) error {
 	if err := rename(from, filepath.Join(dir, ltx.FormatFilename(min, max))); err != nil {
 		return err
 	}
-	for d := dir; ; d = filepath.Dir(d) {
+	return syncUp(path)
+}
+
+// syncUp syncs the staging folder of path and each folder above it, up to
+// the folder of path, so that the folders made for staging stay.
+func syncUp(path string) error {
+	for d := StageDir(path); ; d = filepath.Dir(d) {
 		if err := syncDir(d); err != nil {
 			return err
 		}
@@ -306,4 +317,72 @@ func Stage(path, from string, min, max ltx.TXID) error {
 			return nil
 		}
 	}
+}
+
+// Verify reads the LTX file in r to its end and checks it. ltx's decoder
+// can panic on a damaged file (one cut less than 8 bytes after its pages
+// slices out of range): that is an error here, as the file may come from
+// the store.
+func Verify(r io.Reader) (h ltx.Header, t ltx.Trailer, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			h, t, err = ltx.Header{}, ltx.Trailer{}, fmt.Errorf("ltx: a damaged file: %v", p)
+		}
+	}()
+	dec := ltx.NewDecoder(bufio.NewReaderSize(r, 1<<20))
+	if err := dec.Verify(); err != nil {
+		return ltx.Header{}, ltx.Trailer{}, err
+	}
+	return dec.Header(), dec.Trailer(), nil
+}
+
+var errStagedElsewhere = errors.New("capture: another process replicates the database")
+
+// lockStaging takes the lock of the staging of the database path, which
+// one process holds while it stages: <path>-replica/lock. The lock goes
+// with the process.
+func lockStaging(path string) (unlock func(), err error) {
+	dir := path + "-replica"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := lockFile(f); err != nil {
+		f.Close()
+		if errors.Is(err, errStagedElsewhere) {
+			return nil, fmt.Errorf("%w: %s", err, path)
+		}
+		return nil, err
+	}
+	return func() { f.Close() }, nil
+}
+
+// CompactDir is the folder the replicator compacts in. Open removes it.
+func CompactDir(path string) string { return filepath.Join(path+"-replica", "ltx", "compact") }
+
+// CompactDir is the folder the replicator compacts in, for the database as
+// the capturer found it.
+func (c *Capturer) CompactDir() string { return CompactDir(c.path) }
+
+// dropCompactions removes what compactions killed on the way left for the
+// database path, also the compact-* folders of earlier versions.
+func dropCompactions(path string) error {
+	parent := filepath.Dir(CompactDir(path))
+	entries, err := os.ReadDir(parent)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if n := e.Name(); n == "compact" || strings.HasPrefix(n, "compact-") {
+			if err := os.RemoveAll(filepath.Join(parent, n)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

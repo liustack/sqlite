@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1477,7 +1478,12 @@ func TestReportUnlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer raw.Close()
-	if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)"); err != nil {
+	// No step in between, which would stage the first insert before the
+	// WAL starts over and need no full copy.
+	c.mu.Lock()
+	err = raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)")
+	c.mu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
@@ -1509,4 +1515,259 @@ func noted(c *Capturer, target error) int {
 		}
 	}
 	return n
+}
+
+// Verify gives an error, not a panic, for a staged file cut anywhere: ltx's
+// decoder slices what follows the pages without checking its length.
+func TestVerifyTruncated(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (randomblob(3000))")
+	step(t, c)
+	dir := StageDir(name)
+	ents, err := os.ReadDir(dir)
+	if err != nil || len(ents) == 0 {
+		t.Fatalf("no staged file (%v)", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, ents[len(ents)-1].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Verify(bytes.NewReader(b)); err != nil {
+		t.Fatal(err)
+	}
+	for n := range len(b) {
+		if _, _, err := Verify(bytes.NewReader(b[:n])); err == nil {
+			t.Fatalf("cut at %d of %d bytes: no error", n, len(b))
+		}
+	}
+}
+
+// The first Open makes the staging folder: before a staged file counts as
+// durable, every folder it made is synced, up to the database's.
+func TestOpenSyncsFolders(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	var mu sync.Mutex
+	synced := map[string]bool{}
+	syncDir = func(dir string) error {
+		mu.Lock()
+		synced[dir] = true
+		mu.Unlock()
+		return syncDirFS(dir)
+	}
+	t.Cleanup(func() { syncDir = syncDirFS })
+	c := open(t, name, testOptions(t))
+	mu.Lock()
+	defer mu.Unlock()
+	for d := StageDir(c.path); ; d = filepath.Dir(d) {
+		if !synced[d] {
+			t.Errorf("%s not synced", d)
+		}
+		if d == filepath.Dir(c.path) {
+			break
+		}
+	}
+}
+
+// busySync has a Sync wait for the driver's write lock, which a write
+// transaction holds, with CheckpointFrames frames in the WAL. It returns the
+// transaction and the result of that Sync.
+func busySync(t *testing.T) (*Capturer, *sql.Tx, chan error) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 4
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	// The writes do not checkpoint while the capturer is busy.
+	c.mu.Lock()
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (randomblob(9000))")
+	c.mu.Unlock()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tx.Rollback() })
+	if _, err := tx.Exec("INSERT INTO t VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	synced := make(chan error, 1)
+	go func() { synced <- c.Sync(ctx) }()
+	// Sync has the capturer once nothing else can take it.
+	for c.mu.TryLock() {
+		c.mu.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	return c, tx, synced
+}
+
+// Close does not wait for a Sync that waits for a write transaction.
+func TestCloseDuringSync(t *testing.T) {
+	c, _, synced := busySync(t)
+	wait := closeWait
+	closeWait = 50 * time.Millisecond
+	t.Cleanup(func() { closeWait = wait })
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close waits for the Sync")
+	}
+	if err := <-synced; err == nil {
+		t.Fatal("the Sync that Close stopped gave no error")
+	}
+}
+
+// A Sync waits for the capturer no longer than its context lets it.
+func TestSyncWaitsBounded(t *testing.T) {
+	c, _, _ := busySync(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- c.Sync(ctx) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Sync: %v, want context.DeadlineExceeded", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Sync waits past its deadline")
+	}
+}
+
+// Staging stopped at the limit stays stopped across Close and Open, also
+// when the database moved on from the staged files: Open stages no full
+// copy until what is staged is uploaded.
+func TestStagingLimitReopen(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	for range 50 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	db.Close()
+	st, err := os.Stat(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := testOptions(t)
+	opt.Limit = 64 << 10
+	staged := func() int64 {
+		entries, err := os.ReadDir(StageDir(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n int64
+		for _, e := range entries {
+			info, err := e.Info()
+			if err != nil {
+				t.Fatal(err)
+			}
+			n += info.Size()
+		}
+		return n
+	}
+	var c *Capturer
+	for i := range 5 {
+		c, err = Open(name, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The last full copy does not count: one more database.
+		if n := staged(); n > opt.Limit+2*st.Size()+16<<10 {
+			t.Fatalf("open %d: %d bytes staged, the limit is %d", i, n, opt.Limit)
+		}
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+		// The WAL starts over: the staged files cannot go on.
+		raw, err := csqlite.Open(name, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := raw.Exec("INSERT INTO t VALUES (randomblob(3000)); PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			t.Fatal(err)
+		}
+		raw.Close()
+	}
+	// Once all is uploaded, a full copy follows.
+	c = open(t, name, opt)
+	remote := t.TempDir()
+	uploadAll(t, c, remote)
+	step(t, c)
+	if c.FullCopies() == 0 {
+		t.Fatal("no full copy after the upload")
+	}
+	uploadAll(t, c, remote)
+	out, txid := rebuild(t, remote)
+	if txid != c.TXID() {
+		t.Fatalf("rebuilt TXID %s, staged %s", txid, c.TXID())
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range pages(t, name) {
+		if p != nil && !bytes.Equal(got[i*len(p):(i+1)*len(p)], p) {
+			t.Fatalf("page %d differs", i+1)
+		}
+	}
+}
+
+// Another process stages the database: Open fails, and touches nothing of
+// its staging.
+func TestOpenStagedElsewhere(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	db.Close()
+	unlock, err := lockStaging(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	snap := SnapshotDir(name)
+	if err := os.MkdirAll(snap, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Open(name, testOptions(t))
+	if err == nil {
+		c.Close()
+		t.Fatal("Open while another process stages")
+	}
+	t.Logf("Open: %v", err)
+	if _, err := os.Stat(snap); err != nil {
+		t.Fatalf("Open touched the staging of the other process: %v", err)
+	}
+	unlock()
+	c = open(t, name, testOptions(t))
+	c.Close()
+}
+
+// With Hold, the staging folder stays locked after Close until Unlock.
+func TestCloseHolds(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.Hold = true
+	c := open(t, name, opt)
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := Open(name, testOptions(t)); err == nil {
+		d.Close()
+		t.Fatal("Open while the staging folder is held")
+	} else if !errors.Is(err, errStagedElsewhere) {
+		t.Fatal(err)
+	}
+	c.Unlock()
+	c.Unlock()
+	c = open(t, name, testOptions(t))
+	c.Close()
 }

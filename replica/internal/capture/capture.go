@@ -83,11 +83,15 @@ type Options struct {
 	// that goroutine, nor wait for a write to the database: the caller of
 	// Close may hold the write lock.
 	OnError func(error)
-	// Start, if set, is called once Open has the database, before it
-	// resumes, with the staged files in TXID order (their headers and
-	// trailers, not checked). An error stops Open. A Restart drops the
-	// staged files and starts over from it.
+	// Start, if set, is called once Open has the database and the lock of
+	// its staging, before it resumes, with the staged files in TXID order
+	// (their headers and trailers, not checked). An error stops Open. A
+	// Restart drops the staged files and starts over from it.
 	Start func(staged []StagedFile) (*Restart, error)
+	// Hold keeps the staging folder locked after Close, until Unlock, so
+	// that the caller can upload what Close staged, and call Done, before
+	// another process stages the database.
+	Hold bool
 }
 
 // A StagedFile is a staged LTX file, of one TXID.
@@ -124,13 +128,14 @@ type Capturer struct {
 	mode   os.FileMode
 	conn   *csqlite.Conn
 	detach func()
+	unlock func()   // of lockStaging
 	wal    *os.File // the WAL, once it exists
 
 	ctx    context.Context // done once Close starts
 	cancel context.CancelFunc
 	done   chan struct{} // closed when the loop has stopped
 
-	mu sync.Mutex // one step at a time
+	mu lock // one step at a time
 	// What is staged: the database file and frames 1 to pos of the WAL
 	// generation gen, after change commits.
 	gen    [8]byte
@@ -154,7 +159,7 @@ type Capturer struct {
 	// copy waits until nothing staged is pending.
 	full bool
 
-	snapMu sync.Mutex    // one snapshot at a time
+	snapMu lock          // one snapshot at a time
 	snap   *csqlite.Conn // the connection snapshots read with, under mu
 	// later holds the errors of the checkpoints run for a writer of the
 	// driver (committed), which the next step of run reports.
@@ -183,7 +188,7 @@ func Open(name string, opt Options) (*Capturer, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), done: make(chan struct{}), staged: make(chan struct{}, 1)}
+	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), mu: newLock(), snapMu: newLock(), done: make(chan struct{}), staged: make(chan struct{}, 1)}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	// A write of the driver after Attach waits for the capturer to be open.
 	c.mu.Lock()
@@ -192,7 +197,7 @@ func Open(name string, opt Options) (*Capturer, error) {
 	c.later = nil
 	c.mu.Unlock()
 	if err != nil {
-		c.release()
+		c.release(false)
 		return nil, errors.Join(append([]error{err}, later...)...)
 	}
 	for _, e := range later {
@@ -211,6 +216,11 @@ func (c *Capturer) open() error {
 		return err
 	}
 	c.detach = detach
+	// One process stages the database: the others are refused before they
+	// touch its staging.
+	if c.unlock, err = lockStaging(c.path); err != nil {
+		return err
+	}
 	// The capturer never waits for a lock: what is busy is tried again at
 	// the next step.
 	if err := c.conn.BusyTimeout(0); err != nil {
@@ -244,12 +254,21 @@ func (c *Capturer) open() error {
 	if err := os.RemoveAll(SnapshotDir(c.path)); err != nil {
 		return err
 	}
+	// Nor is what a compaction killed on the way left, which may take the
+	// room staging needs.
+	if err := dropCompactions(c.path); err != nil {
+		return err
+	}
+	// Before anything is staged, for the limit.
+	if err := c.countPending(); err != nil {
+		return err
+	}
 	if err := c.start(); err != nil {
 		return err
 	}
 	// The last staged file may be from before a crash that left its name
-	// unsynced.
-	if err := syncDir(c.dir); err != nil {
+	// unsynced, and the folders may be new.
+	if err := syncUp(c.path); err != nil {
 		return err
 	}
 	c.setDurable(c.txid)
@@ -269,8 +288,9 @@ func pragma(c *csqlite.Conn, p string) (string, error) {
 	return s.ColumnText(0), nil
 }
 
-// release gives back what Open took.
-func (c *Capturer) release() {
+// release gives back what Open took, but the lock of the staging folder
+// when hold.
+func (c *Capturer) release(hold bool) {
 	if c.wal != nil {
 		c.wal.Close()
 	}
@@ -280,6 +300,10 @@ func (c *Capturer) release() {
 	}
 	if c.detach != nil {
 		c.detach()
+	}
+	if c.unlock != nil && !hold {
+		c.unlock()
+		c.unlock = nil
 	}
 }
 
@@ -304,6 +328,13 @@ func (c *Capturer) start() error {
 	}
 	if !ok {
 		return c.fullCopy(nil)
+	}
+	// Staging stopped at the limit before: it stays stopped, and the full
+	// copy follows the upload of what is staged.
+	if c.over() {
+		c.txid, c.post = last.MaxTXID, post
+		c.note(c.stop())
+		return nil
 	}
 	if resumed, err := c.resume(last, post); err != nil || resumed {
 		return err
@@ -349,10 +380,15 @@ func (c *Capturer) report(err error) {
 	}
 }
 
-// Sync stages what was committed up to now. ctx bounds the wait for the
-// driver's write lock, which a checkpoint takes.
+// Sync stages what was committed up to now. ctx bounds the waits for the
+// capturer and for the driver's write lock, which a checkpoint takes, and
+// so does Close.
 func (c *Capturer) Sync(ctx context.Context) error {
-	c.mu.Lock()
+	ctx, cancel := c.bind(ctx)
+	defer cancel()
+	if err := c.mu.LockCtx(ctx); err != nil {
+		return err
+	}
 	defer c.mu.Unlock()
 	if c.closed {
 		return errors.New("capture: closed")
@@ -364,6 +400,16 @@ func (c *Capturer) Sync(ctx context.Context) error {
 		return c.lost
 	}
 	return nil
+}
+
+// bind gives ctx, ended too when Close starts.
+func (c *Capturer) bind(ctx context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(c.ctx, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
+	}
 }
 
 // Close stages what is left, checkpoints and stops. When a write
@@ -404,7 +450,7 @@ func (c *Capturer) close() ([]error, error) {
 	if errors.Is(err, context.DeadlineExceeded) {
 		err = nil
 	}
-	c.release()
+	c.release(c.opt.Hold)
 	later := c.later
 	c.later = nil
 	return later, err
@@ -1195,4 +1241,15 @@ func (c *Capturer) Done(txid ltx.TXID) error {
 		}
 	}
 	return nil
+}
+
+// Unlock lets another process stage the database, after Close with
+// Options.Hold. It does nothing more when called again.
+func (c *Capturer) Unlock() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed && c.unlock != nil {
+		c.unlock()
+		c.unlock = nil
+	}
 }

@@ -23,6 +23,31 @@
 // within SyncInterval and uploaded from there. Writes never wait for S3.
 // The replica is laid out as Litestream lays it out, so `litestream
 // restore` reads it too.
+//
+// # One replicator per replica
+//
+// A replica must have one replicator writing to it. On one machine this is
+// enforced: New fails while another process replicates the database. Across
+// machines it is the program's job. S3 has no way to let only the owner of
+// a lease write, so no replicator can enforce it there, Litestream
+// included. What New and the uploads do find is a second replicator in
+// normal running and after an outage: they stop it with ErrConflict. In
+// some races they do not, such as when the old machine still runs while a
+// new one takes over. Two histories may then end up in the replica: a
+// restore checks every checksum, so it never builds a mix of the two, but
+// it may fail or bring back the old machine's history. When a database
+// moves to another machine, stop the old replicator before the new one
+// starts, with a lock or lease of the program's own, and set
+// Config.SingleWriter.
+//
+// # Restoring to a time
+//
+// RestoreOptions.At picks files by the time in their headers, which comes
+// from the clock of the machine that staged them. Restore checks the first
+// file it leaves out of each level and trusts the times of the rest, as
+// litestream restore does. If that clock went back, a restore to a time
+// may give a state a little before or after it. A restore to a TXID or to
+// the latest state does not use the times.
 package replica
 
 import (
@@ -88,6 +113,7 @@ type Config struct {
 
 	schedule         func(*schedule) // set by tests: changes the schedule
 	checkpointFrames uint32          // set by tests: capture.Options.CheckpointFrames
+	manual           bool            // set by tests: nothing runs in the background, only Sync and Close upload
 	// OnError, if set, gets the errors of the work done in the background.
 	// It is called with no lock of the replica held, from New, Close or a
 	// goroutine of the replica, and should return soon, as a log does. It
@@ -121,8 +147,11 @@ type Replica struct {
 	path   string // of the replica in the bucket
 	c      *capture.Capturer
 
+	// stop is done once Close starts. It ends run and the Syncs.
+	stop   context.Context
 	cancel context.CancelFunc
 	done   chan struct{} // closed when run returns
+	closed bool          // under busy: Close has uploaded, nothing more goes
 
 	// busy holds a value while the replicator works on the replica: one
 	// upload, compaction or deletion at a time.
@@ -132,6 +161,10 @@ type Replica struct {
 	// A snapshot taken and not uploaded yet, under busy.
 	snap     string
 	snapTXID ltx.TXID
+	// Under busy: the last TXID of a file of the replica this replicator
+	// knows of, and when it last saw that the replica ends there.
+	top     ltx.TXID
+	checked time.Time
 
 	mu     sync.Mutex
 	status Status
@@ -145,7 +178,8 @@ const closeUpload = 10 * time.Second
 // second write of a key (unless Config.SingleWriter), reads where the
 // replica ends, and goes on from there when the staged files do, else fails
 // with ErrDiverged (unless Config.FreshStart). An empty replica starts with
-// a full copy. ctx bounds the requests New makes.
+// a full copy. ctx bounds the requests New makes. One process replicates a
+// database at a time: New fails while another one does.
 func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if cfg.SyncInterval <= 0 {
 		cfg.SyncInterval = time.Second
@@ -178,12 +212,14 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		cfg.schedule(&r.sched)
 	}
 	r.status.Uploaded = uint64(end.txid)
+	r.top, r.checked = end.txid, r.sched.now()
 	r.c, err = capture.Open(name, capture.Options{
 		Interval:         cfg.SyncInterval,
 		CheckpointFrames: cfg.checkpointFrames,
 		Limit:            cfg.StagingLimit,
 		Uploaded:         end.txid,
 		OnError:          r.report,
+		Hold:             true,
 		Start: func(staged []capture.StagedFile) (*capture.Restart, error) {
 			return startFrom(end, staged, cfg.FreshStart)
 		},
@@ -191,9 +227,8 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if err != nil {
 		return nil, err
 	}
-	runCtx, cancel := context.WithCancel(context.Background())
-	r.cancel = cancel
-	go r.run(runCtx)
+	r.stop, r.cancel = context.WithCancel(context.Background())
+	go r.run(r.stop)
 	return r, nil
 }
 
@@ -261,8 +296,11 @@ func (r *Replica) Status() Status {
 
 // Sync stages what was committed up to now and uploads it. When staging
 // stopped at StagingLimit, it uploads what is staged first, so that staging
-// goes on.
+// goes on. Close ends it.
 func (r *Replica) Sync(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(r.stop, cancel)()
 	err := r.c.Sync(ctx)
 	if errors.Is(err, ErrStagingFull) {
 		if err := r.upload(ctx); err != nil {
@@ -276,17 +314,29 @@ func (r *Replica) Sync(ctx context.Context) error {
 	return r.upload(ctx)
 }
 
-// Close stages what is left, checkpoints, and uploads what is staged,
-// trying for 10 seconds, waiting for a Sync that uploads too. What it could
-// not upload stays staged, for the next New.
+// Close ends the Syncs under way, stages what is left, checkpoints, and
+// uploads what is staged, trying for 10 seconds. What it could not upload
+// stays staged, for the next New. Sync fails after Close.
 func (r *Replica) Close() error {
 	r.cancel()
 	<-r.done
 	err := r.c.Close()
+	// The Syncs let go of busy soon, their requests ended. Another process
+	// may stage the database once this one uploads no more.
+	r.busy <- struct{}{}
+	defer func() { <-r.busy }()
+	if r.closed {
+		return err
+	}
+	r.closed = true
+	defer r.c.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), closeUpload)
 	defer cancel()
-	return errors.Join(err, r.upload(ctx))
+	return errors.Join(err, r.uploadHeld(ctx))
 }
+
+// errClosed is the error of an upload after Close.
+var errClosed = errors.New("replica: closed")
 
 // client is the client of the store of cfg.URL and the path of the replica
 // in the bucket.

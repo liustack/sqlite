@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,7 +35,9 @@ type RestoreOptions struct {
 	// At, if set, restores the database as it was before that time: the
 	// files of the replica made before it, as litestream restore does. A
 	// file is made when its commits are staged, within SyncInterval of
-	// them, and may hold several commits.
+	// them, and may hold several commits. Its time is the one in its header,
+	// from the clock of the replicator: Restore checks the first file it
+	// leaves out of each level and trusts the times of the files after it.
 	At time.Time
 }
 
@@ -60,11 +64,6 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 	if err != nil {
 		return 0, err
 	}
-	files, err := restorePlan(ctx, client, path, ltx.TXID(opt.TXID), opt.At)
-	if err != nil {
-		return 0, err
-	}
-
 	var id [8]byte
 	rand.Read(id[:])
 	tmp := name + "." + hex.EncodeToString(id[:]) + ".restoring"
@@ -81,11 +80,17 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 	defer os.Remove(last.Name())
 	defer last.Close()
 
-	a := applier{db: db, last: last}
-	for _, f := range files {
-		if err := a.apply(ctx, client, f, opt.At); err != nil {
-			return 0, err
+	// Retention may delete a file planned meanwhile: the restore plans again,
+	// to the same TXID or time, from the files left.
+	var a *applier
+	for try := 1; ; try++ {
+		a, err = restoreFiles(ctx, client, path, opt, db, last)
+		if err == nil || !errors.Is(err, s3.ErrNotFound) || try == 3 {
+			break
 		}
+	}
+	if err != nil {
+		return 0, err
 	}
 	if err := db.Sync(); err != nil {
 		return 0, err
@@ -113,6 +118,25 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 		return 0, err
 	}
 	return uint64(a.txid), nil
+}
+
+// restoreFiles plans the restore opt asks for and applies the files to db,
+// from empty.
+func restoreFiles(ctx context.Context, c *s3.Client, path string, opt RestoreOptions, db, last *os.File) (*applier, error) {
+	files, err := restorePlan(ctx, c, path, ltx.TXID(opt.TXID), opt.At)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Truncate(0); err != nil {
+		return nil, err
+	}
+	a := &applier{db: db, last: last}
+	for _, f := range files {
+		if err := a.apply(ctx, c, f, opt.At); err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
 }
 
 // restoreTarget checks that nothing of a database is at name: the file,
@@ -215,6 +239,31 @@ func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID, 
 		}
 		plan, end = append(plan, *f), f.max
 	}
+	// The times of the files left out come from their headers, unchecked:
+	// the one of each level that ends first is checked whole, so that a
+	// damaged time does not hide a state. Along a level the times grow
+	// with the TXIDs, so the files of the level that end after it are after
+	// at too, as long as the replicator's clock does not go back. Across
+	// levels they need not: a snapshot reads its time after its TXID. The
+	// times of the other files left out are trusted, as litestream restore
+	// trusts them.
+	if !at.IsZero() {
+		first := map[int]*remoteFile{}
+		for i := range files {
+			f := &files[i]
+			if f.min > end+1 || f.max <= end || txid != 0 && f.max > txid {
+				continue
+			}
+			if g := first[f.level]; g == nil || f.max < g.max {
+				first[f.level] = f
+			}
+		}
+		for _, level := range slices.Sorted(maps.Keys(first)) {
+			if err := madeAfter(ctx, c, *first[level], at); err != nil {
+				return nil, err
+			}
+		}
+	}
 	switch {
 	case end == 0 && !at.IsZero():
 		return nil, fmt.Errorf("replica: the replica has no state from before %s", at.Format(time.RFC3339Nano))
@@ -238,11 +287,35 @@ func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID, 
 		if ok {
 			return nil, fmt.Errorf("replica: %s follows TXID %s: the replica is not whole", gap.key, end)
 		}
+		// As above: its time hides the gap only when it is checked.
+		if err := madeAfter(ctx, c, *gap, at); err != nil {
+			return nil, err
+		}
 	}
 	if end == 0 {
 		return nil, errors.New("replica: the replica is not whole: it has no snapshot and no file from TXID 1")
 	}
 	return plan, nil
+}
+
+// madeAfter checks the LTX file f whole, and that it was made at or after
+// at, as its header read alone said.
+func madeAfter(ctx context.Context, c *s3.Client, f remoteFile, at time.Time) error {
+	body, err := c.Get(ctx, f.key, 0, -1)
+	if err != nil {
+		return err
+	}
+	defer body.Close()
+	h, _, err := capture.Verify(body)
+	switch {
+	case err != nil:
+		return fmt.Errorf("replica: %s: %w", f.key, err)
+	case h.MinTXID != f.min || h.MaxTXID != f.max:
+		return fmt.Errorf("replica: %s holds TXIDs %s to %s, not those of its name", f.key, h.MinTXID, h.MaxTXID)
+	case time.UnixMilli(h.Timestamp).Before(at):
+		return fmt.Errorf("replica: %s changed during the restore", f.key)
+	}
+	return nil
 }
 
 // fileTime is the time in the header of the LTX file key.
@@ -302,11 +375,10 @@ func (a *applier) apply(ctx context.Context, c *s3.Client, f remoteFile, at time
 	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	dec := ltx.NewDecoder(bufio.NewReaderSize(a.last, 1<<20))
-	if err := dec.Verify(); err != nil {
+	h, _, err := capture.Verify(a.last)
+	if err != nil {
 		return fail(err)
 	}
-	h := dec.Header()
 	switch {
 	case h.MinTXID != f.min || h.MaxTXID != f.max:
 		return fail(fmt.Errorf("holds TXIDs %s to %s, not those of its name", h.MinTXID, h.MaxTXID))

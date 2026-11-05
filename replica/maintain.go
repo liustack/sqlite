@@ -35,16 +35,23 @@ type schedule struct {
 	// keepProbe is how long the objects of a probe that did not finish
 	// stay.
 	keepProbe time.Duration
+	// recheck is how old the last check that the replica ends where this
+	// replicator uploaded last may be before an upload. keepL0 is longer
+	// than it and the 15 minutes a signed request is good for, so that a
+	// replicator that was cut off for a while most often finds the level 0
+	// files of another. It is a check, not a fence (see recheck).
+	recheck time.Duration
 }
 
 func defaultSchedule(retention time.Duration) schedule {
 	return schedule{
 		now:       time.Now,
 		levels:    []time.Duration{time.Minute, time.Hour},
-		keepL0:    5 * time.Minute,
+		keepL0:    30 * time.Minute,
 		snapshots: min(retention, 24*time.Hour),
 		retention: retention,
 		keepProbe: time.Hour,
+		recheck:   5 * time.Minute,
 	}
 }
 
