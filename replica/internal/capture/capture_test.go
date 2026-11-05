@@ -7,6 +7,7 @@ package capture
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"io"
@@ -60,7 +61,7 @@ func run(t *testing.T, db *sql.DB, queries ...string) {
 
 func step(t *testing.T, c *Capturer) {
 	t.Helper()
-	if err := c.Sync(); err != nil {
+	if err := c.Sync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -508,4 +509,105 @@ func TestOtherProcess(t *testing.T) {
 	step(t, c)
 	sameAs(t, c, name)
 	t.Logf("%d full copies", c.FullCopies())
+}
+
+// A staged file whose folder fails to sync is in place: the next file has
+// the next TXID, and no checkpoint runs until the folder syncs.
+func TestSyncDirFails(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 1
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
+	if err := c.Sync(context.Background()); !errors.Is(err, fail) {
+		t.Fatalf("Sync: %v", err)
+	}
+	if c.TXID() != 2 {
+		t.Fatalf("TXID %s after a staged file whose folder did not sync", c.TXID())
+	}
+	if st, err := os.Stat(name + "-wal"); err != nil || st.Size() == 0 {
+		t.Fatalf("the WAL was checkpointed (%v)", err)
+	}
+	syncDir = syncDirFS
+	run(t, db, "INSERT INTO t VALUES (2)")
+	step(t, c)
+	if c.TXID() != 3 {
+		t.Fatalf("TXID %s", c.TXID())
+	}
+	if st, err := os.Stat(name + "-wal"); err != nil || st.Size() != 0 {
+		t.Fatalf("the WAL was not checkpointed (%v)", err)
+	}
+	sameAs(t, c, name)
+}
+
+// A checkpoint that finds the WAL lost stages a full copy before it
+// checkpoints. The connection that writes and checkpoints behind the
+// capturer's back is not the driver's, so nothing guards it.
+func TestCheckpointLost(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	raw, err := csqlite.Open(c.path, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)"); err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	err = c.checkpoint(context.Background())
+	c.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.FullCopies() != 1 {
+		t.Fatalf("%d full copies", c.FullCopies())
+	}
+	if st, err := os.Stat(name + "-wal"); err != nil || st.Size() != 0 {
+		t.Fatalf("the WAL was not checkpointed (%v)", err)
+	}
+	sameAs(t, c, name)
+}
+
+// Close does not wait long for a write transaction: it leaves the WAL as
+// it is, staged.
+func TestCloseBusy(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c, err := Open(name, testOptions(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO t VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	wait := closeWait
+	closeWait = 50 * time.Millisecond
+	t.Cleanup(func() { closeWait = wait })
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		tx.Rollback()
+		t.Fatal("Close waits for the write transaction")
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }

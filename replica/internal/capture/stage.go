@@ -94,14 +94,16 @@ func setWALPos(h *ltx.Header, salt [8]byte, from, to uint32) {
 
 // stageFile writes the LTX file of header h into dir: pages calls put for
 // each page in order and returns the post-apply checksum. The file is
-// written to a temporary name, synced, renamed and its folder synced, then
-// given the time of h, which Litestream reads as the time of the file.
-func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(pgno uint32, data []byte) error) (ltx.Checksum, error)) error {
+// written to a temporary name, synced, given the time of h (which Litestream
+// reads as the time of the file), renamed and its folder synced. placed is
+// true once it has its name, even when the folder then fails to sync: the
+// TXID is taken, and another file must not get it.
+func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(pgno uint32, data []byte) error) (ltx.Checksum, error)) (placed bool, err error) {
 	name := filepath.Join(dir, ltx.FormatFilename(h.MinTXID, h.MaxTXID))
 	tmp := name + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
-		return err
+		return false, err
 	}
 	err = func() error {
 		w := bufio.NewWriterSize(f, 1<<20)
@@ -131,22 +133,25 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 		err = cerr
 	}
 	if err == nil {
+		t := time.UnixMilli(h.Timestamp)
+		err = os.Chtimes(tmp, t, t)
+	}
+	if err == nil {
 		err = os.Rename(tmp, name)
 	}
 	if err != nil {
 		os.Remove(tmp)
-		return err
+		return false, err
 	}
-	if err := syncDir(dir); err != nil {
-		return err
-	}
-	t := time.UnixMilli(h.Timestamp)
-	return os.Chtimes(name, t, t)
+	return true, syncDir(dir)
 }
 
-// syncDir makes the names in dir durable. Windows has no way to, and needs
-// none: NTFS logs its metadata.
-func syncDir(dir string) error {
+// syncDir makes the names in dir durable. Tests make it fail.
+var syncDir = syncDirFS
+
+// syncDirFS is syncDir. Windows has no way to, and needs none: NTFS logs its
+// metadata.
+func syncDirFS(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}

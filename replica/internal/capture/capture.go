@@ -71,6 +71,10 @@ type Options struct {
 // the database is not where the staged files end.
 var ErrFullCopy = errors.New("capture: staged a full copy of the database")
 
+// closeWait is how long Close waits for the driver's write lock to
+// checkpoint. Tests shorten it.
+var closeWait = 5 * time.Second
+
 // A Capturer stages the changes of one database file.
 type Capturer struct {
 	opt    Options
@@ -238,18 +242,21 @@ func (c *Capturer) report(err error) {
 	}
 }
 
-// Sync stages what was committed up to now.
-func (c *Capturer) Sync() error {
+// Sync stages what was committed up to now. ctx bounds the wait for the
+// driver's write lock, which a checkpoint takes.
+func (c *Capturer) Sync(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
 		return errors.New("capture: closed")
 	}
-	return c.step(context.Background())
+	return c.step(ctx)
 }
 
-// Close stages what is left, checkpoints and stops. Connections the driver
-// opens to the database after it are as before replication.
+// Close stages what is left, checkpoints and stops. When a write
+// transaction keeps the driver's write lock longer than closeWait, the WAL is
+// left as it is, staged, for the next Open. Connections the driver opens to
+// the database after Close are as before replication.
 func (c *Capturer) Close() error {
 	c.cancel()
 	<-c.done
@@ -259,9 +266,14 @@ func (c *Capturer) Close() error {
 		return nil
 	}
 	c.closed = true
-	err := c.step(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
+	defer cancel()
+	err := c.step(ctx)
 	if err == nil {
-		err = c.checkpoint(context.Background())
+		err = c.checkpoint(ctx)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		err = nil
 	}
 	c.release()
 	return err
@@ -311,7 +323,16 @@ func (c *Capturer) checkpoint(ctx context.Context) error {
 		return err
 	}
 	defer unlock()
-	if _, err := c.capture(); err != nil || c.lost != nil {
+	if _, err := c.capture(); err != nil {
+		return err
+	}
+	if c.lost != nil {
+		if err := c.fullCopy(c.lost); err != nil {
+			return err
+		}
+	}
+	// The names of the staged files are kept before the frames go.
+	if err := syncDir(c.dir); err != nil {
 		return err
 	}
 	// TRUNCATE starts the WAL over, empty. With readers it cannot: the
@@ -448,21 +469,22 @@ func (c *Capturer) capture() (uint32, error) {
 		c.lose(fmt.Errorf("%d commits since the last step, %d of them in the WAL", commits, n))
 		return 0, nil
 	}
-	if err := c.stageFrames(wal, wh, last, h.Pages, h.Salt, from, h.MaxFrame); err != nil {
+	if err := c.stageFrames(wal, wh, last, h, from); err != nil {
 		if errors.Is(err, errFrame) {
 			c.lose(err)
 			return 0, nil
 		}
 		return 0, err
 	}
-	c.gen, c.pos, c.cksum, c.change = h.Salt, h.MaxFrame, h.Checksum, h.Change
 	return h.MaxFrame, nil
 }
 
 // stageFrames stages as the next TXID the pages of last, the latest version
-// of each page in frames from+1 to to of the WAL generation salt, for a
-// database of size pages. It updates the checksums.
-func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]version, size uint32, salt [8]byte, from, to uint32) error {
+// of each page in frames from+1 to at.MaxFrame of the WAL whose header SQLite
+// reads is at. Once the file is placed, it moves the checksums and the WAL
+// position there, even if it then returns an error.
+func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]version, at csqlite.WALHeader, from uint32) error {
+	size := at.Pages
 	old := uint32(len(c.sums))
 	lock := ltx.LockPgno(uint32(c.pageSize))
 	for p := old + 1; p <= size; p++ {
@@ -478,13 +500,13 @@ func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]versi
 	}
 	slices.Sort(pgnos)
 	h := c.header(size)
-	setWALPos(&h, salt, from, to)
+	setWALPos(&h, at.Salt, from, at.MaxFrame)
 	sums := make([]ltx.Checksum, len(pgnos))
 	post := c.post
 	for p := size + 1; p <= old; p++ {
 		post ^= c.sums[p-1] // the database got shorter
 	}
-	err := stageFile(c.dir, c.mode, h, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
+	placed, err := stageFile(c.dir, c.mode, h, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
 		for i, p := range pgnos {
 			v := last[p]
 			data, err := readFrame(wal, wh, v.n, v.prev, c.frame)
@@ -503,7 +525,7 @@ func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]versi
 		post |= ltx.ChecksumFlag
 		return post, nil
 	})
-	if err != nil {
+	if !placed {
 		return err
 	}
 	if size < old {
@@ -515,7 +537,8 @@ func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]versi
 		c.sums[p-1] = sums[i]
 	}
 	c.txid, c.post = h.MaxTXID, post
-	return nil
+	c.gen, c.pos, c.cksum, c.change = at.Salt, at.MaxFrame, at.Checksum, at.Change
+	return err
 }
 
 // header is the header of the next staged file, for a database of size
@@ -556,7 +579,7 @@ func (c *Capturer) fullCopy(why error) error {
 	setWALPos(&hdr, h.Salt, h.MaxFrame, h.MaxFrame)
 	page := make([]byte, c.pageSize)
 	var post ltx.Checksum
-	err = stageFile(c.dir, c.mode, hdr, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
+	placed, err := stageFile(c.dir, c.mode, hdr, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
 		for p := uint32(1); p <= size; p++ {
 			if p == lock {
 				continue
@@ -573,7 +596,7 @@ func (c *Capturer) fullCopy(why error) error {
 		post |= ltx.ChecksumFlag
 		return post, nil
 	})
-	if err != nil {
+	if !placed {
 		return err
 	}
 	c.txid, c.post, c.sums = hdr.MaxTXID, post, sums
@@ -583,7 +606,7 @@ func (c *Capturer) fullCopy(why error) error {
 		c.fullCopies++
 		c.report(fmt.Errorf("%w (TXID %s): %w", ErrFullCopy, hdr.MaxTXID, why))
 	}
-	return nil
+	return err
 }
 
 // resume goes on from the last staged file, last, which leaves the database
@@ -708,7 +731,7 @@ func (c *Capturer) resume(last ltx.Header, post ltx.Checksum) (bool, error) {
 	}
 	c.txid, c.post, c.sums = last.MaxTXID, post, thenSums
 	if len(since) > 0 {
-		if err := c.stageFrames(wal, wh, since, size, h.Salt, from, h.MaxFrame); err != nil {
+		if err := c.stageFrames(wal, wh, since, h, from); err != nil {
 			return false, err
 		}
 		if c.post != now {

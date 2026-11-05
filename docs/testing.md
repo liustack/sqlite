@@ -33,7 +33,7 @@ The tests start it on a free port and stop it. `S3_TEST_ENDPOINT` (with `S3_TEST
 
 ## Capture
 
-The tests of `replica/internal/capture` check that the staged LTX files rebuild the database. `TestKill` kills a process that writes from six goroutines and stages, twelve times: after each kill the staged files must rebuild a whole database with every transaction entirely there or not at all, nothing of a transaction rolled back after it spilled to the WAL, and the commits made 300 ms before the kill, and the next process must go on from them without a full copy. With `SQLITE3` set, `TestOtherProcess` has the sqlite3 shell write and checkpoint the database: what it appends is staged as usual, and a checkpoint it runs must lead to a full copy. `-short` skips `TestKill`.
+The tests of `replica/internal/capture` check that the staged LTX files rebuild the database. `TestKill` kills a process that writes from six goroutines and stages, twelve times: after each kill the staged files must rebuild a whole database with every transaction entirely there or not at all, nothing of a transaction rolled back after it spilled to the WAL, and the commits made 300 ms before the kill, and the next process must go on from them without a full copy. With `SQLITE3` set, `TestOtherProcess` has the sqlite3 shell write and checkpoint the database: what it appends is staged as usual, and a checkpoint it runs must lead to a full copy. `TestCheckpointLost` does the same from a connection of the test that is not the driver's, so it runs without the shell. `-short` skips `TestKill`.
 
 ## The generated engine
 
