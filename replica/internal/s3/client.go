@@ -27,7 +27,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -60,9 +59,6 @@ type Client struct {
 	now          func() time.Time
 	partSize     int64 // the size of a part, and the largest object sent in one PUT
 	listPage     int   // max-keys of a LIST, 0 for the store's own (1000)
-	// The credentials of the last request, which errorOf takes out of what
-	// the store answers.
-	seen *atomic.Pointer[Credentials]
 }
 
 // New checks cfg and makes a client. It makes no request.
@@ -110,7 +106,6 @@ func New(cfg Config) (*Client, error) {
 		creds:    cfg.Credentials,
 		now:      time.Now,
 		partSize: 64 << 20,
-		seen:     new(atomic.Pointer[Credentials]),
 		http: &http.Client{
 			Transport: t,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -269,9 +264,8 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	if err != nil {
 		return nil, false, fmt.Errorf("s3: %s %s: credentials: %w", r.op, r.key, err)
 	}
-	if p := c.seen.Load(); p == nil || *p != cr {
-		c.seen.Store(&cr)
-	}
+	// errorOf takes them out of what the store answers.
+	req = req.WithContext(context.WithValue(req.Context(), signedWith{}, cr))
 	sign(req, cr, c.region, "s3", c.now(), hash)
 	resp, err = c.http.Do(req)
 	if err != nil {
@@ -283,6 +277,10 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	}
 	return resp, reused, nil
 }
+
+// signedWith is the key of the credentials a request is signed with, in its
+// context.
+type signedWith struct{}
 
 // errorOf reads the error the store answered. body is what was read of it
 // already, nil if nothing was. A store may put headers of the request in
@@ -301,8 +299,8 @@ func (c *Client) errorOf(resp *http.Response, op, key string, body []byte) *Erro
 	if e.RequestID == "" {
 		e.RequestID = resp.Header.Get("X-Amz-Request-Id")
 	}
-	if p := c.seen.Load(); p != nil {
-		for _, s := range []string{p.SecretAccessKey, p.SessionToken} {
+	if cr, ok := resp.Request.Context().Value(signedWith{}).(Credentials); ok {
+		for _, s := range []string{cr.SecretAccessKey, cr.SessionToken} {
 			if s != "" {
 				e.Message = strings.ReplaceAll(e.Message, s, "<hidden>")
 			}

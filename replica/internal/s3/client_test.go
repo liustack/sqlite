@@ -395,3 +395,40 @@ func TestErrorScrubsToken(t *testing.T) {
 		}
 	}
 }
+
+type rotating struct{ n atomic.Int64 }
+
+func (r *rotating) Credentials(context.Context) (Credentials, error) {
+	n := r.n.Add(1)
+	return Credentials{AccessKeyID: "AKID", SecretAccessKey: fmt.Sprintf("SECRET-%d", n), SessionToken: fmt.Sprintf("session-token-%d", n)}, nil
+}
+
+// The credentials change while a request waits for its answer: its error
+// still has the token it was signed with taken out.
+func TestErrorScrubsRotatedToken(t *testing.T) {
+	var c *Client
+	var first atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		io.Copy(io.Discard, req.Body)
+		if first.CompareAndSwap(false, true) {
+			c.Head(req.Context(), "other") // signed with the next credentials
+		}
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><Error><Code>InvalidToken</Code><Message>bad token `+
+			req.Header.Get("X-Amz-Security-Token")+`</Message></Error>`)
+	}))
+	defer srv.Close()
+	var err error
+	c, err = New(Config{Endpoint: srv.URL, Region: "us-east-1", Bucket: "bkt", Credentials: &rotating{}, AllowHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("data")
+	err = c.Put(context.Background(), "k", bytes.NewReader(body), int64(len(body)), PutOptions{})
+	if err == nil || !strings.Contains(err.Error(), "bad token") {
+		t.Fatal(err)
+	}
+	if strings.Contains(err.Error(), "session-token-") {
+		t.Fatalf("the error has the token: %v", err)
+	}
+}
