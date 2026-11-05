@@ -1478,7 +1478,12 @@ func TestReportUnlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer raw.Close()
-	if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)"); err != nil {
+	// No step in between, which would stage the first insert before the
+	// WAL starts over and need no full copy.
+	c.mu.Lock()
+	err = raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)")
+	c.mu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
