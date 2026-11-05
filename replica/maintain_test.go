@@ -111,16 +111,28 @@ func TestRetention(t *testing.T) {
 				level0++
 			}
 		}
-		if level0 > 2 {
+		// The clock moves 20 minutes a pass and level 0 files stay 30 minutes
+		// after a level 1 file holds them: those of the pass before stay, with
+		// the last one.
+		if level0 > 3 {
 			t.Fatalf("pass %d: %d files at level 0", i, level0)
 		}
 		if len(snaps) > 3 {
 			t.Fatalf("pass %d: %d snapshots, with a retention of 3 hours and a snapshot each 3 hours", i, len(snaps))
 		}
 		dropped = len(seen) - len(snaps)
-		from := ltx.TXID(1)
+		// The oldest kept point: the oldest snapshot, else the first end of a
+		// file. Level 0 files go once a level 1 file held them 30 minutes, so
+		// the ends inside it go with them.
+		var from ltx.TXID
 		if len(snaps) > 0 {
 			from = snaps[0].max
+		} else {
+			for end := range ends {
+				if from == 0 || end < from {
+					from = end
+				}
+			}
 		}
 		checked := 0
 		for txid, want := range dumps {
@@ -227,6 +239,22 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 	q.Set("endpoint", srv.URL)
 	u.RawQuery = q.Encode()
 	cfg.URL = u.String()
+	// The requests are signed for the proxy's host: a store that checks the
+	// host a request was signed for, as R2 and AWS do, refuses them.
+	c, path, err := cfg.client()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, err := range c.List(context.Background(), path+"/", "") {
+		var e *s3.Error
+		if errors.As(err, &e) && e.StatusCode == http.StatusForbidden {
+			t.Skipf("goes through a proxy, which this store refuses: %v", err)
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		break
+	}
+	cnt.n.Store(0)
 	return cfg, cnt
 }
 

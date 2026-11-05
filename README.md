@@ -109,6 +109,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 - **Many writers stop waiting on each other.** When goroutines write at the same time, the driver runs their autocommit `INSERT`, `UPDATE` and `DELETE` statements as one transaction and commits once. Each call still gets its own error, `LastInsertId` and `RowsAffected`, and returns only after the commit, so nothing is less durable. Transactions you open yourself are never merged. [How it works](docs/architecture.md#group-commit)
 - **Writers queue instead of failing with `database is locked`.** Inside the driver one connection of your program writes a file at a time, and the others queue for it, up to `busy_timeout`, instead of sleeping in SQLite's busy handler. A transaction that reads first and writes later can still fail when another wrote in between, so start such transactions with `_txlock=immediate`. Other processes still meet SQLite's own locks.
 - **Reads cost less.** A call into SQLite is a plain Go call, and on Go 1.27 scanning a number into your variable allocates nothing (a string costs one allocation, its own).
+- **Losing the machine no longer means losing the database.** `replica.New` copies every commit to S3, R2 or MinIO about a second later, from inside your program, with no Litestream process beside it. `replica.Restore` brings it back on another machine, checked file by file, and `litestream restore` reads the same copy. [How it works](docs/replication.md)
 
 ## Why you can trust it
 
@@ -131,6 +132,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 | :-- | :-- |
 | [Benchmarks](docs/benchmarks.md) | You want the full numbers, or to run them on your machine |
 | [Architecture](docs/architecture.md) | You want to know how C becomes Go assembly, or how group commit works |
+| [Replication](docs/replication.md) | You want a copy of the database in S3, R2 or MinIO, or to restore one |
 | [Upstream](docs/upstream.md) | You want to know which SQLite it is, or how it moves to a new one |
 | [Testing](docs/testing.md), [Commits](docs/commit.md) | You are about to change the code |
 

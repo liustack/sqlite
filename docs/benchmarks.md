@@ -1,5 +1,5 @@
 ---
-summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, and how the numbers were taken'
+summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, what replication costs, and how the numbers were taken'
 read_when:
   - Asked how fast the driver is, or how it compares with other drivers
   - Changing something on the path of a query or a commit, to measure it again
@@ -216,6 +216,36 @@ Allocations per op, lower is better:
 | ReadWrite | **14** | 19 | 31 | 19 |
 
 <!-- /bench:darwin-arm64 -->
+
+## Replication
+
+[Replication](replication.md) copies each commit inside the program, so it costs CPU in the program's process. `BenchmarkGroupCommit` in `replica` inserts one row per call from 8 or 64 goroutines at once (WAL, `synchronous=NORMAL`), with replication off and on. The store is a MinIO on two other threads of the same machine, so that its work does not fall on the benchmark's, as a store on another machine's would not.
+
+Commit `def7170`, Go 1.27.2, the linux/amd64 VM above, Linux 7.3.0-1003-gcp. 6 runs each, compared with benchstat (`~` is no difference it can tell from noise). Load average 1.12 before and 1.92 after. The raw output is in [bench/published/replica/](../bench/published/replica/).
+
+One thread (`GOMAXPROCS=1`, cores 0 and 4, MinIO on 3 and 7):
+
+```
+              replica off    replica on
+g=8           18.72µ ± 2%    19.90µ ± 2%   +6.31% (p=0.002 n=6)
+g=64          17.59µ ± 3%    19.59µ ± 1%  +11.38% (p=0.002 n=6)
+geomean       18.14µ         19.74µ        +8.82%
+```
+
+Six threads (`GOMAXPROCS=6`, MinIO on the other two):
+
+```
+              replica off    replica on
+g=8            9.810µ ±  2%  10.893µ ± 9%  +11.04% (p=0.002 n=6)
+g=64           3.577µ ± 20%   3.921µ ± 7%        ~ (p=0.065 n=6)
+geomean        5.923µ         6.535µ       +10.33%
+```
+
+So an insert costs about 6 to 11% more with replication on. At 64 writers on six threads one slow run of the six without replication left the difference inside the noise. Run it with a MinIO binary, pinned away from the benchmark:
+
+```sh
+MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -count 6
+```
 
 ## What the numbers say
 

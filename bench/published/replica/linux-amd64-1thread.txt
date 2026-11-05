@@ -1,0 +1,35 @@
+== start Thu Nov  5 22:20:31 UTC 2026
+ 22:20:31 up 19 days,  7:01, 13 users,  load average: 1.12, 1.29, 1.28
+== end pgrep
+goos: linux
+goarch: amd64
+pkg: github.com/liustack/sqlite/replica
+cpu: AMD EPYC 7B13
+BenchmarkGroupCommit/replica=false/g=8         	  187872	     18578 ns/op
+BenchmarkGroupCommit/replica=false/g=8         	  190527	     18748 ns/op
+BenchmarkGroupCommit/replica=false/g=8         	  188046	     18724 ns/op
+BenchmarkGroupCommit/replica=false/g=8         	  190041	     18708 ns/op
+BenchmarkGroupCommit/replica=false/g=8         	  191862	     18650 ns/op
+BenchmarkGroupCommit/replica=false/g=8         	  191961	     19059 ns/op
+BenchmarkGroupCommit/replica=false/g=64        	  182846	     17537 ns/op
+BenchmarkGroupCommit/replica=false/g=64        	  191608	     17609 ns/op
+BenchmarkGroupCommit/replica=false/g=64        	  191032	     17502 ns/op
+BenchmarkGroupCommit/replica=false/g=64        	  195574	     18064 ns/op
+BenchmarkGroupCommit/replica=false/g=64        	  186843	     17588 ns/op
+BenchmarkGroupCommit/replica=false/g=64        	  189949	     17584 ns/op
+BenchmarkGroupCommit/replica=true/g=8          	  182289	     19886 ns/op
+BenchmarkGroupCommit/replica=true/g=8          	  183008	     19980 ns/op
+BenchmarkGroupCommit/replica=true/g=8          	  184480	     19523 ns/op
+BenchmarkGroupCommit/replica=true/g=8          	  183915	     19764 ns/op
+BenchmarkGroupCommit/replica=true/g=8          	  180282	     19908 ns/op
+BenchmarkGroupCommit/replica=true/g=8          	  171781	     19988 ns/op
+BenchmarkGroupCommit/replica=true/g=64         	  170010	     19467 ns/op
+BenchmarkGroupCommit/replica=true/g=64         	  172284	     19543 ns/op
+BenchmarkGroupCommit/replica=true/g=64         	  169704	     19689 ns/op
+BenchmarkGroupCommit/replica=true/g=64         	  172033	     19593 ns/op
+BenchmarkGroupCommit/replica=true/g=64         	  169252	     19583 ns/op
+BenchmarkGroupCommit/replica=true/g=64         	  170655	     19617 ns/op
+PASS
+== done Thu Nov  5 22:22:03 UTC 2026
+ 22:22:03 up 19 days,  7:02, 14 users,  load average: 1.38, 1.30, 1.28
+== end pgrep
