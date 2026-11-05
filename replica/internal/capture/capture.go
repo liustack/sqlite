@@ -244,6 +244,10 @@ func (c *Capturer) open() error {
 	if err := os.RemoveAll(SnapshotDir(c.path)); err != nil {
 		return err
 	}
+	// Before anything is staged, for the limit.
+	if err := c.countPending(); err != nil {
+		return err
+	}
 	if err := c.start(); err != nil {
 		return err
 	}
@@ -304,6 +308,13 @@ func (c *Capturer) start() error {
 	}
 	if !ok {
 		return c.fullCopy(nil)
+	}
+	// Staging stopped at the limit before: it stays stopped, and the full
+	// copy follows the upload of what is staged.
+	if c.over() {
+		c.txid, c.post = last.MaxTXID, post
+		c.note(c.stop())
+		return nil
 	}
 	if resumed, err := c.resume(last, post); err != nil || resumed {
 		return err

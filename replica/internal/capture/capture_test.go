@@ -1636,3 +1636,82 @@ func TestSyncWaitsBounded(t *testing.T) {
 		t.Fatal("Sync waits past its deadline")
 	}
 }
+
+// Staging stopped at the limit stays stopped across Close and Open, also
+// when the database moved on from the staged files: Open stages no full
+// copy until what is staged is uploaded.
+func TestStagingLimitReopen(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	for range 50 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	db.Close()
+	st, err := os.Stat(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := testOptions(t)
+	opt.Limit = 64 << 10
+	staged := func() int64 {
+		entries, err := os.ReadDir(StageDir(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n int64
+		for _, e := range entries {
+			info, err := e.Info()
+			if err != nil {
+				t.Fatal(err)
+			}
+			n += info.Size()
+		}
+		return n
+	}
+	var c *Capturer
+	for i := range 5 {
+		c, err = Open(name, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The last full copy does not count: one more database.
+		if n := staged(); n > opt.Limit+2*st.Size()+16<<10 {
+			t.Fatalf("open %d: %d bytes staged, the limit is %d", i, n, opt.Limit)
+		}
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+		// The WAL starts over: the staged files cannot go on.
+		raw, err := csqlite.Open(name, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := raw.Exec("INSERT INTO t VALUES (randomblob(3000)); PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			t.Fatal(err)
+		}
+		raw.Close()
+	}
+	// Once all is uploaded, a full copy follows.
+	c = open(t, name, opt)
+	remote := t.TempDir()
+	uploadAll(t, c, remote)
+	step(t, c)
+	if c.FullCopies() == 0 {
+		t.Fatal("no full copy after the upload")
+	}
+	uploadAll(t, c, remote)
+	out, txid := rebuild(t, remote)
+	if txid != c.TXID() {
+		t.Fatalf("rebuilt TXID %s, staged %s", txid, c.TXID())
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range pages(t, name) {
+		if p != nil && !bytes.Equal(got[i*len(p):(i+1)*len(p)], p) {
+			t.Fatalf("page %d differs", i+1)
+		}
+	}
+}
