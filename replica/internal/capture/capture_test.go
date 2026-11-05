@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -865,4 +866,137 @@ func TestSnapshot(t *testing.T) {
 		t.Fatalf("nothing staged after the snapshot of TXID %s", txid)
 	}
 	sameAs(t, c, name)
+}
+
+// uploadAll copies the staged files to remote, as an uploader would, and
+// tells c they are uploaded.
+func uploadAll(t *testing.T, c *Capturer, remote string) {
+	t.Helper()
+	entries, err := os.ReadDir(c.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if _, _, err := ltx.ParseFilename(e.Name()); err != nil {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(c.Dir(), e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(remote, e.Name()), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	if n := c.Pending(); n != 0 {
+		t.Fatalf("%d bytes pending after all went up", n)
+	}
+}
+
+// At the limit, staging stops and keeps what it has, checkpoints go on, and
+// once all of it is uploaded a full copy goes on from it.
+func TestStagingLimit(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	remote := t.TempDir()
+	var full atomic.Int64
+	opt := testOptions(t)
+	opt.CheckpointFrames = 20
+	opt.Limit = 64 << 10
+	opt.OnError = func(err error) {
+		if errors.Is(err, ErrStagingFull) {
+			full.Add(1)
+		}
+		t.Logf("capture: %v", err)
+	}
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	uploadAll(t, c, remote)
+	var stopped ltx.TXID
+	for i := range 300 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+		err := c.Sync(context.Background())
+		switch {
+		case err == nil:
+			if stopped != 0 {
+				t.Fatalf("step %d staged after staging stopped", i)
+			}
+		case errors.Is(err, ErrStagingFull):
+			if stopped == 0 {
+				stopped = c.Durable()
+			}
+			if c.Durable() != stopped {
+				t.Fatalf("step %d: staged TXID %s after stopping at %s", i, c.Durable(), stopped)
+			}
+		default:
+			t.Fatal(err)
+		}
+		if n := c.Pending(); n > opt.Limit+32<<10 {
+			t.Fatalf("step %d: %d bytes pending, the limit is %d", i, n, opt.Limit)
+		}
+		if st, err := os.Stat(name + "-wal"); err != nil {
+			t.Fatal(err)
+		} else if st.Size() > 30*(4096+24)+32 {
+			t.Fatalf("step %d: the WAL has %d bytes", i, st.Size())
+		}
+	}
+	if stopped == 0 || full.Load() != 1 {
+		t.Fatalf("stopped at TXID %s, %d errors of a full staging", stopped, full.Load())
+	}
+	if _, _, err := c.Snapshot(context.Background()); err == nil {
+		t.Fatal("a snapshot while staging is stopped")
+	}
+	// S3 is back: what is staged goes up, then a full copy follows it.
+	uploadAll(t, c, remote)
+	step(t, c)
+	if c.Durable() != stopped+1 || c.FullCopies() != 1 {
+		t.Fatalf("staged TXID %s with %d full copies after the upload, want a full copy as %s", c.Durable(), c.FullCopies(), stopped+1)
+	}
+	for range 20 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))", "DELETE FROM t WHERE rowid % 5 = 0")
+		step(t, c)
+		uploadAll(t, c, remote)
+	}
+	out, txid := rebuild(t, remote)
+	if txid != c.TXID() {
+		t.Fatalf("rebuilt TXID %s, staged %s", txid, c.TXID())
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := pages(t, name)
+	for i, p := range want {
+		if p != nil && !bytes.Equal(got[i*len(p):(i+1)*len(p)], p) {
+			t.Fatalf("page %d differs", i+1)
+		}
+	}
+}
+
+// A database larger than the limit: its full copy does not stop staging.
+func TestStagingLimitLarge(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	for range 50 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	db.Close()
+	opt := testOptions(t)
+	opt.Limit = 64 << 10
+	c := open(t, name, opt)
+	db = openApp(t, name)
+	for i := range 5 {
+		run(t, db, "INSERT INTO t VALUES (1)")
+		if err := c.Sync(context.Background()); err != nil {
+			t.Fatalf("step %d: %v", i, err)
+		}
+	}
+	if c.FullCopies() != 0 {
+		t.Fatalf("%d full copies", c.FullCopies())
+	}
 }

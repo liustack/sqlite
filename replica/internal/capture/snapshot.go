@@ -68,7 +68,7 @@ func (c *Capturer) Snapshot(ctx context.Context) (snap string, _ ltx.TXID, err e
 	lock := ltx.LockPgno(h.PageSize)
 	page := make([]byte, c.pageSize)
 	summer := newPageSummer()
-	placed, err := stageFile(dir, c.mode, h, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
+	placed, _, err := stageFile(dir, c.mode, h, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
 		var sum ltx.Checksum
 		for p := uint32(1); p <= size; p++ {
 			if p == lock {
@@ -116,6 +116,10 @@ func (c *Capturer) pin(ctx context.Context) (ltx.TXID, ltx.Checksum, error) {
 			return 0, 0, err
 		}
 		c.snap = conn
+	}
+	// After a stop at the limit, the full copy goes first.
+	if err := c.goOn(); err != nil {
+		return 0, 0, err
 	}
 	unlock, err := replhook.Lock(ctx, c.path)
 	if err != nil {
