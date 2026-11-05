@@ -46,6 +46,10 @@ var ErrConflict = errors.New("replica: another replicator writes to the replica"
 // few requests. After a conflict it only drops what is staged.
 func (r *Replica) run(ctx context.Context) {
 	defer close(r.done)
+	if r.cfg.manual {
+		<-ctx.Done()
+		return
+	}
 	var retry, due <-chan time.Time
 	staged := r.c.Staged()
 	wait := time.Second

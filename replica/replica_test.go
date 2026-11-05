@@ -727,6 +727,7 @@ func TestStaleReplicator(t *testing.T) {
 // another replicator's, however long the store was away.
 func TestRecheckLostAnswer(t *testing.T) {
 	cfg, cnt := countingStore(t, testConfig(t))
+	cfg.manual = true // no upload but the Syncs of the test
 	var clock atomic.Int64
 	clock.Store(time.Now().UnixNano())
 	cfg.schedule = func(s *schedule) {
@@ -810,6 +811,7 @@ func TestCloseHoldsStaging(t *testing.T) {
 // the database: once Close returns, nothing of the replicator uploads.
 func TestCloseEndsSync(t *testing.T) {
 	cfg, cnt := countingStore(t, testConfig(t))
+	cfg.manual = true // the PUT held is the one of the Sync
 	name := filepath.Join(t.TempDir(), "x.db")
 	r := newReplica(t, name, cfg)
 	db := openDB(t, name)

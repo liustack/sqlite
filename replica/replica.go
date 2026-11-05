@@ -113,6 +113,7 @@ type Config struct {
 
 	schedule         func(*schedule) // set by tests: changes the schedule
 	checkpointFrames uint32          // set by tests: capture.Options.CheckpointFrames
+	manual           bool            // set by tests: nothing runs in the background, only Sync and Close upload
 	// OnError, if set, gets the errors of the work done in the background.
 	// It is called with no lock of the replica held, from New, Close or a
 	// goroutine of the replica, and should return soon, as a log does. It
