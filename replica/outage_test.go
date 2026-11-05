@@ -47,6 +47,7 @@ func TestOutage(t *testing.T) {
 	cfg, cnt := countingStore(t, cfg)
 	cfg.SyncInterval = 20 * time.Millisecond
 	cfg.StagingLimit = 2 << 20
+	cfg.checkpointFrames = 1000
 	var stops atomic.Int64
 	cfg.OnError = func(err error) {
 		if errors.Is(err, ErrStagingFull) {
@@ -215,6 +216,7 @@ func TestSoak(t *testing.T) {
 	cfg, cnt := countingStore(t, cfg)
 	cfg.SyncInterval = 50 * time.Millisecond
 	cfg.StagingLimit = 8 << 20
+	cfg.checkpointFrames = 1000
 	cfg.Retention = 20 * time.Second
 	var stops, copies atomic.Int64
 	cfg.OnError = func(err error) {

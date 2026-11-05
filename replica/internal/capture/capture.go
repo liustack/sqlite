@@ -63,7 +63,8 @@ type Options struct {
 	// Interval is the time between two reads of the WAL. Default 1s.
 	Interval time.Duration
 	// CheckpointFrames is how many frames the WAL holds before the capturer
-	// checkpoints it. Default 1000, as SQLite's automatic checkpoints.
+	// checkpoints it. Default 4000 (about 16 MB of 4 KiB pages): at 1000, as
+	// SQLite's automatic checkpoints, a write costs about a tenth more.
 	CheckpointFrames uint32
 	// Limit is the most bytes of level 0 files staged and not uploaded yet
 	// (see Done): past it, staging stops until they are uploaded, and a full
@@ -176,7 +177,7 @@ func Open(name string, opt Options) (*Capturer, error) {
 		opt.Interval = time.Second
 	}
 	if opt.CheckpointFrames == 0 {
-		opt.CheckpointFrames = 1000
+		opt.CheckpointFrames = 4000
 	}
 	conn, err := csqlite.Open(name, csqlite.OpenReadWrite|csqlite.OpenCreate|csqlite.OpenURI|csqlite.OpenNoMutex, "")
 	if err != nil {
