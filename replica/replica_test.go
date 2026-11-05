@@ -727,9 +727,11 @@ func TestStaleReplicator(t *testing.T) {
 // another replicator's, however long the store was away.
 func TestRecheckLostAnswer(t *testing.T) {
 	cfg, cnt := countingStore(t, testConfig(t))
+	var clock atomic.Int64
+	clock.Store(time.Now().UnixNano())
 	cfg.schedule = func(s *schedule) {
 		s.levels = nil
-		s.recheck = 50 * time.Millisecond
+		s.now = func() time.Time { return time.Unix(0, clock.Load()) }
 	}
 	name := filepath.Join(t.TempDir(), "x.db")
 	r := newReplica(t, name, cfg)
@@ -737,13 +739,20 @@ func TestRecheckLostAnswer(t *testing.T) {
 	run(t, db, "CREATE TABLE t(x)")
 	syncNow(t, r)
 
+	// The clock stands still: the upload comes before any check.
 	cnt.down.Store(3)
 	run(t, db, "INSERT INTO t VALUES (1)")
 	if err := r.Sync(context.Background()); err == nil {
 		t.Fatal("Sync got an answer the store did not send")
 	}
-	time.Sleep(100 * time.Millisecond)
 	cnt.down.Store(0)
+	c, path := client(t, cfg)
+	lost := ltx.TXID(r.Status().Uploaded) + 1
+	if _, err := c.Head(context.Background(), levelKey(path, 0, lost, lost)); err != nil {
+		t.Fatalf("the store did not take the upload whose answer was lost: %v", err)
+	}
+
+	clock.Add(int64(2 * r.sched.recheck))
 	run(t, db, "INSERT INTO t VALUES (2)")
 	syncNow(t, r)
 	if err := r.Status().Err; err != nil {
