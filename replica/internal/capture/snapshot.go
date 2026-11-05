@@ -28,9 +28,13 @@ func SnapshotDir(path string) string { return filepath.Join(path+"-replica", "sn
 // read transaction on a connection of its own. The pages are read after
 // the lock, so that writers do not wait for them, and their checksum must
 // be the one of the staged files. Checkpoints cannot reset the WAL while
-// the pages are read.
+// the pages are read. ctx bounds the waits, and so does Close.
 func (c *Capturer) Snapshot(ctx context.Context) (snap string, _ ltx.TXID, err error) {
-	c.snapMu.Lock()
+	ctx, cancel := c.bind(ctx)
+	defer cancel()
+	if err := c.snapMu.LockCtx(ctx); err != nil {
+		return "", 0, err
+	}
 	defer c.snapMu.Unlock()
 	txid, post, err := c.pin(ctx)
 	if err != nil {
@@ -105,7 +109,9 @@ func (c *Capturer) Snapshot(ctx context.Context) (snap string, _ ltx.TXID, err e
 // read transaction there on c.snap. It returns the TXID staged and the
 // checksum of the database there.
 func (c *Capturer) pin(ctx context.Context) (ltx.TXID, ltx.Checksum, error) {
-	c.mu.Lock()
+	if err := c.mu.LockCtx(ctx); err != nil {
+		return 0, 0, err
+	}
 	defer c.mu.Unlock()
 	if c.closed {
 		return 0, 0, errors.New("capture: closed")

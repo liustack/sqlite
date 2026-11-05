@@ -1564,3 +1564,75 @@ func TestOpenSyncsFolders(t *testing.T) {
 		}
 	}
 }
+
+// busySync has a Sync wait for the driver's write lock, which a write
+// transaction holds, with CheckpointFrames frames in the WAL. It returns the
+// transaction and the result of that Sync.
+func busySync(t *testing.T) (*Capturer, *sql.Tx, chan error) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 4
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	// The writes do not checkpoint while the capturer is busy.
+	c.mu.Lock()
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (randomblob(9000))")
+	c.mu.Unlock()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tx.Rollback() })
+	if _, err := tx.Exec("INSERT INTO t VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	synced := make(chan error, 1)
+	go func() { synced <- c.Sync(ctx) }()
+	// Sync has the capturer once nothing else can take it.
+	for c.mu.TryLock() {
+		c.mu.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	return c, tx, synced
+}
+
+// Close does not wait for a Sync that waits for a write transaction.
+func TestCloseDuringSync(t *testing.T) {
+	c, _, synced := busySync(t)
+	wait := closeWait
+	closeWait = 50 * time.Millisecond
+	t.Cleanup(func() { closeWait = wait })
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close waits for the Sync")
+	}
+	if err := <-synced; err == nil {
+		t.Fatal("the Sync that Close stopped gave no error")
+	}
+}
+
+// A Sync waits for the capturer no longer than its context lets it.
+func TestSyncWaitsBounded(t *testing.T) {
+	c, _, _ := busySync(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- c.Sync(ctx) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Sync: %v, want context.DeadlineExceeded", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Sync waits past its deadline")
+	}
+}

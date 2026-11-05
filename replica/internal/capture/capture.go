@@ -130,7 +130,7 @@ type Capturer struct {
 	cancel context.CancelFunc
 	done   chan struct{} // closed when the loop has stopped
 
-	mu sync.Mutex // one step at a time
+	mu lock // one step at a time
 	// What is staged: the database file and frames 1 to pos of the WAL
 	// generation gen, after change commits.
 	gen    [8]byte
@@ -154,7 +154,7 @@ type Capturer struct {
 	// copy waits until nothing staged is pending.
 	full bool
 
-	snapMu sync.Mutex    // one snapshot at a time
+	snapMu lock          // one snapshot at a time
 	snap   *csqlite.Conn // the connection snapshots read with, under mu
 	// later holds the errors of the checkpoints run for a writer of the
 	// driver (committed), which the next step of run reports.
@@ -183,7 +183,7 @@ func Open(name string, opt Options) (*Capturer, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), done: make(chan struct{}), staged: make(chan struct{}, 1)}
+	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), mu: newLock(), snapMu: newLock(), done: make(chan struct{}), staged: make(chan struct{}, 1)}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	// A write of the driver after Attach waits for the capturer to be open.
 	c.mu.Lock()
@@ -349,10 +349,15 @@ func (c *Capturer) report(err error) {
 	}
 }
 
-// Sync stages what was committed up to now. ctx bounds the wait for the
-// driver's write lock, which a checkpoint takes.
+// Sync stages what was committed up to now. ctx bounds the waits for the
+// capturer and for the driver's write lock, which a checkpoint takes, and
+// so does Close.
 func (c *Capturer) Sync(ctx context.Context) error {
-	c.mu.Lock()
+	ctx, cancel := c.bind(ctx)
+	defer cancel()
+	if err := c.mu.LockCtx(ctx); err != nil {
+		return err
+	}
 	defer c.mu.Unlock()
 	if c.closed {
 		return errors.New("capture: closed")
@@ -364,6 +369,16 @@ func (c *Capturer) Sync(ctx context.Context) error {
 		return c.lost
 	}
 	return nil
+}
+
+// bind gives ctx, ended too when Close starts.
+func (c *Capturer) bind(ctx context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(c.ctx, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
+	}
 }
 
 // Close stages what is left, checkpoints and stops. When a write
