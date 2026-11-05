@@ -1,3 +1,7 @@
+github.com/pierrec/lz4/v4 v4.1.23 h1:oJE7T90aYBGtFNrI8+KbETnPymobAhzRrR8Mu8n1yfU=
+github.com/pierrec/lz4/v4 v4.1.23/go.mod h1:EoQMVJgeeEOMsCqCzqFm2O0cJvljX2nGZjcRIPL34O4=
+github.com/superfly/ltx v0.5.2 h1:XVzytSsIlpUaOd2I7M40lDhUQIzGIdqkLBNg5M5Ax48=
+github.com/superfly/ltx v0.5.2/go.mod h1:0OtLSLHHHPa3qDrAmwkLW5pUBfj365JS+bR9FEJDrM4=
 golang.org/x/arch v0.32.0 h1:NjGf8/xGf5JgAJ4dw4NtME5R1L7xatagqAg95T3LgII=
 golang.org/x/arch v0.32.0/go.mod h1:KcJSod3cqT2dKcjBxqTyGfbumNikqU9p5tHJinPJnuY=
 golang.org/x/sys v0.49.0 h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
