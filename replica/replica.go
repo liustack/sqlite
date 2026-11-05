@@ -81,7 +81,9 @@ type Config struct {
 	// under ErrStagingFull) and keeps what it has: checkpoints go on, so the
 	// WAL stays bounded, and writes never wait. Once what is staged is
 	// uploaded, a full copy of the database follows it. The changes in
-	// between have no point of their own to restore to. Default 1 GiB.
+	// between have no point of their own to restore to. The last full
+	// copy, which staging goes on from, is not counted: the staging folder
+	// may hold one database more. Default 1 GiB.
 	StagingLimit int64
 
 	schedule func(*schedule) // set by tests: changes the schedule
@@ -90,7 +92,7 @@ type Config struct {
 }
 
 // ErrStagingFull is under the error given to Config.OnError when staging
-// stops at Config.StagingLimit, and the error of Sync while it is stopped.
+// stops at Config.StagingLimit.
 var ErrStagingFull = capture.ErrStagingFull
 
 // ErrDiverged is under the error of New when the replica does not end
