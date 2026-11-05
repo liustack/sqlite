@@ -329,15 +329,22 @@ func TestList(t *testing.T) {
 func TestNoSecretInErrors(t *testing.T) {
 	c, prefix := testStore(t)
 	const secret = "wrong-secret-0123456789"
+	// The store's own key ID, so that it gets as far as the store allows:
+	// MinIO refuses the signature with a 403, R2 the session token it does
+	// not know with a 400.
+	good, err := c.creds.Credentials(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	bad := *c
-	bad.creds = Static(Credentials{AccessKeyID: "testaccess", SecretAccessKey: secret, SessionToken: "token-0123456789"})
-	err := bad.Put(context.Background(), prefix+"x", bytes.NewReader([]byte("x")), 1, PutOptions{})
+	bad.creds = Static(Credentials{AccessKeyID: good.AccessKeyID, SecretAccessKey: secret, SessionToken: "token-0123456789"})
+	err = bad.Put(context.Background(), prefix+"x", bytes.NewReader([]byte("x")), 1, PutOptions{})
 	if err == nil {
 		t.Fatal("Put with a wrong secret: no error")
 	}
 	var e *Error
-	if !errors.As(err, &e) || e.StatusCode != http.StatusForbidden {
-		t.Errorf("Put with a wrong secret: %v, want a 403", err)
+	if !errors.As(err, &e) || e.StatusCode/100 != 4 {
+		t.Errorf("Put with a wrong secret: %v, want the store to refuse it", err)
 	}
 	for _, s := range []string{
 		err.Error(), fmt.Sprintf("%+v %#v", err, err),
