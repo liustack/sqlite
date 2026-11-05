@@ -134,6 +134,15 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 | [Upstream](docs/upstream.md) | You want to know which SQLite it is, or how it moves to a new one |
 | [Testing](docs/testing.md), [Commits](docs/commit.md) | You are about to change the code |
 
+## Contributing
+
+liustack/sqlite does not accept pull requests. A change here can reach from SQLite's C, through the generator, to group commit and the replicator, and getting it right takes a lot of context, so every line is written and reviewed by one author. Two ways to help:
+
+- **[Open an issue](https://github.com/liustack/sqlite/issues/new/choose).** Bugs, wrong results, slow queries, confusing errors, unclear docs, ideas. A small program that reproduces it helps more than a patch, and issues shape what gets built next.
+- **Fork it.** Under MIT your copy is yours to change and publish. [CONTRIBUTING.md](CONTRIBUTING.md) has the notes for working on a fork.
+
+Security issues go through a private report, not an issue: see [SECURITY.md](SECURITY.md).
+
 ## Thanks
 
 To D. Richard Hipp and the SQLite developers for SQLite, and to musl for the string functions the engine links. To the authors of mattn/go-sqlite3, modernc.org/sqlite and ncruces/go-sqlite3, who showed the ways SQLite can live in Go and whose drivers this one is measured against.

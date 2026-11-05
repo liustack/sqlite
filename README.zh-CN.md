@@ -134,6 +134,15 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 | [上游](docs/upstream.zh-CN.md) | 想知道用的是哪个 SQLite，或者怎么升级到新版 |
 | [Testing](docs/testing.md)、[Commits](docs/commit.md)（英文） | 准备改代码 |
 
+## 参与
+
+liustack/sqlite 不接受 pull request。这里改一处，可能从 SQLite 的 C 一路牵动到生成器、合并提交和复制，做对需要大量上下文，所以每一行都由作者一个人写和审。可以这样帮忙：
+
+- **[提 issue](https://github.com/liustack/sqlite/issues/new/choose)。** bug、结果不对、查询慢、看不懂的报错、写得不清楚的文档、想法。一个能复现的小程序比一个补丁更有用，issue 决定接下来做什么。
+- **fork 它。** 按 MIT 许可，你的副本随你改、随你发布。在 fork 上开发的说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+安全问题请私下报告，不要提公开 issue，见 [SECURITY.md](SECURITY.md)。
+
 ## 致谢
 
 感谢 D. Richard Hipp 和 SQLite 的开发者写了 SQLite，感谢 musl 提供引擎链接的字符串函数。感谢 mattn/go-sqlite3、modernc.org/sqlite、ncruces/go-sqlite3 的作者，他们探出了 SQLite 在 Go 里的几条路，本驱动也是拿它们来比的。
