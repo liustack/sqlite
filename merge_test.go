@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -884,5 +885,35 @@ func TestMergeAfterSchemaChange(t *testing.T) {
 	queue(t, other, n, insert)
 	if wl.stats.merged.Load() == m0 {
 		t.Error("nothing merged after the trigger was dropped")
+	}
+}
+
+// More distinct statements than a connection caches, merged: the cache
+// makes room without closing a statement a batch is running.
+func TestMergeManyStatements(t *testing.T) {
+	db := mOpen(t, mPath(t))
+	db.SetMaxOpenConns(16)
+	mExec(t, db, "CREATE TABLE t(x)")
+	wl := statsOf(t, db)
+	merged0 := wl.stats.merged.Load()
+	const writers, each = 16, 300
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Go(func() {
+			for i := range each {
+				// Each statement is a text of its own.
+				if _, err := db.Exec(fmt.Sprintf("INSERT INTO t VALUES (%d)", w*each+i)); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+	if n := mCount(t, db, "SELECT count(DISTINCT x) FROM t"); n != writers*each {
+		t.Fatalf("%d rows, want %d", n, writers*each)
+	}
+	if m := wl.stats.merged.Load() - merged0; m < 2*maxCached {
+		t.Fatalf("%d statements merged, want more than the cache holds", m)
 	}
 }
