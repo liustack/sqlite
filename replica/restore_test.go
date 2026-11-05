@@ -378,7 +378,7 @@ func compactNow(t *testing.T, r *Replica, from, to int) {
 	t.Helper()
 	r.busy <- struct{}{}
 	defer func() { <-r.busy }()
-	if err := r.compact(context.Background(), from, to); err != nil {
+	if _, err := r.compact(context.Background(), from, to); err != nil {
 		t.Fatal(err)
 	}
 }

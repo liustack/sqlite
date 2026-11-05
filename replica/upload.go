@@ -29,12 +29,13 @@ import (
 // on, and the program's writes are not touched.
 var ErrConflict = errors.New("replica: another replicator writes to the replica")
 
-// run uploads the staged files as the capturer stages them, until ctx is
-// done. A failed upload is tried again later, longer after each failure up
-// to a minute. After a conflict it only drops what is staged.
+// run uploads the staged files as the capturer stages them, and then does
+// the other work on the replica that is due (maintain), until ctx is done.
+// Failed work is tried again later, longer after each failure up to a
+// minute. After a conflict it only drops what is staged.
 func (r *Replica) run(ctx context.Context) {
 	defer close(r.done)
-	var retry <-chan time.Time
+	var retry, due <-chan time.Time
 	wait := time.Second
 	reported := false // the conflict
 	for {
@@ -43,12 +44,16 @@ func (r *Replica) run(ctx context.Context) {
 			return
 		case <-r.c.Staged():
 		case <-retry:
+		case <-due:
 		}
-		retry = nil
-		err := r.upload(ctx)
+		retry, due = nil, nil
+		next, err := r.work(ctx)
 		switch {
 		case err == nil:
 			wait = time.Second
+			if !next.IsZero() {
+				due = time.After(time.Until(next))
+			}
 		case ctx.Err() != nil:
 			return
 		case errors.Is(err, ErrConflict):
@@ -62,6 +67,24 @@ func (r *Replica) run(ctx context.Context) {
 			wait = min(2*wait, time.Minute)
 		}
 	}
+}
+
+// work uploads what is staged, then does what maintain does, and returns
+// when to run maintain again.
+func (r *Replica) work(ctx context.Context) (time.Time, error) {
+	if err := r.upload(ctx); err != nil {
+		return time.Time{}, err
+	}
+	select {
+	case r.busy <- struct{}{}:
+	case <-ctx.Done():
+		return time.Time{}, ctx.Err()
+	}
+	defer func() { <-r.busy }()
+	if err := r.conflict(); err != nil {
+		return time.Time{}, err
+	}
+	return r.maintain(ctx)
 }
 
 // upload uploads the staged files whose names are synced, in TXID order,
@@ -152,12 +175,15 @@ func (r *Replica) putFile(ctx context.Context, level int, name string) error {
 			return herr
 		}
 		if info.Metadata[metaSHA256] != digest {
-			return fmt.Errorf("%w: %s has another file", ErrConflict, key)
+			// At any level: the replicator stops for good.
+			err := fmt.Errorf("%w: %s has another file", ErrConflict, key)
+			r.setStatus(func(s *Status) { s.Err = err })
+			return err
 		}
 	} else if err != nil {
 		return err
 	}
-	r.addFile(remoteFile{level: level, min: h.MinTXID, max: h.MaxTXID, key: key, size: st.Size(), modified: time.Now()})
+	r.addFile(remoteFile{level: level, min: h.MinTXID, max: h.MaxTXID, key: key, size: st.Size(), modified: r.sched.now()})
 	return nil
 }
 

@@ -39,7 +39,8 @@ func TestMain(m *testing.M) {
 }
 
 // testConfig is a Config for a replica of its own on the test store, which
-// takes no step in the background: the tests call Sync.
+// takes no step and compacts nothing in the background: the tests call Sync
+// and compact.
 func testConfig(t *testing.T) Config {
 	t.Helper()
 	s, prefix := s3test.Store(t)
@@ -50,6 +51,7 @@ func testConfig(t *testing.T) Config {
 		AllowHTTP:    true,
 		SyncInterval: time.Hour,
 		OnError:      func(err error) { t.Logf("replica: %v", err) },
+		schedule:     func(s *schedule) { s.levels = nil },
 	}
 }
 
@@ -261,7 +263,10 @@ func TestReplicate(t *testing.T) {
 		t.Fatalf("left by the probe: %s %v", o.Key, err)
 	}
 	// A file uploaded again, as after a PUT that got no answer, is ours.
-	if err := r.put(context.Background(), txid); err != nil {
+	r.busy <- struct{}{}
+	err = r.put(context.Background(), txid)
+	<-r.busy
+	if err != nil {
 		t.Fatalf("a second upload of TXID %s: %v", txid, err)
 	}
 }

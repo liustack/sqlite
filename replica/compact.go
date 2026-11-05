@@ -21,37 +21,55 @@ import (
 const maxCompactInputs = 256
 
 // compact merges the files of level from that come after the last file of
-// level to into one file of level to, and uploads it. It does nothing when
-// there is none. Each file is downloaded whole and checked before it is
-// merged, and the merged file is checked against them before it is
-// uploaded. Call it holding busy.
-func (r *Replica) compact(ctx context.Context, from, to int) error {
-	var done ltx.TXID // the last TXID of level to
-	for _, f := range r.files {
-		if f.level == to {
-			done = max(done, f.max)
+// level to into one file of level to, and uploads it. It returns whether it
+// did: not when there is nothing to merge. It follows the files as a
+// restore does, each the one that goes on and reaches furthest, so that a
+// file another holds (after an upload whose answer was lost) is passed
+// over. Each file is downloaded whole and checked before it is merged, and
+// the merged file is checked against them before it is uploaded. Call it
+// holding busy.
+func (r *Replica) compact(ctx context.Context, from, to int) (bool, error) {
+	done := r.last(to)
+	end := done
+	if done == 0 {
+		// The first file of level to starts where level from does.
+		first := ltx.TXID(0)
+		for _, f := range r.files {
+			if f.level == from && (first == 0 || f.min < first) {
+				first = f.min
+			}
+		}
+		if first > 0 {
+			end = first - 1
 		}
 	}
 	var src []remoteFile
-	for _, f := range r.files {
-		if f.level != from || f.min <= done {
-			continue
+	for len(src) < maxCompactInputs {
+		var next *remoteFile
+		for i := range r.files {
+			f := &r.files[i]
+			if f.level != from || f.min > end+1 || f.max <= end {
+				continue
+			}
+			if next == nil || f.max > next.max || f.max == next.max && f.min < next.min {
+				next = f
+			}
 		}
-		if len(src) > 0 && f.min != src[len(src)-1].max+1 || len(src) == 0 && done > 0 && f.min != done+1 {
-			// A gap: the files after it wait for the file before them.
+		if next == nil {
 			break
 		}
-		if src = append(src, f); len(src) == maxCompactInputs {
-			break
-		}
+		src, end = append(src, *next), next.max
 	}
 	if len(src) == 0 {
-		return nil
+		if r.last(from) > done {
+			return false, fmt.Errorf("replica: level %d has no file from TXID %s, which level %d needs next", from, done+1, to)
+		}
+		return false, nil
 	}
 
 	dir, err := os.MkdirTemp(filepath.Dir(r.c.Dir()), "compact-")
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer os.RemoveAll(dir)
 	inputs := make([]io.Reader, len(src))
@@ -60,7 +78,7 @@ func (r *Replica) compact(ctx context.Context, from, to int) error {
 	for i, f := range src {
 		file, h, t, err := r.download(ctx, f, dir)
 		if err != nil {
-			return err
+			return false, err
 		}
 		defer file.Close()
 		inputs[i] = bufio.NewReaderSize(file, 64<<10)
@@ -73,36 +91,39 @@ func (r *Replica) compact(ctx context.Context, from, to int) error {
 	name := filepath.Join(dir, ltx.FormatFilename(first.MinTXID, last.MaxTXID))
 	out, err := os.Create(name)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer out.Close()
 	w := bufio.NewWriterSize(out, 1<<20)
 	comp, err := ltx.NewCompactor(w, inputs)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := comp.Compact(ctx); err != nil {
-		return fmt.Errorf("replica: compacting TXIDs %s to %s into level %d: %w", first.MinTXID, last.MaxTXID, to, err)
+		return false, fmt.Errorf("replica: compacting TXIDs %s to %s into level %d: %w", first.MinTXID, last.MaxTXID, to, err)
 	}
 	if err := w.Flush(); err != nil {
-		return err
+		return false, err
 	}
 	if err := out.Sync(); err != nil {
-		return err
+		return false, err
 	}
 	if _, err := out.Seek(0, io.SeekStart); err != nil {
-		return err
+		return false, err
 	}
 	dec := ltx.NewDecoder(bufio.NewReaderSize(out, 1<<20))
 	if err := dec.Verify(); err != nil {
-		return fmt.Errorf("replica: the file compacted into level %d: %w", to, err)
+		return false, fmt.Errorf("replica: the file compacted into level %d: %w", to, err)
 	}
 	h := dec.Header()
 	if h.MinTXID != first.MinTXID || h.MaxTXID != last.MaxTXID || h.PreApplyChecksum != first.PreApplyChecksum ||
 		dec.Trailer().PostApplyChecksum != post || h.Timestamp != last.Timestamp {
-		return fmt.Errorf("replica: the file compacted into level %d does not match the files merged", to)
+		return false, fmt.Errorf("replica: the file compacted into level %d does not match the files merged", to)
 	}
-	return r.putFile(ctx, to, name)
+	if err := r.putFile(ctx, to, name); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // download downloads the file f into dir, checks it, and returns it open
