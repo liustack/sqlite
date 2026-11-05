@@ -394,16 +394,21 @@ func (c *Capturer) Dir() string { return c.dir }
 // checkpoints when the WAL is long enough. Past the limit it stops staging
 // and only checkpoints, until nothing staged is pending.
 func (c *Capturer) step(ctx context.Context) error {
+	// A staged file whose folder did not sync is not uploaded until it does.
+	if c.Durable() < c.txid {
+		if err := syncDir(c.dir); err != nil {
+			return err
+		}
+		c.setDurable(c.txid)
+	}
 	if err := c.goOn(); err != nil {
 		return err
 	}
 	if !c.full && c.over() {
-		c.full = true
-		c.lose(fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid))
-		c.report(c.lost)
+		c.stop()
 	}
 	if c.full {
-		return c.stopped(ctx)
+		return c.checkpointLost(ctx)
 	}
 	if c.lost != nil {
 		return c.fullCopy(c.lost)
@@ -416,17 +421,11 @@ func (c *Capturer) over() bool {
 	return c.opt.Limit > 0 && c.counted() > c.opt.Limit
 }
 
-// stopped is a step while staging is stopped: the names of the staged files
-// are synced, so that all of them can be uploaded, and the WAL is
-// checkpointed when it is long enough.
-func (c *Capturer) stopped(ctx context.Context) error {
-	if c.Durable() < c.txid {
-		if err := syncDir(c.dir); err != nil {
-			return err
-		}
-		c.setDurable(c.txid)
-	}
-	return c.checkpointLost(ctx)
+// stop stops staging at the limit.
+func (c *Capturer) stop() {
+	c.full = true
+	c.lose(fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid))
+	c.report(c.lost)
 }
 
 // The checkpoint of a step catches up with the writers before it takes the

@@ -1082,6 +1082,26 @@ func TestStagingLimitSyncDir(t *testing.T) {
 	}
 }
 
+// A staged file whose folder did not sync is made durable by the next step,
+// also when nothing was committed since.
+func TestSyncDirIdle(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	run(t, db, "CREATE TABLE t(x)")
+	if err := c.Sync(context.Background()); !errors.Is(err, fail) {
+		t.Fatalf("Sync: %v", err)
+	}
+	syncDir = syncDirFS
+	step(t, c)
+	if c.Durable() != c.TXID() {
+		t.Fatalf("durable TXID %s, staged %s", c.Durable(), c.TXID())
+	}
+}
+
 // A step that passes the limit stages no more: it does not catch up with
 // the writers, nor checkpoint, whether its first read of the WAL passed it
 // or a read as it caught up.
