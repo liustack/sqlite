@@ -26,6 +26,7 @@ import (
 
 	"github.com/superfly/ltx"
 
+	"github.com/liustack/sqlite/replica/internal/capture"
 	"github.com/liustack/sqlite/replica/internal/s3"
 )
 
@@ -584,12 +585,11 @@ func TestCompactLeftovers(t *testing.T) {
 // The files of a compaction are copies of the database: only the user of
 // the process reads them.
 func TestCompactDirMode(t *testing.T) {
-	stage := filepath.Join(t.TempDir(), "x.db-replica", "ltx", "0")
-	if err := os.MkdirAll(stage, 0o755); err != nil {
+	dir := capture.CompactDir(filepath.Join(t.TempDir(), "x.db"))
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dir, err := makeCompactDir(stage)
-	if err != nil {
+	if err := makeCompactDir(dir); err != nil {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(dir)
@@ -598,5 +598,36 @@ func TestCompactDirMode(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && st.Mode().Perm() != 0o700 {
 		t.Fatalf("mode %v, want 0700", st.Mode().Perm())
+	}
+}
+
+// The leftovers of a compaction are found where the staging is, also when
+// the database is named through a link.
+func TestCompactLeftoversLink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("links need rights on windows")
+	}
+	dir := t.TempDir()
+	real, link := filepath.Join(dir, "real.db"), filepath.Join(dir, "link.db")
+	db := openDB(t, real)
+	run(t, db, "CREATE TABLE t(x)")
+	db.Close()
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	left := filepath.Join(real+"-replica", "ltx", "compact")
+	if err := os.MkdirAll(left, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := newReplica(t, link, testConfig(t))
+	want, err := filepath.EvalSymlinks(filepath.Dir(left))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(r.c.Dir(), want) {
+		t.Skipf("the staging is %s: the link is not followed", r.c.Dir())
+	}
+	if _, err := os.Stat(left); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("%s is left (%v)", left, err)
 	}
 }

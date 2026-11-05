@@ -191,11 +191,6 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		Uploaded:         end.txid,
 		OnError:          r.report,
 		Start: func(staged []capture.StagedFile) (*capture.Restart, error) {
-			// Once this process holds the staging, before it stages, which
-			// may need the room they take.
-			if err := dropCompactions(capture.StageDir(name)); err != nil {
-				return nil, err
-			}
 			return startFrom(end, staged, cfg.FreshStart)
 		},
 	})

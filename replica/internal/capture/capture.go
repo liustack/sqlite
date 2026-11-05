@@ -250,6 +250,11 @@ func (c *Capturer) open() error {
 	if err := os.RemoveAll(SnapshotDir(c.path)); err != nil {
 		return err
 	}
+	// Nor is what a compaction killed on the way left, which may take the
+	// room staging needs.
+	if err := dropCompactions(c.path); err != nil {
+		return err
+	}
 	// Before anything is staged, for the limit.
 	if err := c.countPending(); err != nil {
 		return err

@@ -14,6 +14,7 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -357,4 +358,31 @@ func lockStaging(path string) (unlock func(), err error) {
 		return nil, err
 	}
 	return func() { f.Close() }, nil
+}
+
+// CompactDir is the folder the replicator compacts in. Open removes it.
+func CompactDir(path string) string { return filepath.Join(path+"-replica", "ltx", "compact") }
+
+// CompactDir is the folder the replicator compacts in, for the database as
+// the capturer found it.
+func (c *Capturer) CompactDir() string { return CompactDir(c.path) }
+
+// dropCompactions removes what compactions killed on the way left for the
+// database path, also the compact-* folders of earlier versions.
+func dropCompactions(path string) error {
+	parent := filepath.Dir(CompactDir(path))
+	entries, err := os.ReadDir(parent)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if n := e.Name(); n == "compact" || strings.HasPrefix(n, "compact-") {
+			if err := os.RemoveAll(filepath.Join(parent, n)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
