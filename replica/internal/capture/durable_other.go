@@ -11,3 +11,16 @@ import "os"
 
 // rename moves a staged file to its name. syncDir makes it durable.
 func rename(from, to string) error { return os.Rename(from, to) }
+
+// syncDirFS is syncDir: an fsync of the folder.
+func syncDirFS(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	err = d.Sync()
+	if cerr := d.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}

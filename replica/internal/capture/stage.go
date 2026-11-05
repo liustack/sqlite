@@ -16,7 +16,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -151,23 +150,6 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 
 // syncDir makes the names in dir durable. Tests make it fail.
 var syncDir = syncDirFS
-
-// syncDirFS is syncDir. Windows has no way to, and needs none: rename writes
-// through there.
-func syncDirFS(dir string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	err = d.Sync()
-	if cerr := d.Close(); err == nil {
-		err = cerr
-	}
-	return err
-}
 
 // pageSummer computes ltx.ChecksumPage without allocating.
 type pageSummer struct {

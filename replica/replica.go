@@ -227,8 +227,8 @@ func (r *Replica) Sync(ctx context.Context) error {
 }
 
 // Close stages what is left, checkpoints, and uploads what is staged,
-// trying for 10 seconds, waiting for a Sync that uploads too. What it could not upload stays staged, for the
-// next New.
+// trying for 10 seconds, waiting for a Sync that uploads too. What it could
+// not upload stays staged, for the next New.
 func (r *Replica) Close() error {
 	r.cancel()
 	<-r.done
