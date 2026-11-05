@@ -65,15 +65,14 @@ func lastStaged(dir string) (hdr ltx.Header, post ltx.Checksum, ok bool, err err
 		return hdr, 0, false, err
 	}
 	defer f.Close()
-	dec := ltx.NewDecoder(bufio.NewReaderSize(f, 1<<20))
-	if err := dec.Verify(); err != nil {
+	hdr, trailer, err := Verify(f)
+	if err != nil {
 		return hdr, 0, false, fmt.Errorf("the staged file %s: %w", last, err)
 	}
-	hdr = dec.Header()
 	if hdr.MinTXID != min || hdr.MaxTXID != max {
 		return hdr, 0, false, fmt.Errorf("the staged file %s holds TXIDs %s to %s", last, hdr.MinTXID, hdr.MaxTXID)
 	}
-	return hdr, dec.Trailer().PostApplyChecksum, true, nil
+	return hdr, trailer.PostApplyChecksum, true, nil
 }
 
 // walPos is where in the WAL a staged file ends: generation salt, frame end.
@@ -306,4 +305,21 @@ func Stage(path, from string, min, max ltx.TXID) error {
 			return nil
 		}
 	}
+}
+
+// Verify reads the LTX file in r to its end and checks it. ltx's decoder
+// can panic on a damaged file (one cut less than 8 bytes after its pages
+// slices out of range): that is an error here, as the file may come from
+// the store.
+func Verify(r io.Reader) (h ltx.Header, t ltx.Trailer, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			h, t, err = ltx.Header{}, ltx.Trailer{}, fmt.Errorf("ltx: a damaged file: %v", p)
+		}
+	}()
+	dec := ltx.NewDecoder(bufio.NewReaderSize(r, 1<<20))
+	if err := dec.Verify(); err != nil {
+		return ltx.Header{}, ltx.Trailer{}, err
+	}
+	return dec.Header(), dec.Trailer(), nil
 }

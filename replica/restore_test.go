@@ -274,6 +274,17 @@ func TestRestoreBad(t *testing.T) {
 		{"pre", 0, "checksum before it", func(t *testing.T, body []byte) []byte {
 			return reencode(t, body, func(h *ltx.Header) { h.PreApplyChecksum ^= 1 }, nil, false)
 		}},
+		{"cut", 0, "a damaged file", func(t *testing.T, body []byte) []byte {
+			// Cut less than 8 bytes after the pages, where ltx's decoder
+			// panics.
+			for n := len(body) - 1; n > 0; n-- {
+				if _, _, err := capture.Verify(bytes.NewReader(body[:n])); err != nil && strings.Contains(err.Error(), "a damaged file") {
+					return body[:n]
+				}
+			}
+			t.Fatal("no cut that ltx panics on")
+			return nil
+		}},
 		{"corrupt", 0, "integrity_check", func(t *testing.T, body []byte) []byte {
 			// Every checksum agrees with the pages, which SQLite cannot
 			// read: a b-tree page of no type.

@@ -1510,3 +1510,30 @@ func noted(c *Capturer, target error) int {
 	}
 	return n
 }
+
+// Verify gives an error, not a panic, for a staged file cut anywhere: ltx's
+// decoder slices what follows the pages without checking its length.
+func TestVerifyTruncated(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (randomblob(3000))")
+	step(t, c)
+	dir := StageDir(name)
+	ents, err := os.ReadDir(dir)
+	if err != nil || len(ents) == 0 {
+		t.Fatalf("no staged file (%v)", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, ents[len(ents)-1].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Verify(bytes.NewReader(b)); err != nil {
+		t.Fatal(err)
+	}
+	for n := range len(b) {
+		if _, _, err := Verify(bytes.NewReader(b[:n])); err == nil {
+			t.Fatalf("cut at %d of %d bytes: no error", n, len(b))
+		}
+	}
+}

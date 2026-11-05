@@ -302,11 +302,10 @@ func (a *applier) apply(ctx context.Context, c *s3.Client, f remoteFile, at time
 	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	dec := ltx.NewDecoder(bufio.NewReaderSize(a.last, 1<<20))
-	if err := dec.Verify(); err != nil {
+	h, _, err := capture.Verify(a.last)
+	if err != nil {
 		return fail(err)
 	}
-	h := dec.Header()
 	switch {
 	case h.MinTXID != f.min || h.MaxTXID != f.max:
 		return fail(fmt.Errorf("holds TXIDs %s to %s, not those of its name", h.MinTXID, h.MaxTXID))
