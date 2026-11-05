@@ -25,9 +25,12 @@
 //
 // Connections of the driver to the database have no automatic checkpoints
 // and cannot run a checkpoint (replhook.Attach). The capturer checkpoints
-// once the WAL holds CheckpointFrames frames: it takes the driver's write
-// lock of the file, reads the WAL to its end and checkpoints, so that no
-// frame of this process is checkpointed before it is staged.
+// once the WAL holds CheckpointFrames frames, holding the driver's write
+// lock of the file: it reads the WAL to its end, stages it and checkpoints,
+// so that no frame of this process is checkpointed before it is staged. A
+// writer of the driver does it as it gives the lock back (committed), as
+// SQLite's automatic checkpoints run after a commit, so the WAL stays short.
+// A step does it too when it finds the WAL that long.
 //
 // On start, the last staged file says where in the WAL staging stopped and
 // the checksum of the database there. The capturer reads the database,
@@ -73,7 +76,11 @@ type Options struct {
 	Uploaded ltx.TXID
 	// OnError, if set, gets the errors of the reads made in the background,
 	// and an error under ErrFullCopy for each full copy staged because the
-	// WAL could not be followed.
+	// WAL could not be followed. Open, Close and the goroutine of the
+	// background steps call it with no lock of the capturer held. It should
+	// return soon, as a log does, and must not call Close, which waits for
+	// that goroutine, nor wait for a write to the database: the caller of
+	// Close may hold the write lock.
 	OnError func(error)
 	// Start, if set, is called once Open has the database, before it
 	// resumes, with the staged files in TXID order (their headers and
@@ -103,9 +110,6 @@ var ErrFullCopy = errors.New("capture: staged a full copy of the database")
 // ErrStagingFull is under the error reported when staging stops at
 // Options.Limit, and the error of Sync while it is stopped.
 var ErrStagingFull = errors.New("capture: the staged files not uploaded reached the limit")
-
-// stepHook is called at points of a step that checkpoints. Tests set it.
-var stepHook = func(string) {}
 
 // closeWait is how long Close waits for the driver's write lock to
 // checkpoint. Tests shorten it.
@@ -151,7 +155,9 @@ type Capturer struct {
 
 	snapMu sync.Mutex    // one snapshot at a time
 	snap   *csqlite.Conn // the connection snapshots read with, under mu
-	guard  *csqlite.Conn // holds a read transaction while a step checkpoints, under mu
+	// later holds the errors of the checkpoints run for a writer of the
+	// driver (committed), which the next step of run reports.
+	later []error
 
 	durable atomic.Uint64 // the last TXID whose name is synced
 	staged  chan struct{} // gets a value when durable moves
@@ -178,9 +184,18 @@ func Open(name string, opt Options) (*Capturer, error) {
 	}
 	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), done: make(chan struct{}), staged: make(chan struct{}, 1)}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
-	if err := c.open(); err != nil {
+	// A write of the driver after Attach waits for the capturer to be open.
+	c.mu.Lock()
+	err = c.open()
+	later := c.later
+	c.later = nil
+	c.mu.Unlock()
+	if err != nil {
 		c.release()
-		return nil, err
+		return nil, errors.Join(append([]error{err}, later...)...)
+	}
+	for _, e := range later {
+		c.report(e)
 	}
 	go c.run()
 	return c, nil
@@ -190,7 +205,7 @@ func (c *Capturer) open() error {
 	if c.path = c.conn.Filename("main"); c.path == "" {
 		return errors.New("capture: a memory or temporary database cannot be replicated")
 	}
-	detach, err := replhook.Attach(c.path)
+	detach, err := replhook.Attach(c.path, c.committed)
 	if err != nil {
 		return err
 	}
@@ -262,9 +277,6 @@ func (c *Capturer) release() {
 	if c.snap != nil {
 		c.snap.Close()
 	}
-	if c.guard != nil {
-		c.guard.Close()
-	}
 	if c.detach != nil {
 		c.detach()
 	}
@@ -312,11 +324,22 @@ func (c *Capturer) run() {
 		}
 		c.mu.Lock()
 		err := c.step(c.ctx)
+		later := c.later
+		c.later = nil
 		c.mu.Unlock()
+		for _, e := range later {
+			c.report(e)
+		}
 		if err != nil && c.ctx.Err() == nil {
 			c.report(err)
 		}
 	}
+}
+
+// note keeps err for OnError, which the next step, or Close, gives it with
+// no lock held. c.mu is held.
+func (c *Capturer) note(err error) {
+	c.later = append(c.later, err)
 }
 
 func (c *Capturer) report(err error) {
@@ -349,13 +372,24 @@ func (c *Capturer) Sync(ctx context.Context) error {
 func (c *Capturer) Close() error {
 	c.cancel()
 	<-c.done
+	later, err := c.close()
+	// No step comes for what was noted.
+	for _, e := range later {
+		c.report(e)
+	}
+	return err
+}
+
+// close is Close once the background steps stopped. It returns what was
+// noted for OnError.
+func (c *Capturer) close() ([]error, error) {
 	// A snapshot reads with c.snap, which release closes.
 	c.snapMu.Lock()
 	defer c.snapMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
-		return nil
+		return nil, nil
 	}
 	c.closed = true
 	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
@@ -370,7 +404,9 @@ func (c *Capturer) Close() error {
 		err = nil
 	}
 	c.release()
-	return err
+	later := c.later
+	c.later = nil
+	return later, err
 }
 
 // TXID is the TXID of the last staged file.
@@ -395,17 +431,14 @@ func (c *Capturer) Dir() string { return c.dir }
 // and only checkpoints, until nothing staged is pending.
 func (c *Capturer) step(ctx context.Context) error {
 	// A staged file whose folder did not sync is not uploaded until it does.
-	if c.Durable() < c.txid {
-		if err := syncDir(c.dir); err != nil {
-			return err
-		}
-		c.setDurable(c.txid)
+	if err := c.syncNames(); err != nil {
+		return err
 	}
 	if err := c.goOn(); err != nil {
 		return err
 	}
 	if !c.full && c.over() {
-		c.stop()
+		c.note(c.stop())
 	}
 	if c.full {
 		return c.checkpointLost(ctx)
@@ -421,12 +454,13 @@ func (c *Capturer) over() bool {
 	return c.opt.Limit > 0 && c.counted() > c.opt.Limit
 }
 
-// stop stops staging at the limit. Its error replaces why the WAL was lost,
-// if it was: the full copy follows all the same.
-func (c *Capturer) stop() {
+// stop stops staging at the limit, and returns the error to report. It
+// replaces why the WAL was lost, if it was: the full copy follows all the
+// same.
+func (c *Capturer) stop() error {
 	c.full = true
 	c.lost = fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid)
-	c.report(c.lost)
+	return c.lost
 }
 
 // copyLost stages the full copy that follows a lost WAL, or stops staging
@@ -434,89 +468,98 @@ func (c *Capturer) stop() {
 // limit: the new copy would make that one count.
 func (c *Capturer) copyLost() error {
 	if c.opt.Limit > 0 && c.Pending() > c.opt.Limit {
-		c.stop()
+		c.note(c.stop())
 		return nil
 	}
 	return c.fullCopy(c.lost)
 }
 
-// The checkpoint of a step catches up with the writers before it takes the
-// driver's write lock: it stages again, up to catchUps times, until fewer
-// than catchUpFrames frames came since.
-const (
-	catchUps      = 3
-	catchUpFrames = 256
-)
-
 // stageAndCheckpoint stages what was committed and, when the WAL holds
-// CheckpointFrames frames, checkpoints it. Writers wait only for the last
-// frames: the frames staged are copied into the database outside the
-// driver's write lock first, and the frames written meanwhile are staged
-// before the lock too, so that the lock is held for a short tail.
+// CheckpointFrames frames, checkpoints it under the driver's write lock. The
+// writers of the driver mostly do that first, as they commit (committed).
 func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
-	// A read transaction from before the capture keeps the checkpoint
-	// outside the lock from copying frames the capture did not stage. After
-	// it copied them all, a writer could start the WAL over and lose them.
-	if err := c.beginGuard(); err != nil {
-		return err
-	}
 	frames, err := c.capture()
-	if err != nil || c.lost != nil || frames < c.opt.CheckpointFrames || c.over() {
-		if gerr := c.endGuard(); err == nil {
-			err = gerr
-		}
-		if err == nil && c.lost != nil {
-			return c.copyLost()
-		}
+	switch {
+	case err != nil:
 		return err
+	case c.lost != nil:
+		return c.copyLost()
+	case frames < c.opt.CheckpointFrames || c.over():
+		return nil
 	}
-	stepHook("captured")
-	_, _, err = c.conn.Checkpoint(csqlite.CheckpointPassive)
-	stepHook("backfilled")
-	if gerr := c.endGuard(); err == nil || busy(err) {
-		err = gerr
-	}
+	unlock, err := replhook.Lock(ctx, c.path)
 	if err != nil {
 		return err
 	}
-	for range catchUps {
-		gen, pos := c.gen, c.pos
-		if _, err := c.capture(); err != nil {
-			return err
-		}
-		if c.lost != nil {
-			return c.copyLost()
-		}
-		stepHook("caught up")
-		if c.over() {
-			return nil // the next step stops
-		}
-		if c.gen != gen || c.pos-pos < catchUpFrames {
-			break
-		}
-	}
-	return c.checkpoint(ctx)
+	defer unlock()
+	return c.checkpointHeld()
 }
 
-// beginGuard opens a read transaction on c.guard.
-func (c *Capturer) beginGuard() error {
-	if c.guard == nil {
-		g, err := csqlite.Open(c.path, csqlite.OpenReadOnly|csqlite.OpenNoMutex, "")
-		if err != nil {
-			return err
-		}
-		c.guard = g
+// committed is called by the driver each time a writer gives the write lock
+// of the file back, with the frames of the WAL it left (replhook.Attach).
+// Once the WAL holds CheckpointFrames frames, the capturer stages it and
+// checkpoints it there, as SQLite's automatic checkpoints run after a
+// commit: no writer runs meanwhile. A step under way has the capturer, and
+// the next write tries again.
+func (c *Capturer) committed(frames uint32) {
+	if frames < c.opt.CheckpointFrames || !c.mu.TryLock() {
+		return
 	}
-	return beginRead(c.guard)
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	// The writer holds its lock: OnError runs after the next step, with none.
+	if !c.full && c.over() {
+		c.note(c.stop())
+	}
+	// Even when staging stopped: the frames of the staged files go next.
+	err := c.syncNames()
+	switch {
+	case err != nil:
+	case c.full:
+		// Staging stopped: the frames are not staged, a full copy follows.
+		err = c.passive()
+	case c.lost == nil:
+		err = c.checkpointHeld()
+	}
+	if err != nil {
+		c.note(err)
+	}
 }
 
-// endGuard ends the read transaction on c.guard. A transaction left open
-// would keep checkpoints from starting the WAL over: the connection goes
-// instead.
-func (c *Capturer) endGuard() error {
-	if err := c.guard.Exec("ROLLBACK"); err != nil {
-		c.guard.Close()
-		c.guard = nil
+// checkpointHeld stages the WAL to its end and checkpoints it. Call it
+// holding the driver's write lock of the file: no frame comes meanwhile, so
+// SQLite copies them all, unless a reader still uses some, and the next
+// writer starts the WAL over. A WAL found lost is left to the next step,
+// which stages a full copy.
+func (c *Capturer) checkpointHeld() error {
+	if _, err := c.capture(); err != nil || c.lost != nil {
+		return err
+	}
+	if err := c.syncNames(); err != nil {
+		return err
+	}
+	return c.passive()
+}
+
+// syncNames makes the names of the staged files durable, which comes before
+// a checkpoint lets their frames go.
+func (c *Capturer) syncNames() error {
+	if c.Durable() >= c.txid {
+		return nil
+	}
+	if err := syncDir(c.dir); err != nil {
+		return err
+	}
+	c.setDurable(c.txid)
+	return nil
+}
+
+// passive checkpoints the WAL, PASSIVE: it never waits, and copies what no
+// reader still uses.
+func (c *Capturer) passive() error {
+	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointPassive); err != nil && !busy(err) {
 		return err
 	}
 	return nil
@@ -860,7 +903,7 @@ func (c *Capturer) fullCopy(why error) error {
 	c.lost = nil
 	if why != nil {
 		c.fullCopies++
-		c.report(fmt.Errorf("%w (TXID %s): %w", ErrFullCopy, hdr.MaxTXID, why))
+		c.note(fmt.Errorf("%w (TXID %s): %w", ErrFullCopy, hdr.MaxTXID, why))
 	}
 	return err
 }

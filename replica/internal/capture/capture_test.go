@@ -365,7 +365,7 @@ func TestCaptureCheckpoint(t *testing.T) {
 				} else if i%7 == 0 {
 					step(t, c)
 				}
-				gens[c.gen] = true
+				gens[genOf(c)] = true
 			}
 			step(t, c)
 			sameAs(t, c, name)
@@ -428,13 +428,18 @@ func TestResumeAfterCrash(t *testing.T) {
 		t.Run(map[bool]string{false: "same", true: "next"}[checkpoint], func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "x.db")
 			opt := testOptions(t)
-			if checkpoint {
-				opt.CheckpointFrames = 1
-			}
 			c := open(t, name, opt)
 			db := openApp(t, name)
 			run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (randomblob(5000))")
 			step(t, c)
+			if checkpoint {
+				c.mu.Lock()
+				err := c.checkpoint(context.Background())
+				c.mu.Unlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			run(t, db, "INSERT INTO t VALUES (randomblob(5000))", "UPDATE t SET x = randomblob(100) WHERE rowid = 1")
 			txid := c.TXID()
 			crashed := crashImage(t, name)
@@ -521,27 +526,38 @@ func TestSyncDirFails(t *testing.T) {
 	opt.CheckpointFrames = 1
 	c := open(t, name, opt)
 	db := openApp(t, name)
+	salt := func() string {
+		wal, err := os.ReadFile(name + "-wal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(wal[16:24])
+	}
 	fail := errors.New("no sync")
 	syncDir = func(string) error { return fail }
 	t.Cleanup(func() { syncDir = syncDirFS })
+	// The first write stages a file as it commits and fails to sync it, and
+	// the next stages nothing until the folder syncs.
 	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
 	if err := c.Sync(context.Background()); !errors.Is(err, fail) {
 		t.Fatalf("Sync: %v", err)
 	}
-	if c.TXID() != 2 {
-		t.Fatalf("TXID %s after a staged file whose folder did not sync", c.TXID())
+	if c.TXID() != 2 || c.Durable() != 1 {
+		t.Fatalf("TXID %s, durable %s after a file whose folder did not sync", c.TXID(), c.Durable())
 	}
-	if st, err := os.Stat(name + "-wal"); err != nil || st.Size() == 0 {
-		t.Fatalf("the WAL was checkpointed (%v)", err)
+	before := salt()
+	run(t, db, "INSERT INTO t VALUES (2)", "INSERT INTO t VALUES (3)")
+	if salt() != before {
+		t.Fatal("the WAL started over: it was checkpointed")
 	}
 	syncDir = syncDirFS
-	run(t, db, "INSERT INTO t VALUES (2)")
-	step(t, c)
-	if c.TXID() != 3 {
-		t.Fatalf("TXID %s", c.TXID())
+	run(t, db, "INSERT INTO t VALUES (4)", "INSERT INTO t VALUES (5)")
+	if salt() == before {
+		t.Fatal("the WAL did not start over once the folder synced")
 	}
-	if st, err := os.Stat(name + "-wal"); err != nil || st.Size() != 0 {
-		t.Fatalf("the WAL was not checkpointed (%v)", err)
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies", n)
 	}
 	sameAs(t, c, name)
 }
@@ -902,16 +918,9 @@ func uploadAll(t *testing.T, c *Capturer, remote string) {
 func TestStagingLimit(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	remote := t.TempDir()
-	var full atomic.Int64
 	opt := testOptions(t)
 	opt.CheckpointFrames = 20
 	opt.Limit = 64 << 10
-	opt.OnError = func(err error) {
-		if errors.Is(err, ErrStagingFull) {
-			full.Add(1)
-		}
-		t.Logf("capture: %v", err)
-	}
 	c := open(t, name, opt)
 	db := openApp(t, name)
 	run(t, db, "CREATE TABLE t(x)")
@@ -945,8 +954,8 @@ func TestStagingLimit(t *testing.T) {
 			t.Fatalf("step %d: the WAL has %d bytes", i, st.Size())
 		}
 	}
-	if stopped == 0 || full.Load() != 1 {
-		t.Fatalf("stopped at TXID %s, %d errors of a full staging", stopped, full.Load())
+	if n := noted(c, ErrStagingFull); stopped == 0 || n != 1 {
+		t.Fatalf("stopped at TXID %s, %d errors of a full staging", stopped, n)
 	}
 	if _, _, err := c.Snapshot(context.Background()); err == nil {
 		t.Fatal("a snapshot while staging is stopped")
@@ -959,6 +968,9 @@ func TestStagingLimit(t *testing.T) {
 	}
 	for range 20 {
 		run(t, db, "INSERT INTO t VALUES (randomblob(3000))", "DELETE FROM t WHERE rowid % 5 = 0")
+		// The writes stage as they commit: up before the step, which would
+		// stop at the limit.
+		uploadAll(t, c, remote)
 		step(t, c)
 		uploadAll(t, c, remote)
 	}
@@ -1106,17 +1118,16 @@ func TestSyncDirIdle(t *testing.T) {
 // or a read as it caught up.
 func TestStagingLimitStep(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		before, more int // rows before the step, and at each point of it
-		files        ltx.TXID
+		name   string
+		before int // rows before the step
+		files  ltx.TXID
 	}{
-		{"first read", 30, 1, 1},
-		{"catching up", 5, 300, 2},
+		{"first read", 30, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "x.db")
 			opt := testOptions(t)
-			opt.CheckpointFrames = 1
+			opt.CheckpointFrames = 1 << 20 // the writes stage nothing
 			opt.Limit = 64 << 10
 			c := open(t, name, opt)
 			db := openApp(t, name)
@@ -1131,8 +1142,6 @@ func TestStagingLimitStep(t *testing.T) {
 				}
 			}
 			insert(tc.before)
-			stepHook = func(string) { insert(tc.more) }
-			defer func() { stepHook = func(string) {} }()
 			before := c.TXID()
 			step(t, c)
 			if c.TXID() != before+tc.files {
@@ -1174,7 +1183,7 @@ func TestCheckpointUnderWrites(t *testing.T) {
 	gens := map[[8]byte]bool{}
 	for start := time.Now(); time.Since(start) < 2*time.Second; {
 		step(t, c)
-		gens[c.gen] = true
+		gens[genOf(c)] = true
 	}
 	close(stop)
 	for range 4 {
@@ -1192,22 +1201,50 @@ func TestCheckpointUnderWrites(t *testing.T) {
 	sameAs(t, c, name)
 }
 
-// A commit between the capture and the checkpoint outside the lock, and
-// another after it: the checkpoint copies none of the first, so the second
-// cannot start the WAL over before it is staged.
-func TestCheckpointGuard(t *testing.T) {
+// The writes of the driver checkpoint the WAL once it holds CheckpointFrames
+// frames, staging it first, with no step: the WAL stays short. While the
+// staging folder fails to sync, nothing is checkpointed.
+func TestCheckpointAtCommit(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	opt := testOptions(t)
-	opt.CheckpointFrames = 1
+	opt.CheckpointFrames = 20
 	c := open(t, name, opt)
 	db := openApp(t, name)
 	run(t, db, "CREATE TABLE t(x)")
-	step(t, c)
-	stepHook = func(at string) { run(t, db, "INSERT INTO t VALUES ('"+at+"')") }
-	defer func() { stepHook = func(string) {} }()
-	run(t, db, "INSERT INTO t VALUES (1)")
-	step(t, c)
-	stepHook = func(string) {}
+	walFrames := func() int64 {
+		st, err := os.Stat(name + "-wal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return max(st.Size()-32, 0) / (4096 + 24)
+	}
+	for range 200 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+		if n := walFrames(); n > 25 {
+			t.Fatalf("%d frames in the WAL, it is checkpointed at 20", n)
+		}
+	}
+	if c.Durable() < 10 {
+		t.Fatalf("staged TXID %s after 200 writes", c.Durable())
+	}
+
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	for range 40 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	if n := walFrames(); n < 40 {
+		t.Fatalf("%d frames in the WAL: checkpointed while staging failed", n)
+	}
+	c.mu.Lock()
+	later := len(c.later)
+	c.mu.Unlock()
+	if later == 0 {
+		t.Fatal("the failures are not kept for the next step to report")
+	}
+	syncDir = syncDirFS
+	run(t, db, "INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)")
 	step(t, c)
 	if n := c.FullCopies(); n != 0 {
 		t.Fatalf("%d full copies: the WAL was lost", n)
@@ -1252,4 +1289,224 @@ func BenchmarkWALChecksum(b *testing.B) {
 	for b.Loop() {
 		s = walChecksum(false, s, page)
 	}
+}
+
+// Staging stops at the limit as a write commits, while the folder of the
+// last staged file has not synced: the WAL must not start over before it
+// does.
+func TestStagingLimitAtCommitSyncDir(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 1
+	opt.Limit = 1
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	salt := func() string {
+		b, err := os.ReadFile(name + "-wal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b[16:24])
+	}
+	run(t, db, "INSERT INTO t VALUES (1)")
+	if c.Durable() >= c.TXID() {
+		t.Fatal("no staged file whose folder did not sync")
+	}
+	before := salt()
+	run(t, db, "INSERT INTO t VALUES (2)", "INSERT INTO t VALUES (3)")
+	if salt() != before {
+		t.Fatalf("the WAL started over with TXID %s staged and %s durable", c.TXID(), c.Durable())
+	}
+}
+
+// The errors of the writes, kept for the next step, are reported by Close
+// when no step comes, with no lock held: OnError may call the capturer.
+func TestCloseReportsLater(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 1
+	fail := errors.New("no sync")
+	var c *Capturer
+	var reports atomic.Int64
+	opt.OnError = func(err error) {
+		if errors.Is(err, fail) {
+			reports.Add(1)
+		}
+		c.Sync(context.Background())
+	}
+	c = open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	run(t, db, "INSERT INTO t VALUES (1)")
+	syncDir = syncDirFS
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close did not return")
+	}
+	if reports.Load() == 0 {
+		t.Fatal("Close dropped the errors of the writes")
+	}
+}
+
+// A reader that keeps an old snapshot across the checkpoints of the writes:
+// it sees its snapshot, and nothing is lost.
+func TestCheckpointAtCommitOldReader(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 20
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (0)")
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow("SELECT count(*) FROM t").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	for range 60 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	if err := tx.QueryRow("SELECT count(*) FROM t").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("the old reader sees %d rows (%v)", n, err)
+	}
+	step(t, c)
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	run(t, db, "INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)")
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies", n)
+	}
+	sameAs(t, c, name)
+}
+
+// Close waits for a write inside the capturer, and the writes go on after.
+func TestCloseDuringCommitted(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 1
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	var blocked atomic.Bool
+	syncDir = func(dir string) error {
+		if blocked.CompareAndSwap(false, true) {
+			close(entered)
+			<-proceed
+		}
+		return syncDirFS(dir)
+	}
+	t.Cleanup(func() { syncDir = syncDirFS })
+	written := make(chan error, 1)
+	go func() {
+		_, err := db.Exec("INSERT INTO t VALUES (1)")
+		written <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the write did not reach the capturer")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- c.Close() }()
+	select {
+	case err := <-closed:
+		close(proceed)
+		<-written
+		t.Fatalf("Close returned while a write was inside the capturer: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(proceed)
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-closed; err != nil {
+		t.Fatal(err)
+	}
+	run(t, db, "INSERT INTO t VALUES (2)")
+}
+
+// genOf is the generation of the WAL the capturer staged last: the writes
+// move it as they commit.
+func genOf(c *Capturer) [8]byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen
+}
+
+// What a step reports, a full copy here, goes to OnError with no lock held:
+// OnError may call the capturer.
+func TestReportUnlocked(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.Interval = 10 * time.Millisecond
+	var c *Capturer
+	copies := make(chan struct{}, 10)
+	opt.OnError = func(err error) {
+		if errors.Is(err, ErrFullCopy) {
+			c.Sync(context.Background())
+			copies <- struct{}{}
+		}
+	}
+	c = open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	raw, err := csqlite.Open(c.path, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)"); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Sync(context.Background()) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Sync did not return")
+	}
+	select {
+	case <-copies:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the full copy was not reported")
+	}
+	sameAs(t, c, name)
+}
+
+// noted counts the errors under target that c keeps for OnError.
+func noted(c *Capturer, target error) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, err := range c.later {
+		if errors.Is(err, target) {
+			n++
+		}
+	}
+	return n
 }

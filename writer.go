@@ -49,7 +49,10 @@ type writeLock struct {
 	// attached says the file is replicated (replhook.Attach). Guarded by
 	// writeLocks.
 	attached bool
-	stats    batchStats
+	// committed is the replicator's, called as a writer gives the lock
+	// back (replhook.Attach).
+	committed atomic.Pointer[func(frames uint32)]
+	stats     batchStats
 }
 
 // batchStats counts what group commit does on one file, for the benchmarks
@@ -199,6 +202,13 @@ func (l *writeLock) release(c *conn) {
 			back := c.runBatch(batch)
 			l.mu.Lock()
 			l.queue = append(back, l.queue...)
+		}
+	}
+	if c != nil {
+		if f := l.committed.Load(); f != nil {
+			l.mu.Unlock()
+			(*f)(c.c.WALFrames())
+			l.mu.Lock()
 		}
 	}
 	switch {

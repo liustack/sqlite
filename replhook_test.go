@@ -34,11 +34,11 @@ func realName(t *testing.T, name string) string {
 func TestAttach(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	path := realName(t, name)
-	detach, err := replhook.Attach(path)
+	detach, err := replhook.Attach(path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replhook.Attach(path); err == nil {
+	if _, err := replhook.Attach(path, nil); err == nil {
 		t.Fatal("attached twice")
 	}
 	db := openDB(t, name)
@@ -102,11 +102,11 @@ func TestAttachOpen(t *testing.T) {
 	if err := db.Ping(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replhook.Attach(realName(t, name)); err == nil {
+	if _, err := replhook.Attach(realName(t, name), nil); err == nil {
 		t.Fatal("attached a file the driver has open")
 	}
 	db.Close()
-	detach, err := replhook.Attach(realName(t, name))
+	detach, err := replhook.Attach(realName(t, name), nil)
 	if err != nil {
 		t.Fatalf("attach once closed: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestAttachAlias(t *testing.T) {
 	if errA != nil || errB != nil || !os.SameFile(a, b) {
 		t.Skip("the file system tells case apart")
 	}
-	detach, err := replhook.Attach(path)
+	detach, err := replhook.Attach(path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestAttachAlias(t *testing.T) {
 	if _, err := db.Exec("PRAGMA wal_checkpoint"); !errors.Is(err, csqlite.ErrGuarded) {
 		t.Errorf("a connection under the other name: %v", err)
 	}
-	if _, err := replhook.Attach(realName(t, alias)); err == nil {
+	if _, err := replhook.Attach(realName(t, alias), nil); err == nil {
 		t.Error("attached under the other name")
 	}
 	db.Close()
@@ -148,7 +148,56 @@ func TestAttachAlias(t *testing.T) {
 	if err := db.Ping(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replhook.Attach(path); err == nil {
+	if _, err := replhook.Attach(path, nil); err == nil {
 		t.Error("attached a file open under the other name")
+	}
+}
+
+// committed is called after each write, holding the write lock, with the
+// frames of the WAL the write left.
+func TestAttachCommitted(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	path := realName(t, name)
+	var calls []uint32
+	var lockErr error
+	detach, err := replhook.Attach(path, func(frames uint32) {
+		calls = append(calls, frames)
+		if len(calls) == 1 {
+			// The lock is held: taking it again waits.
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			if unlock, err := replhook.Lock(ctx, path); err == nil {
+				unlock()
+				lockErr = errors.New("took the write lock inside committed")
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detach()
+	db := openDB(t, name)
+	db.SetMaxOpenConns(4)
+	if _, err := db.Exec("PRAGMA journal_mode=WAL; CREATE TABLE t(x)"); err != nil {
+		t.Fatal(err)
+	}
+	if lockErr != nil {
+		t.Fatal(lockErr)
+	}
+	for range 3 {
+		if _, err := db.Exec("INSERT INTO t VALUES (randomblob(3000))"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(calls) < 4 {
+		t.Fatalf("committed called %d times for 4 writes", len(calls))
+	}
+	for i := 1; i < len(calls); i++ {
+		if calls[i] < calls[i-1] {
+			t.Fatalf("frames %v go back", calls)
+		}
+	}
+	if last := calls[len(calls)-1]; last < 4 {
+		t.Fatalf("%d frames after 4 writes of a page or more", last)
 	}
 }

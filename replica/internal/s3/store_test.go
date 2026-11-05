@@ -132,7 +132,15 @@ func startStore() {
 		store.err = err
 		return
 	}
-	store.err = c.CreateBucket(context.Background())
+	// The S3 API can answer that the server is not ready yet after the
+	// health check does.
+	for start := time.Now(); ; time.Sleep(100 * time.Millisecond) {
+		store.err = c.CreateBucket(context.Background())
+		var e *Error
+		if !errors.As(store.err, &e) || e.Code != "XMinioServerNotInitialized" || time.Since(start) > 30*time.Second {
+			return
+		}
+	}
 }
 
 func freeAddr() string {
