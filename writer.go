@@ -41,8 +41,11 @@ type writeLock struct {
 	held    bool
 	waiters []chan struct{} // writers that wait for the lock, in order
 	queue   []*request      // statements to merge, in order
-	refs    int             // connections of the file
-	stats   batchStats
+	refs    int             // connections of the file, and 1 while attached
+	// attached says the file is replicated (replhook.Attach). Guarded by
+	// writeLocks.
+	attached bool
+	stats    batchStats
 }
 
 // batchStats counts what group commit does on one file, for the benchmarks
@@ -81,19 +84,21 @@ var writeLocks struct {
 	m map[string]*writeLock
 }
 
-func openWriteLock(path string) *writeLock {
+// openWriteLock is the write lock of path for a new connection, and whether
+// the file is replicated.
+func openWriteLock(path string) (l *writeLock, attached bool) {
 	writeLocks.Lock()
 	defer writeLocks.Unlock()
 	if writeLocks.m == nil {
 		writeLocks.m = map[string]*writeLock{}
 	}
-	l := writeLocks.m[path]
+	l = writeLocks.m[path]
 	if l == nil {
 		l = &writeLock{}
 		writeLocks.m[path] = l
 	}
 	l.refs++
-	return l
+	return l, l.attached
 }
 
 func closeWriteLock(path string, l *writeLock) {
@@ -150,13 +155,13 @@ func (l *writeLock) acquire(ctx context.Context, timeout time.Duration) error {
 	return nil // handed the lock as the wait ended
 }
 
-// release gives the lock back from c. c first runs one batch of the
-// requests it can run. Then the lock goes to the first writer that waits for
+// release gives the lock back from c, nil for the replicator. c first runs
+// one batch of the requests it can run. Then the lock goes to the first writer that waits for
 // it, or else to the first request of the queue, so that neither waits on
 // the other for long.
 func (l *writeLock) release(c *conn) {
 	l.mu.Lock()
-	if c.canMerge() {
+	if c != nil && c.canMerge() {
 		if batch := l.take(c, nil); len(batch) > 0 {
 			l.mu.Unlock()
 			back := c.runBatch(batch)
