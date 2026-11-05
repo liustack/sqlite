@@ -57,8 +57,9 @@ type Client struct {
 	creds        CredentialsProvider
 	http         *http.Client
 	now          func() time.Time
-	partSize     int64 // the size of a part, and the largest object sent in one PUT
-	listPage     int   // max-keys of a LIST, 0 for the store's own (1000)
+	partSize     int64         // the size of a part, and the largest object sent in one PUT
+	idle         time.Duration // how long a request goes on with no byte sent or received
+	listPage     int           // max-keys of a LIST, 0 for the store's own (1000)
 }
 
 // New checks cfg and makes a client. It makes no request.
@@ -106,6 +107,7 @@ func New(cfg Config) (*Client, error) {
 		creds:    cfg.Credentials,
 		now:      time.Now,
 		partSize: 64 << 20,
+		idle:     time.Minute,
 		http: &http.Client{
 			Transport: t,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -240,6 +242,16 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 			path += "/" + r.key
 		}
 	}
+	// A store that stops sending or reading: the request ends once nothing
+	// moved for c.idle.
+	ctx, cancel := context.WithCancelCause(ctx)
+	p := &progress{idle: c.idle, ctx: ctx, cancel: cancel}
+	p.timer = time.AfterFunc(c.idle, p.expire)
+	defer func() {
+		if resp == nil {
+			p.end()
+		}
+	}()
 	trace := &httptrace.ClientTrace{GotConn: func(i httptrace.GotConnInfo) { reused = i.Reused }}
 	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), r.method, "", nil)
 	if err != nil {
@@ -254,7 +266,7 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	if r.body != nil && r.size > 0 {
 		req.ContentLength = r.size
 		req.GetBody = func() (io.ReadCloser, error) {
-			return io.NopCloser(io.NewSectionReader(r.body, r.off, r.size)), nil
+			return &watched{ReadCloser: io.NopCloser(io.NewSectionReader(r.body, r.off, r.size)), p: p}, nil
 		}
 		req.Body, _ = req.GetBody()
 		hash = r.hash
@@ -269,8 +281,10 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	sign(req, cr, c.region, "s3", c.now(), hash)
 	resp, err = c.http.Do(req)
 	if err != nil {
-		return nil, reused, fmt.Errorf("s3: %s %s: %w: %w", r.op, r.key, ErrNoAnswer, err)
+		return nil, reused, fmt.Errorf("s3: %s %s: %w: %w", r.op, r.key, ErrNoAnswer, p.why(err))
 	}
+	p.moved()
+	resp.Body = &watched{ReadCloser: resp.Body, p: p, answer: true}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
 		return nil, reused, c.errorOf(resp, r.op, r.key, nil)
@@ -382,3 +396,61 @@ func readXML(resp *http.Response, limit int64, v any) error {
 }
 
 func parseInt(s string) (int64, error) { return strconv.ParseInt(s, 10, 64) }
+
+// progress ends a request when nothing moved for idle.
+type progress struct {
+	idle   time.Duration
+	timer  *time.Timer
+	ctx    context.Context // of the request
+	cancel context.CancelCauseFunc
+}
+
+var errStalled = errors.New("nothing sent or received")
+
+func (p *progress) expire() {
+	p.cancel(fmt.Errorf("%w for %v", errStalled, p.idle))
+}
+
+func (p *progress) moved() { p.timer.Reset(p.idle) }
+
+// end stops the timer and lets the request's context go.
+func (p *progress) end() {
+	p.timer.Stop()
+	p.cancel(nil)
+}
+
+// why gives the error err of a request that p ended, err otherwise.
+func (p *progress) why(err error) error {
+	if cause := context.Cause(p.ctx); errors.Is(cause, errStalled) {
+		return fmt.Errorf("%w: %w", cause, err)
+	}
+	return err
+}
+
+// watched is the body of a request or of its answer: each read that moves
+// a byte holds off p's end. Closing the answer's (answer set) ends the
+// request. The transport closes the request's when it is sent.
+type watched struct {
+	io.ReadCloser
+	p      *progress
+	answer bool
+}
+
+func (w *watched) Read(b []byte) (int, error) {
+	n, err := w.ReadCloser.Read(b)
+	if n > 0 {
+		w.p.moved()
+	}
+	if err != nil && err != io.EOF {
+		err = w.p.why(err)
+	}
+	return n, err
+}
+
+func (w *watched) Close() error {
+	err := w.ReadCloser.Close()
+	if w.answer {
+		w.p.end()
+	}
+	return err
+}

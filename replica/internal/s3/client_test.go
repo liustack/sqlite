@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 var testCreds = Static(Credentials{AccessKeyID: "AKID", SecretAccessKey: "SECRET"})
@@ -485,4 +486,67 @@ func TestErrorScrubsEveryField(t *testing.T) {
 	check("range", err)
 	body := []byte("data")
 	check("upload", c.Put(ctx, "upload", bytes.NewReader(body), int64(len(body)), PutOptions{Multipart: true}))
+}
+
+// A store that stops sending or reading in the middle of a request: the
+// request ends once nothing moved for c.idle.
+func TestStalled(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case "/bkt/get", "/bkt/error":
+			if req.URL.Path == "/bkt/error" {
+				w.Header().Set("Content-Length", "100")
+				w.WriteHeader(http.StatusServiceUnavailable)
+			} else {
+				w.Header().Set("Content-Length", "100")
+			}
+			w.Write([]byte("<"))
+			w.(http.Flusher).Flush()
+		}
+		// put: the body is never read.
+		select {
+		case <-release:
+		case <-req.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+	creds := Static(Credentials{AccessKeyID: "AKID", SecretAccessKey: "SECRET"})
+	c, err := New(Config{Endpoint: srv.URL, Region: "us-east-1", Bucket: "bkt", Credentials: creds, AllowHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.idle = 100 * time.Millisecond
+	ctx := context.Background()
+	bounded := func(what string, f func() error) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- f() }()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Errorf("%s: no error", what)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s: still waiting", what)
+		}
+	}
+	bounded("get", func() error {
+		body, err := c.Get(ctx, "get", 0, -1)
+		if err != nil {
+			return err
+		}
+		defer body.Close()
+		_, err = io.ReadAll(body)
+		return err
+	})
+	bounded("error", func() error {
+		_, err := c.Get(ctx, "error", 0, -1)
+		return err
+	})
+	big := make([]byte, 64<<20)
+	bounded("put", func() error {
+		return c.Put(ctx, "put", bytes.NewReader(big), int64(len(big)), PutOptions{})
+	})
 }
