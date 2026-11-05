@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -571,5 +572,48 @@ func TestRestoreBadTime(t *testing.T) {
 	t.Logf("Restore: %v", err)
 	if entries, _ := os.ReadDir(filepath.Dir(out)); len(entries) != 0 {
 		t.Fatalf("Restore left %v", entries)
+	}
+}
+
+// Retention deletes a file a restore planned to read: the restore plans
+// again, to the same state, from the files left.
+func TestRestoreFileGone(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t)
+	_, points := history(t, cfg)
+	c, path := client(t, cfg)
+	last := ltx.TXID(points[len(points)-1].txid)
+	// A file of level 1 the restore takes over the one of level 0.
+	l0, l1 := levelKey(path, 0, last, last), levelKey(path, 1, last, last)
+	body, err := c.Get(ctx, l0, 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(body)
+	body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Put(ctx, l1, bytes.NewReader(b), int64(len(b)), s3.PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, cnt := countingStore(t, cfg)
+	var once sync.Once
+	get := func(p string) {
+		if strings.HasSuffix(p, "/"+l1) {
+			once.Do(func() {
+				if err := c.Delete(ctx, l1); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+	}
+	cnt.get.Store(&get)
+	out, txid := restoreTo(t, cfg, RestoreOptions{})
+	if txid != uint64(last) {
+		t.Fatalf("restored TXID %d, want %d", txid, last)
+	}
+	if got, want := dump(t, out), points[len(points)-1].dump; got != want {
+		t.Fatal("the restored database differs")
 	}
 }

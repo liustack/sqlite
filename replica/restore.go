@@ -60,11 +60,6 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 	if err != nil {
 		return 0, err
 	}
-	files, err := restorePlan(ctx, client, path, ltx.TXID(opt.TXID), opt.At)
-	if err != nil {
-		return 0, err
-	}
-
 	var id [8]byte
 	rand.Read(id[:])
 	tmp := name + "." + hex.EncodeToString(id[:]) + ".restoring"
@@ -81,11 +76,17 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 	defer os.Remove(last.Name())
 	defer last.Close()
 
-	a := applier{db: db, last: last}
-	for _, f := range files {
-		if err := a.apply(ctx, client, f, opt.At); err != nil {
-			return 0, err
+	// Retention may delete a file planned meanwhile: the restore plans again,
+	// to the same TXID or time, from the files left.
+	var a *applier
+	for try := 1; ; try++ {
+		a, err = restoreFiles(ctx, client, path, opt, db, last)
+		if err == nil || !errors.Is(err, s3.ErrNotFound) || try == 3 {
+			break
 		}
+	}
+	if err != nil {
+		return 0, err
 	}
 	if err := db.Sync(); err != nil {
 		return 0, err
@@ -113,6 +114,25 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 		return 0, err
 	}
 	return uint64(a.txid), nil
+}
+
+// restoreFiles plans the restore opt asks for and applies the files to db,
+// from empty.
+func restoreFiles(ctx context.Context, c *s3.Client, path string, opt RestoreOptions, db, last *os.File) (*applier, error) {
+	files, err := restorePlan(ctx, c, path, ltx.TXID(opt.TXID), opt.At)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Truncate(0); err != nil {
+		return nil, err
+	}
+	a := &applier{db: db, last: last}
+	for _, f := range files {
+		if err := a.apply(ctx, c, f, opt.At); err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
 }
 
 // restoreTarget checks that nothing of a database is at name: the file,

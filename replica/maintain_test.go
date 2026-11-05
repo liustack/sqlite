@@ -162,6 +162,8 @@ type counter struct {
 	// down makes the store fail: 1 answers 503, 2 closes the connection
 	// without an answer.
 	down atomic.Int32
+	// get, if set, runs before each GET of an object, given its path.
+	get atomic.Pointer[func(path string)]
 }
 
 func countingStore(t *testing.T, cfg Config) (Config, *counter) {
@@ -198,6 +200,9 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 		}
 		if req.Method == http.MethodPut {
 			cnt.puts.Store(req.URL.Path, true)
+		}
+		if f := cnt.get.Load(); f != nil && req.Method == http.MethodGet && req.URL.RawQuery == "" {
+			(*f)(req.URL.Path)
 		}
 		proxy.ServeHTTP(w, req)
 	}))
