@@ -63,7 +63,7 @@ func waiting() int {
 	writeLocks.Lock()
 	defer writeLocks.Unlock()
 	n := 0
-	for _, l := range writeLocks.m {
+	for _, l := range writeLocks.all {
 		l.mu.Lock()
 		n += len(l.queue) + len(l.waiters)
 		l.mu.Unlock()

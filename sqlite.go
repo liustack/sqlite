@@ -142,7 +142,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if err := c.setUp(conn); err != nil {
 		cc.Close()
 		if conn.wl != nil {
-			closeWriteLock(conn.path, conn.wl)
+			closeWriteLock(conn.wl)
 		}
 		return nil, err
 	}
@@ -153,8 +153,11 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 func (c *Connector) setUp(conn *conn) error {
 	cc := conn.c
 	var attached bool
-	if conn.path = cc.Filename("main"); conn.path != "" {
-		conn.wl, attached = openWriteLock(conn.path)
+	if path := cc.Filename("main"); path != "" {
+		var err error
+		if conn.wl, attached, err = openWriteLock(path); err != nil {
+			return err
+		}
 	}
 	if attached {
 		// The replicator runs every checkpoint, after it has read the

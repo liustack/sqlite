@@ -22,32 +22,36 @@ func init() {
 
 // attach is replhook.Attach.
 func attach(path string) (detach func(), err error) {
+	file, err := fileOf(path)
+	if err != nil {
+		return nil, err
+	}
 	writeLocks.Lock()
 	defer writeLocks.Unlock()
-	if writeLocks.m == nil {
-		writeLocks.m = map[string]*writeLock{}
-	}
-	l := writeLocks.m[path]
-	switch {
+	switch l := findWriteLock(file); {
 	case l != nil && l.attached:
 		return nil, errors.New("sqlite: " + path + " is replicated already")
 	case l != nil:
 		return nil, errors.New("sqlite: " + path + " is open: replication starts before the database is opened")
 	}
-	l = &writeLock{refs: 1, attached: true}
-	writeLocks.m[path] = l
+	l := &writeLock{refs: 1, attached: true, file: file}
+	writeLocks.all = append(writeLocks.all, l)
 	return func() {
 		writeLocks.Lock()
 		l.attached = false
 		writeLocks.Unlock()
-		closeWriteLock(path, l)
+		closeWriteLock(l)
 	}, nil
 }
 
 // lockFile is replhook.Lock.
 func lockFile(ctx context.Context, path string) (unlock func(), err error) {
+	file, err := fileOf(path)
+	if err != nil {
+		return nil, err
+	}
 	writeLocks.Lock()
-	l := writeLocks.m[path]
+	l := findWriteLock(file)
 	writeLocks.Unlock()
 	if l == nil || !l.attached {
 		return nil, errors.New("sqlite: " + path + " is not replicated")

@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -110,4 +111,44 @@ func TestAttachOpen(t *testing.T) {
 		t.Fatalf("attach once closed: %v", err)
 	}
 	detach()
+}
+
+// One file spelled two ways (case on a file system that ignores it, a short
+// 8.3 name on windows) is one file to the driver: attached under one name,
+// its connections under the other are guarded, and attaching it under the
+// other name while open fails.
+func TestAttachAlias(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, "x.db")
+	alias := filepath.Join(dir, "X.DB")
+	path := realName(t, name)
+	a, errA := os.Stat(name)
+	b, errB := os.Stat(alias)
+	if errA != nil || errB != nil || !os.SameFile(a, b) {
+		t.Skip("the file system tells case apart")
+	}
+	detach, err := replhook.Attach(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := openDB(t, alias)
+	if _, err := db.Exec("PRAGMA journal_mode=WAL; CREATE TABLE t(x)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("PRAGMA wal_checkpoint"); !errors.Is(err, csqlite.ErrGuarded) {
+		t.Errorf("a connection under the other name: %v", err)
+	}
+	if _, err := replhook.Attach(realName(t, alias)); err == nil {
+		t.Error("attached under the other name")
+	}
+	db.Close()
+	detach()
+
+	db = openDB(t, alias)
+	if err := db.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := replhook.Attach(path); err == nil {
+		t.Error("attached a file open under the other name")
+	}
 }
