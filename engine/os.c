@@ -359,9 +359,37 @@ char *go_strdup(const char *z) { return sqlite3_mprintf("%s", z); }
 #define GO_WRITES_MAIN 1
 #define GO_PRIVATE 2
 #define GO_STATE 4
+/* GO_GUARDED: goClassify refused a PRAGMA that would take the checkpoints
+   of a replicated database from the replicator (goGuarded). */
+#define GO_GUARDED 8
 
 static int isMain(const char *db) { return db && strcmp(db, "main") == 0; }
 static int isTemp(const char *db) { return db && strcmp(db, "temp") == 0; }
+
+/* isMainFile says schema db of connection conn is the main database: main,
+   or the same file attached under another name. */
+static int isMainFile(sqlite3 *conn, const char *db) {
+  if (isMain(db)) return 1;
+  const char *f = sqlite3_db_filename(conn, db), *m = sqlite3_db_filename(conn, "main");
+  return f && m && *m && strcmp(f, m) == 0;
+}
+
+/* goGuarded says a PRAGMA of name with argument arg (NULL for none) on schema
+   db (NULL for every one) of connection conn would checkpoint the main
+   database, turn the automatic checkpoints back on, take the main database
+   out of WAL mode, or lock it for one connection: on a replicated database
+   the replicator runs every checkpoint, after it has read the frames
+   (replica/internal/capture). wal_autocheckpoint is of the connection,
+   whatever schema it names. */
+static int goGuarded(sqlite3 *conn, const char *name, const char *arg, const char *db) {
+  if (arg && sqlite3_stricmp(name, "wal_autocheckpoint") == 0) return 1;
+  if (db && !isMainFile(conn, db)) return 0;
+  if (sqlite3_stricmp(name, "wal_checkpoint") == 0) return 1;
+  if (!arg) return 0;
+  if (sqlite3_stricmp(name, "journal_mode") == 0) return sqlite3_stricmp(arg, "wal") != 0;
+  if (sqlite3_stricmp(name, "locking_mode") == 0) return sqlite3_stricmp(arg, "normal") != 0;
+  return 0;
+}
 
 /* infoPragma says a PRAGMA with an argument only reads: the ones that take
    the name of a table or an index. */
@@ -377,14 +405,17 @@ static int infoPragma(const char *name) {
 /* goClassifyWord is the word of the host's header goClassify writes to,
    with the connection it is installed on. merging is GO_MERGING while the
    connection runs a statement of another connection's caller, and
-   goClassify makes it GO_REFUSED when it refuses one (goClassify). */
+   goClassify makes it GO_REFUSED when it refuses one (goClassify). guard is
+   not 0 on a connection to a replicated database (goGuarded). */
 struct goClassifyWord {
   int flags;
   int merging;
   sqlite3 *db;
+  int guard;
 };
 _Static_assert(__builtin_offsetof(struct goClassifyWord, merging) == 4, "goClassifyWord.merging");
 _Static_assert(__builtin_offsetof(struct goClassifyWord, db) == 8, "goClassifyWord.db");
+_Static_assert(__builtin_offsetof(struct goClassifyWord, guard) == 16, "goClassifyWord.guard");
 #define GO_MERGING 1
 #define GO_REFUSED 2
 
@@ -441,6 +472,10 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
        pragma reads its setting. */
     *flags |= GO_PRIVATE;
     if (b && !infoPragma(a)) *flags |= GO_STATE;
+    if (w->guard && goGuarded(w->db, a, b, db)) {
+      w->flags |= GO_GUARDED;
+      return SQLITE_DENY;
+    }
     break;
   case SQLITE_ATTACH:
   case SQLITE_DETACH:
@@ -506,6 +541,57 @@ void go_collate_failed(sqlite3 *db) { sqlite3OomFault(db); }
    transaction of db: one was written since it began. db->nVTrans is internal
    to SQLite, as sqlite3OomFault is. */
 int go_vtabs_in_tx(sqlite3 *db) { return db->nVTrans > 0; }
+
+/* ---- replication ---- */
+
+/* The replicator reads a database as the read transaction open on its
+   connection sees it: the header of the WAL that transaction reads, and its
+   pages. Pager, Wal and WalIndexHdr are internal to SQLite, as Parse is.
+   WalIndexHdr is also the header of the -shm file, a format every SQLite
+   since 3.7.0 shares. */
+_Static_assert(sizeof(WalIndexHdr) == 48, "WalIndexHdr");
+
+/* goReadPager is the pager of the main database of db when a read
+   transaction is open on it, or NULL. */
+static Pager *goReadPager(sqlite3 *db) {
+  if (!db->aDb[0].pBt || sqlite3_txn_state(db, "main") < SQLITE_TXN_READ) return 0;
+  return sqlite3BtreePager(db->aDb[0].pBt);
+}
+
+/* go_wal_header copies the WAL header the read transaction of db reads
+   (struct WalIndexHdr) to out: its mxFrame is the last frame of the last
+   transaction that transaction sees. */
+int go_wal_header(sqlite3 *db, void *out) {
+  Pager *p = goReadPager(db);
+  if (!p || !p->pWal || p->pWal->readLock < 0) return SQLITE_ERROR;
+  memcpy(out, &p->pWal->hdr, sizeof(WalIndexHdr));
+  return SQLITE_OK;
+}
+
+/* go_page_count is the size of the main database of db in pages, as its
+   read transaction sees it. */
+int go_page_count(sqlite3 *db, unsigned *n) {
+  if (!goReadPager(db)) return SQLITE_ERROR;
+  *n = sqlite3BtreeLastPage(db->aDb[0].pBt);
+  return SQLITE_OK;
+}
+
+/* go_read_page copies page pgno of the main database of db, as its read
+   transaction sees it, to out, which holds n bytes, the page size. The lock
+   page cannot be read. */
+int go_read_page(sqlite3 *db, unsigned pgno, void *out, int n) {
+  Pager *p = goReadPager(db);
+  DbPage *pg;
+  int rc;
+  if (!p || pgno == 0 || pgno > sqlite3BtreeLastPage(db->aDb[0].pBt) ||
+      n != sqlite3BtreeGetPageSize(db->aDb[0].pBt))
+    return SQLITE_ERROR;
+  rc = sqlite3PagerGet(p, pgno, &pg, 0);
+  if (rc != SQLITE_OK) return rc;
+  memcpy(out, sqlite3PagerGetData(pg), n);
+  sqlite3PagerUnref(pg);
+  return SQLITE_OK;
+}
 
 /* ---- files ---- */
 

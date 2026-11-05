@@ -1,0 +1,746 @@
+// Copyright (c) 2026 The liustack/sqlite Authors.
+// SPDX-License-Identifier: MIT
+// Use of this source code is governed by the MIT license in LICENSE at the
+// root of this repository.
+
+// Package capture copies each change of a database in WAL mode into LTX
+// files in a local staging folder, from which the replicator uploads them,
+// and runs the database's checkpoints, so that no frame is checkpointed
+// before it is copied.
+//
+// Every Interval the capturer opens a short read transaction and reads the
+// WAL header SQLite sees in it: the generation of the WAL (its salts), its
+// last committed frame (mxFrame) and a count of the commits made (iChange,
+// one more for each commit of any process, kept when the WAL starts over).
+// It reads the frames after the last one it staged up to that frame,
+// checks each as SQLite's recovery does, and stages the pages as one LTX
+// file of the next TXID, synced before it counts. A frame after mxFrame,
+// of a transaction that has not committed, is never read.
+//
+// The count of commits tells whether the WAL went on in a way the capturer
+// saw: the commit frames it reads must be exactly the commits made since
+// the last read, also across a new generation of the WAL. When they are
+// not, another process wrote and checkpointed, or the WAL went back, and
+// the capturer stages a full copy of the database as the next TXID instead.
+//
+// Connections of the driver to the database have no automatic checkpoints
+// and cannot run a checkpoint (replhook.Attach). The capturer checkpoints
+// once the WAL holds CheckpointFrames frames: it takes the driver's write
+// lock of the file, reads the WAL to its end and checkpoints, so that no
+// frame of this process is checkpointed before it is staged.
+//
+// On start, the last staged file says where in the WAL staging stopped and
+// the checksum of the database there. The capturer reads the database,
+// works out its checksum at that point, and goes on from there only if it
+// is the same. Otherwise it stages a full copy.
+package capture
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/superfly/ltx"
+
+	// The driver fills in replhook.
+	_ "github.com/liustack/sqlite"
+	"github.com/liustack/sqlite/internal/csqlite"
+	"github.com/liustack/sqlite/internal/replhook"
+)
+
+// Options are the options of Open.
+type Options struct {
+	// Interval is the time between two reads of the WAL. Default 1s.
+	Interval time.Duration
+	// CheckpointFrames is how many frames the WAL holds before the capturer
+	// checkpoints it. Default 1000, as SQLite's automatic checkpoints.
+	CheckpointFrames uint32
+	// OnError, if set, gets the errors of the reads made in the background,
+	// and an error under ErrFullCopy for each full copy staged because the
+	// WAL could not be followed.
+	OnError func(error)
+}
+
+// ErrFullCopy is under the error reported for a full copy of the database
+// staged because the WAL went on in a way the capturer could not follow, or
+// the database is not where the staged files end.
+var ErrFullCopy = errors.New("capture: staged a full copy of the database")
+
+// closeWait is how long Close waits for the driver's write lock to
+// checkpoint. Tests shorten it.
+var closeWait = 5 * time.Second
+
+// A Capturer stages the changes of one database file.
+type Capturer struct {
+	opt    Options
+	path   string // the database, as SQLite names it
+	dir    string // the staging folder of its level 0 files
+	mode   os.FileMode
+	conn   *csqlite.Conn
+	detach func()
+	wal    *os.File // the WAL, once it exists
+
+	ctx    context.Context // done once Close starts
+	cancel context.CancelFunc
+	done   chan struct{} // closed when the loop has stopped
+
+	mu sync.Mutex // one step at a time
+	// What is staged: the database file and frames 1 to pos of the WAL
+	// generation gen, after change commits.
+	gen    [8]byte
+	pos    uint32
+	cksum  [2]uint32 // of frame pos, when pos > 0
+	change uint32
+	// lost, when not nil, says why the WAL can no longer be followed: the
+	// next step stages a full copy.
+	lost error
+
+	pageSize   int
+	txid       ltx.TXID       // of the last staged file
+	post       ltx.Checksum   // the checksum of the database it leaves
+	sums       []ltx.Checksum // the checksum of each page there, of pgno-1, 0 for the lock page
+	summer     *pageSummer
+	frame      []byte
+	commitPage []byte // the page of the last commit frame scanned (capture)
+	fullCopies int
+	closed     bool
+}
+
+// Open starts staging the changes of the database name, before the driver
+// opens it: it fails when the driver of this process has it open. The
+// database is put in WAL mode. Open stages a copy of the whole database
+// first, unless the staged files end where the database is.
+func Open(name string, opt Options) (*Capturer, error) {
+	if opt.Interval <= 0 {
+		opt.Interval = time.Second
+	}
+	if opt.CheckpointFrames == 0 {
+		opt.CheckpointFrames = 1000
+	}
+	conn, err := csqlite.Open(name, csqlite.OpenReadWrite|csqlite.OpenCreate|csqlite.OpenURI|csqlite.OpenNoMutex, "")
+	if err != nil {
+		return nil, err
+	}
+	c := &Capturer{opt: opt, conn: conn, summer: newPageSummer(), done: make(chan struct{})}
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	if err := c.open(); err != nil {
+		c.release()
+		return nil, err
+	}
+	go c.run()
+	return c, nil
+}
+
+func (c *Capturer) open() error {
+	if c.path = c.conn.Filename("main"); c.path == "" {
+		return errors.New("capture: a memory or temporary database cannot be replicated")
+	}
+	detach, err := replhook.Attach(c.path)
+	if err != nil {
+		return err
+	}
+	c.detach = detach
+	// The capturer never waits for a lock: what is busy is tried again at
+	// the next step.
+	if err := c.conn.BusyTimeout(0); err != nil {
+		return err
+	}
+	if mode, err := pragma(c.conn, "journal_mode=WAL"); err != nil {
+		return err
+	} else if mode != "wal" {
+		return fmt.Errorf("capture: the database is in journal mode %s, not WAL", mode)
+	}
+	ps, err := pragma(c.conn, "page_size")
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Sscan(ps, &c.pageSize); err != nil {
+		return err
+	}
+	c.frame = make([]byte, frameSize(c.pageSize))
+	c.commitPage = make([]byte, c.pageSize)
+	st, err := os.Stat(c.path)
+	if err != nil {
+		return err
+	}
+	c.mode = st.Mode().Perm()
+	c.dir = stageDir(c.path)
+	if err := os.MkdirAll(c.dir, 0o755); err != nil {
+		return err
+	}
+	return c.start()
+}
+
+// pragma is the value PRAGMA p gives.
+func pragma(c *csqlite.Conn, p string) (string, error) {
+	s, _, err := c.Prepare("PRAGMA " + p)
+	if err != nil {
+		return "", err
+	}
+	defer s.Finalize()
+	if row, err := s.Step(); err != nil || !row {
+		return "", fmt.Errorf("PRAGMA %s: no value (%v)", p, err)
+	}
+	return s.ColumnText(0), nil
+}
+
+// release gives back what Open took.
+func (c *Capturer) release() {
+	if c.wal != nil {
+		c.wal.Close()
+	}
+	c.conn.Close()
+	if c.detach != nil {
+		c.detach()
+	}
+}
+
+// start resumes from the staged files, or stages a full copy.
+func (c *Capturer) start() error {
+	last, post, ok, err := lastStaged(c.dir)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return c.fullCopy(nil)
+	}
+	if resumed, err := c.resume(last, post); err != nil || resumed {
+		return err
+	}
+	c.txid, c.post = last.MaxTXID, post
+	return c.fullCopy(errors.New("the database is not where the staged files end"))
+}
+
+// run takes a step every Interval until Close.
+func (c *Capturer) run() {
+	defer close(c.done)
+	t := time.NewTicker(c.opt.Interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-t.C:
+		}
+		c.mu.Lock()
+		err := c.step(c.ctx)
+		c.mu.Unlock()
+		if err != nil && c.ctx.Err() == nil {
+			c.report(err)
+		}
+	}
+}
+
+func (c *Capturer) report(err error) {
+	if c.opt.OnError != nil {
+		c.opt.OnError(err)
+	}
+}
+
+// Sync stages what was committed up to now. ctx bounds the wait for the
+// driver's write lock, which a checkpoint takes.
+func (c *Capturer) Sync(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return errors.New("capture: closed")
+	}
+	return c.step(ctx)
+}
+
+// Close stages what is left, checkpoints and stops. When a write
+// transaction keeps the driver's write lock longer than closeWait, the WAL is
+// left as it is, staged, for the next Open. Connections the driver opens to
+// the database after Close are as before replication.
+func (c *Capturer) Close() error {
+	c.cancel()
+	<-c.done
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
+	defer cancel()
+	err := c.step(ctx)
+	if err == nil {
+		err = c.checkpoint(ctx)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		err = nil
+	}
+	c.release()
+	return err
+}
+
+// TXID is the TXID of the last staged file.
+func (c *Capturer) TXID() ltx.TXID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.txid
+}
+
+// FullCopies is how many full copies were staged after the first.
+func (c *Capturer) FullCopies() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.fullCopies
+}
+
+// Dir is the staging folder of the level 0 files.
+func (c *Capturer) Dir() string { return c.dir }
+
+// step stages what was committed, or a full copy when the WAL was lost, and
+// checkpoints when the WAL is long enough.
+func (c *Capturer) step(ctx context.Context) error {
+	if c.lost != nil {
+		return c.fullCopy(c.lost)
+	}
+	frames, err := c.capture()
+	if err != nil {
+		return err
+	}
+	if c.lost != nil {
+		return c.fullCopy(c.lost)
+	}
+	if frames >= c.opt.CheckpointFrames {
+		return c.checkpoint(ctx)
+	}
+	return nil
+}
+
+// checkpoint stages the WAL to its end under the driver's write lock of the
+// file and checkpoints it. When the WAL was lost, it stages a full copy
+// instead, after the lock, so that writers do not wait for it, and leaves
+// the checkpoint to a later step.
+func (c *Capturer) checkpoint(ctx context.Context) error {
+	unlock, err := replhook.Lock(ctx, c.path)
+	if err != nil {
+		return err
+	}
+	if _, err := c.capture(); err != nil || c.lost != nil {
+		unlock()
+		if err != nil {
+			return err
+		}
+		return c.fullCopy(c.lost)
+	}
+	defer unlock()
+	// The names of the staged files are kept before the frames go.
+	if err := syncDir(c.dir); err != nil {
+		return err
+	}
+	// TRUNCATE starts the WAL over, empty. With readers it cannot: the
+	// frames are still copied, and the next writer starts the WAL over.
+	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointTruncate); err != nil {
+		var e *csqlite.Error
+		if errors.As(err, &e) && e.Primary() == 5 { // SQLITE_BUSY
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// beginRead opens a read transaction on the capturer's connection.
+func (c *Capturer) beginRead() error {
+	if err := c.conn.Exec("BEGIN"); err != nil {
+		return err
+	}
+	s, _, err := c.conn.Prepare("SELECT 1 FROM sqlite_schema LIMIT 1")
+	if err == nil {
+		_, err = s.Step()
+		s.Finalize()
+	}
+	if err != nil {
+		c.conn.Exec("ROLLBACK")
+	}
+	return err
+}
+
+func (c *Capturer) endRead() { c.conn.Exec("ROLLBACK") }
+
+// walFile is the WAL, opened once.
+func (c *Capturer) walFile() (*os.File, error) {
+	if c.wal == nil {
+		f, err := os.Open(c.path + "-wal")
+		if err != nil {
+			return nil, err
+		}
+		c.wal = f
+	}
+	return c.wal, nil
+}
+
+// lose records that the WAL can no longer be followed.
+func (c *Capturer) lose(why error) {
+	if c.lost == nil {
+		c.lost = why
+	}
+}
+
+// A version of a page in the WAL: frame n, whose checksum carries on from
+// prev.
+type version struct {
+	n    uint32
+	prev [2]uint32
+}
+
+// capture stages the frames committed since the last step. It returns the
+// number of frames in the WAL.
+func (c *Capturer) capture() (uint32, error) {
+	if err := c.beginRead(); err != nil {
+		return 0, err
+	}
+	defer c.endRead()
+	h, err := c.conn.WALHeader()
+	if err != nil {
+		return 0, err
+	}
+	commits := h.Change - c.change
+	from, cksum := c.pos, c.cksum
+	switch {
+	case h.Salt != c.gen:
+		from = 0 // a new generation: all its frames are new
+	case h.MaxFrame < c.pos:
+		c.lose(fmt.Errorf("the WAL has %d frames, %d were staged", h.MaxFrame, c.pos))
+		return 0, nil
+	}
+	if h.MaxFrame == from {
+		if commits != 0 {
+			c.lose(fmt.Errorf("%d commits are not in the WAL", commits))
+		} else if h.Salt != c.gen {
+			// The WAL started over and holds nothing yet.
+			c.gen, c.pos, c.change = h.Salt, 0, h.Change
+		}
+		return h.MaxFrame, nil
+	}
+	wal, err := c.walFile()
+	if err != nil {
+		return 0, err
+	}
+	wh, err := readWALHeader(wal)
+	if err != nil || wh.salt != h.Salt || wh.pageSize != c.pageSize {
+		c.lose(fmt.Errorf("the WAL file is not the WAL SQLite reads (%v)", err))
+		return 0, nil
+	}
+	if from == 0 {
+		cksum = wh.cksum
+	}
+	last := map[uint32]version{}
+	var n, last1 uint32 // commits, and the commit of frame MaxFrame
+	var repeat frame    // the last frame, if a commit frame: pgno and commit
+	end, err := scanFrames(wal, wh, from, h.MaxFrame, cksum, func(f *frame) error {
+		last[f.pgno] = version{f.n, f.prev}
+		last1 = f.commit
+		if f.commit == 0 {
+			repeat = frame{}
+			return nil
+		}
+		// With synchronous=FULL and no powersafe overwrite, SQLite
+		// repeats the last frame of a commit up to a sector boundary
+		// (walFrames). A repeat is not a commit of its own. A commit that
+		// writes exactly that frame again is not counted either: the
+		// count comes short, which stages a full copy, never misses a
+		// commit.
+		if f.pgno == repeat.pgno && f.commit == repeat.commit && bytes.Equal(f.data, c.commitPage) {
+			return nil
+		}
+		n++
+		repeat.pgno, repeat.commit = f.pgno, f.commit
+		copy(c.commitPage, f.data)
+		return nil
+	})
+	switch {
+	case errors.Is(err, errFrame):
+		c.lose(err)
+		return 0, nil
+	case err != nil:
+		return 0, err
+	case end != h.Checksum || last1 != h.Pages:
+		c.lose(errors.New("the frames of the WAL end elsewhere than its header says"))
+		return 0, nil
+	case n != commits:
+		c.lose(fmt.Errorf("%d commits since the last step, %d of them in the WAL", commits, n))
+		return 0, nil
+	}
+	if err := c.stageFrames(wal, wh, last, h, from); err != nil {
+		if errors.Is(err, errFrame) {
+			c.lose(err)
+			return 0, nil
+		}
+		return 0, err
+	}
+	return h.MaxFrame, nil
+}
+
+// stageFrames stages as the next TXID the pages of last, the latest version
+// of each page in frames from+1 to at.MaxFrame of the WAL whose header SQLite
+// reads is at. Once the file is placed, it moves the checksums and the WAL
+// position there, even if it then returns an error.
+func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]version, at csqlite.WALHeader, from uint32) error {
+	size := at.Pages
+	old := uint32(len(c.sums))
+	lock := ltx.LockPgno(uint32(c.pageSize))
+	for p := old + 1; p <= size; p++ {
+		if _, ok := last[p]; !ok && p != lock {
+			return fmt.Errorf("page %d is new and not in the WAL: %w", p, errFrame)
+		}
+	}
+	pgnos := make([]uint32, 0, len(last))
+	for p := range last {
+		if p <= size {
+			pgnos = append(pgnos, p)
+		}
+	}
+	slices.Sort(pgnos)
+	h := c.header(size)
+	setWALPos(&h, at.Salt, from, at.MaxFrame)
+	sums := make([]ltx.Checksum, len(pgnos))
+	post := c.post
+	for p := size + 1; p <= old; p++ {
+		post ^= c.sums[p-1] // the database got shorter
+	}
+	placed, err := stageFile(c.dir, c.mode, h, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
+		for i, p := range pgnos {
+			v := last[p]
+			data, err := readFrame(wal, wh, v.n, v.prev, c.frame)
+			if err != nil {
+				return 0, err
+			}
+			sums[i] = c.summer.sum(p, data)
+			if p <= old {
+				post ^= c.sums[p-1]
+			}
+			post ^= sums[i]
+			if err := put(p, data); err != nil {
+				return 0, err
+			}
+		}
+		post |= ltx.ChecksumFlag
+		return post, nil
+	})
+	if !placed {
+		return err
+	}
+	if size < old {
+		c.sums = c.sums[:size]
+	} else {
+		c.sums = append(c.sums, make([]ltx.Checksum, size-old)...)
+	}
+	for i, p := range pgnos {
+		c.sums[p-1] = sums[i]
+	}
+	c.txid, c.post = h.MaxTXID, post
+	c.gen, c.pos, c.cksum, c.change = at.Salt, at.MaxFrame, at.Checksum, at.Change
+	return err
+}
+
+// header is the header of the next staged file, for a database of size
+// pages.
+func (c *Capturer) header(size uint32) ltx.Header {
+	h := ltx.Header{
+		Version:   ltx.Version,
+		PageSize:  uint32(c.pageSize),
+		Commit:    size,
+		MinTXID:   c.txid + 1,
+		MaxTXID:   c.txid + 1,
+		Timestamp: time.Now().UnixMilli(),
+	}
+	if c.txid > 0 {
+		h.PreApplyChecksum = c.post
+	}
+	return h
+}
+
+// fullCopy stages every page of the database as the next TXID, a snapshot
+// for TXID 1. why is the reason when it is not the first.
+func (c *Capturer) fullCopy(why error) error {
+	if err := c.beginRead(); err != nil {
+		return err
+	}
+	defer c.endRead()
+	h, err := c.conn.WALHeader()
+	if err != nil {
+		return err
+	}
+	size, err := c.conn.PageCount()
+	if err != nil {
+		return err
+	}
+	lock := ltx.LockPgno(uint32(c.pageSize))
+	sums := make([]ltx.Checksum, size)
+	hdr := c.header(size)
+	setWALPos(&hdr, h.Salt, h.MaxFrame, h.MaxFrame)
+	page := make([]byte, c.pageSize)
+	var post ltx.Checksum
+	placed, err := stageFile(c.dir, c.mode, hdr, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
+		for p := uint32(1); p <= size; p++ {
+			if p == lock {
+				continue
+			}
+			if err := c.conn.ReadPage(p, page); err != nil {
+				return 0, err
+			}
+			sums[p-1] = c.summer.sum(p, page)
+			post ^= sums[p-1]
+			if err := put(p, page); err != nil {
+				return 0, err
+			}
+		}
+		post |= ltx.ChecksumFlag
+		return post, nil
+	})
+	if !placed {
+		return err
+	}
+	c.txid, c.post, c.sums = hdr.MaxTXID, post, sums
+	c.gen, c.pos, c.cksum, c.change = h.Salt, h.MaxFrame, h.Checksum, h.Change
+	c.lost = nil
+	if why != nil {
+		c.fullCopies++
+		c.report(fmt.Errorf("%w (TXID %s): %w", ErrFullCopy, hdr.MaxTXID, why))
+	}
+	return err
+}
+
+// resume goes on from the last staged file, last, which leaves the database
+// with checksum post, if the database is there or after it. It reads the
+// whole database, works out its checksum where the file ends from the
+// frames written since, and stages those frames when it is the same.
+func (c *Capturer) resume(last ltx.Header, post ltx.Checksum) (bool, error) {
+	if int(last.PageSize) != c.pageSize {
+		return false, nil
+	}
+	if err := c.beginRead(); err != nil {
+		return false, err
+	}
+	defer c.endRead()
+	h, err := c.conn.WALHeader()
+	if err != nil {
+		return false, err
+	}
+	size, err := c.conn.PageCount()
+	if err != nil {
+		return false, err
+	}
+	lock := ltx.LockPgno(uint32(c.pageSize))
+	sums := make([]ltx.Checksum, size)
+	var now ltx.Checksum
+	page := make([]byte, c.pageSize)
+	for p := uint32(1); p <= size; p++ {
+		if p == lock {
+			continue
+		}
+		if err := c.conn.ReadPage(p, page); err != nil {
+			return false, err
+		}
+		sums[p-1] = c.summer.sum(p, page)
+		now ^= sums[p-1]
+	}
+	now |= ltx.ChecksumFlag
+
+	// The frames staged are those to end of generation salt. Without one
+	// of them in the WAL, the database file is where staging ended: the
+	// WAL started over after a checkpoint of them all.
+	salt, end := walPos(last)
+	same := h.Salt == salt && end > 0
+	if same && h.MaxFrame < end {
+		return false, nil
+	}
+	from := uint32(0)
+	if same {
+		from = end
+	}
+	base := map[uint32]version{}  // the latest version of each page up to end
+	since := map[uint32]version{} // and after it
+	var wh walHeader
+	var endCommit uint32
+	var wal *os.File
+	if h.MaxFrame > 0 {
+		if wal, err = c.walFile(); err != nil {
+			return false, err
+		}
+		if wh, err = readWALHeader(wal); err != nil || wh.salt != h.Salt || wh.pageSize != c.pageSize {
+			return false, nil
+		}
+		ck, err := scanFrames(wal, wh, 0, h.MaxFrame, wh.cksum, func(f *frame) error {
+			if f.n <= from {
+				base[f.pgno] = version{f.n, f.prev}
+				endCommit = f.commit
+			} else {
+				since[f.pgno] = version{f.n, f.prev}
+			}
+			return nil
+		})
+		if errors.Is(err, errFrame) || err == nil && ck != h.Checksum {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		}
+	}
+	// The size of the database where staging ended.
+	var then uint32
+	if same {
+		if then = endCommit; then == 0 {
+			return false, nil
+		}
+	} else {
+		st, err := os.Stat(c.path)
+		if err != nil {
+			return false, err
+		}
+		then = uint32(st.Size() / int64(c.pageSize))
+	}
+	// Its checksum there: the pages written since were what the frames up
+	// to end, or else the database file, hold.
+	db, err := os.Open(c.path)
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	thenSums := make([]ltx.Checksum, then)
+	var was ltx.Checksum
+	for p := uint32(1); p <= then; p++ {
+		if p == lock {
+			continue
+		}
+		if _, ok := since[p]; !ok && p <= size {
+			thenSums[p-1] = sums[p-1]
+			was ^= sums[p-1]
+			continue
+		}
+		data := page
+		if v, ok := base[p]; ok {
+			if data, err = readFrame(wal, wh, v.n, v.prev, c.frame); err != nil {
+				return false, nil
+			}
+		} else if err := readFull(db, page, int64(p-1)*int64(c.pageSize)); err != nil {
+			return false, nil
+		}
+		thenSums[p-1] = c.summer.sum(p, data)
+		was ^= thenSums[p-1]
+	}
+	if was|ltx.ChecksumFlag != post {
+		return false, nil
+	}
+	c.txid, c.post, c.sums = last.MaxTXID, post, thenSums
+	if len(since) > 0 {
+		if err := c.stageFrames(wal, wh, since, h, from); err != nil {
+			return false, err
+		}
+		if c.post != now {
+			return false, fmt.Errorf("capture: resuming: the checksum is %s after the frames, the database's is %s", c.post, now)
+		}
+	}
+	c.sums = sums
+	c.post = now
+	c.gen, c.pos, c.cksum, c.change = h.Salt, h.MaxFrame, h.Checksum, h.Change
+	return true, nil
+}

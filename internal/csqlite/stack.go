@@ -28,9 +28,10 @@ const (
 	// classifyOffset is the struct goClassifyWord of the header (engine/os.c):
 	// the int goClassify writes the kind of a statement to as it is
 	// prepared, the int that says the connection merges (SetMerging), then
-	// the connection.
+	// the connection, then the int that says it refuses the PRAGMAs
+	// a replicated database must not run (SetGuard).
 	classifyOffset = 64
-	classifySize   = 16
+	classifySize   = 24
 	// rollbackOffset is the word go_count_rollbacks (engine/os.c) counts
 	// the rolled back transactions of the connection in.
 	rollbackOffset = 128

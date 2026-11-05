@@ -129,6 +129,13 @@ func (a *args) bytes(b []byte) uintptr {
 	return p
 }
 
+// space is room for n bytes.
+func (a *args) space(n int) uintptr {
+	p := a.top
+	a.top = (p + uintptr(n) + 15) &^ 15
+	return p
+}
+
 // word is room for one out-parameter, zeroed.
 func (a *args) word() uintptr {
 	p := a.top
@@ -279,14 +286,21 @@ func (c *Conn) Exec(sql string) error {
 		defer release(p)
 		copy(bytesAt(p, len(sql)), sql)
 		*(*byte)(at(p + uintptr(len(sql)))) = 0
-		return c.execResult(int(int32(sqlite3_exec(c.sp, c.db, p, 0, 0, 0))))
+		*(*int32)(at(c.classifyWord())) = 0
+		return c.execResult(int32(sqlite3_exec(c.sp, c.db, p, 0, 0, 0)))
 	}
 	a := c.args()
 	z := a.str(sql)
-	return c.execResult(int(int32(sqlite3_exec(a.top, c.db, z, 0, 0, 0))))
+	*(*int32)(at(c.classifyWord())) = 0
+	return c.execResult(int32(sqlite3_exec(a.top, c.db, z, 0, 0, 0)))
 }
 
-func (c *Conn) execResult(r int) error { return c.err(r) }
+func (c *Conn) execResult(r int32) error {
+	if err := c.guardErr(r); err != nil {
+		return err
+	}
+	return c.err(int(r))
+}
 
 // Prepare compiles the first statement of sql. tail is the rest of sql. A
 // nil statement with no error is sql with no statement in it.
@@ -312,6 +326,9 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	*w = 0
 	r := int32(sqlite3_prepare_v2(a.top, c.db, z, uintptr(len(sql)), pStmt, pTail))
 	kind := *w
+	if err := c.guardErr(r); err != nil {
+		return nil, "", err
+	}
 	if r != OK {
 		return nil, "", c.err(int(r))
 	}

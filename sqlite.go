@@ -139,33 +139,52 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 	conn := &conn{c: cc, begin: c.begin, key: c.key}
-	if err := c.opts.setUp(cc); err != nil {
+	if err := c.setUp(conn); err != nil {
 		cc.Close()
+		if conn.wl != nil {
+			closeWriteLock(conn.path, conn.wl)
+		}
 		return nil, err
 	}
+	return conn, nil
+}
+
+// setUp makes conn, just opened, what the connector says.
+func (c *Connector) setUp(conn *conn) error {
+	cc := conn.c
+	var attached bool
+	if conn.path = cc.Filename("main"); conn.path != "" {
+		conn.wl, attached = openWriteLock(conn.path)
+	}
+	if attached {
+		// The replicator runs every checkpoint, after it has read the
+		// frames (replhook.Attach), also against the PRAGMAs of the
+		// connector.
+		if err := cc.Exec("PRAGMA wal_autocheckpoint=0"); err != nil {
+			return err
+		}
+		cc.SetGuard(true)
+	}
+	if err := c.opts.setUp(cc); err != nil {
+		return err
+	}
 	if err := cc.BusyTimeout(5000); err != nil {
-		cc.Close()
-		return nil, err
+		return err
 	}
 	for _, p := range c.pragmas {
 		if err := cc.Exec(p); err != nil {
-			cc.Close()
-			return nil, fmt.Errorf("sqlite: %s: %w", p, err)
+			return fmt.Errorf("sqlite: %s: %w", p, err)
 		}
 	}
 	ms, err := pragmaInt(cc, "busy_timeout")
 	if err != nil {
-		cc.Close()
-		return nil, err
+		return err
 	}
 	conn.busyTimeout = time.Duration(ms) * time.Millisecond
 	// A connection SQLite opened read-only, as when the file is, runs
 	// differently from the others of its key.
 	conn.private = cc.ReadOnly()
-	if conn.path = cc.Filename("main"); conn.path != "" {
-		conn.wl = openWriteLock(conn.path)
-	}
-	return conn, nil
+	return nil
 }
 
 // pragmaInt reads the value of a PRAGMA that is a number.

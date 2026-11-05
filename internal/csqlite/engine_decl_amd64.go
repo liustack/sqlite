@@ -576,9 +576,12 @@ func go_create_function(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintp
 func go_create_module(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func go_create_window(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func go_init(a0 uintptr) uintptr
+func go_page_count(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func go_read_page(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func go_strdup(a0 uintptr, a1 uintptr) uintptr
 func go_vtab_error(a0 uintptr, a1 uintptr, a2 uintptr)
 func go_vtabs_in_tx(a0 uintptr, a1 uintptr) uintptr
+func go_wal_header(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func goasm_chunked_memcpy(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func goasm_chunked_memmove(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func goasm_chunked_memset(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
