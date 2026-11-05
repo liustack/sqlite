@@ -76,7 +76,9 @@ type Options struct {
 	Uploaded ltx.TXID
 	// OnError, if set, gets the errors of the reads made in the background,
 	// and an error under ErrFullCopy for each full copy staged because the
-	// WAL could not be followed.
+	// WAL could not be followed. It is called by Open or the goroutine of the
+	// background steps, with no lock of the capturer or the driver held, so
+	// it may call the capturer. What it has not got at Close, Close returns.
 	OnError func(error)
 	// Start, if set, is called once Open has the database, before it
 	// resumes, with the staged files in TXID order (their headers and
@@ -183,10 +185,15 @@ func Open(name string, opt Options) (*Capturer, error) {
 	// A write of the driver after Attach waits for the capturer to be open.
 	c.mu.Lock()
 	err = c.open()
+	later := c.later
+	c.later = nil
 	c.mu.Unlock()
 	if err != nil {
 		c.release()
-		return nil, err
+		return nil, errors.Join(append([]error{err}, later...)...)
+	}
+	for _, e := range later {
+		c.report(e)
 	}
 	go c.run()
 	return c, nil
@@ -327,6 +334,13 @@ func (c *Capturer) run() {
 	}
 }
 
+// note keeps err for OnError, which the next step gives it, with no lock
+// held: OnError may call the capturer or write to the database. c.mu is
+// held.
+func (c *Capturer) note(err error) {
+	c.later = append(c.later, err)
+}
+
 func (c *Capturer) report(err error) {
 	if c.opt.OnError != nil {
 		c.opt.OnError(err)
@@ -378,12 +392,10 @@ func (c *Capturer) Close() error {
 		err = nil
 	}
 	c.release()
-	// No step comes for the errors of the writes.
-	later := c.later
+	// No step comes for what was noted: it is returned, not reported, as the
+	// caller may hold the driver's write lock, which OnError may wait for.
+	err = errors.Join(append([]error{err}, c.later...)...)
 	c.later = nil
-	for _, e := range later {
-		c.report(e)
-	}
 	return err
 }
 
@@ -416,7 +428,7 @@ func (c *Capturer) step(ctx context.Context) error {
 		return err
 	}
 	if !c.full && c.over() {
-		c.report(c.stop())
+		c.note(c.stop())
 	}
 	if c.full {
 		return c.checkpointLost(ctx)
@@ -446,7 +458,7 @@ func (c *Capturer) stop() error {
 // limit: the new copy would make that one count.
 func (c *Capturer) copyLost() error {
 	if c.opt.Limit > 0 && c.Pending() > c.opt.Limit {
-		c.report(c.stop())
+		c.note(c.stop())
 		return nil
 	}
 	return c.fullCopy(c.lost)
@@ -489,7 +501,7 @@ func (c *Capturer) committed(frames uint32) {
 	}
 	// The writer waits: OnError, which may write, runs after the next step.
 	if !c.full && c.over() {
-		c.later = append(c.later, c.stop())
+		c.note(c.stop())
 	}
 	// Even when staging stopped: the frames of the staged files go next.
 	err := c.syncNames()
@@ -502,7 +514,7 @@ func (c *Capturer) committed(frames uint32) {
 		err = c.checkpointHeld()
 	}
 	if err != nil {
-		c.later = append(c.later, err)
+		c.note(err)
 	}
 }
 
@@ -881,7 +893,7 @@ func (c *Capturer) fullCopy(why error) error {
 	c.lost = nil
 	if why != nil {
 		c.fullCopies++
-		c.report(fmt.Errorf("%w (TXID %s): %w", ErrFullCopy, hdr.MaxTXID, why))
+		c.note(fmt.Errorf("%w (TXID %s): %w", ErrFullCopy, hdr.MaxTXID, why))
 	}
 	return err
 }

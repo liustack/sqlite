@@ -918,16 +918,9 @@ func uploadAll(t *testing.T, c *Capturer, remote string) {
 func TestStagingLimit(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	remote := t.TempDir()
-	var full atomic.Int64
 	opt := testOptions(t)
 	opt.CheckpointFrames = 20
 	opt.Limit = 64 << 10
-	opt.OnError = func(err error) {
-		if errors.Is(err, ErrStagingFull) {
-			full.Add(1)
-		}
-		t.Logf("capture: %v", err)
-	}
 	c := open(t, name, opt)
 	db := openApp(t, name)
 	run(t, db, "CREATE TABLE t(x)")
@@ -961,8 +954,8 @@ func TestStagingLimit(t *testing.T) {
 			t.Fatalf("step %d: the WAL has %d bytes", i, st.Size())
 		}
 	}
-	if stopped == 0 || full.Load() != 1 {
-		t.Fatalf("stopped at TXID %s, %d errors of a full staging", stopped, full.Load())
+	if n := noted(c, ErrStagingFull); stopped == 0 || n != 1 {
+		t.Fatalf("stopped at TXID %s, %d errors of a full staging", stopped, n)
 	}
 	if _, _, err := c.Snapshot(context.Background()); err == nil {
 		t.Fatal("a snapshot while staging is stopped")
@@ -1333,31 +1326,41 @@ func TestStagingLimitAtCommitSyncDir(t *testing.T) {
 	}
 }
 
-// The errors of the writes, kept for the next step, are reported by Close
-// when no step comes.
-func TestCloseReportsLater(t *testing.T) {
+// The errors of the writes, kept for the next step, are returned by Close
+// when no step comes, not reported: OnError may call the capturer, which
+// Close holds.
+func TestCloseReturnsLater(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	opt := testOptions(t)
 	opt.CheckpointFrames = 1
 	fail := errors.New("no sync")
+	var c *Capturer
 	var reports atomic.Int64
 	opt.OnError = func(err error) {
 		if errors.Is(err, fail) {
 			reports.Add(1)
 		}
+		c.Sync(context.Background())
 	}
-	c := open(t, name, opt)
+	c = open(t, name, opt)
 	db := openApp(t, name)
 	run(t, db, "CREATE TABLE t(x)")
 	syncDir = func(string) error { return fail }
 	t.Cleanup(func() { syncDir = syncDirFS })
 	run(t, db, "INSERT INTO t VALUES (1)")
 	syncDir = syncDirFS
-	if err := c.Close(); err != nil {
-		t.Fatal(err)
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, fail) {
+			t.Fatalf("Close: %v, want the error of the write", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close did not return")
 	}
-	if reports.Load() == 0 {
-		t.Fatal("Close dropped the errors of the writes")
+	if n := reports.Load(); n != 0 {
+		t.Fatalf("Close reported %d errors to OnError", n)
 	}
 }
 
@@ -1450,4 +1453,61 @@ func genOf(c *Capturer) [8]byte {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.gen
+}
+
+// What a step reports, a full copy here, goes to OnError with no lock held:
+// OnError may call the capturer.
+func TestReportUnlocked(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.Interval = 10 * time.Millisecond
+	var c *Capturer
+	copies := make(chan struct{}, 10)
+	opt.OnError = func(err error) {
+		if errors.Is(err, ErrFullCopy) {
+			c.Sync(context.Background())
+			copies <- struct{}{}
+		}
+	}
+	c = open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	raw, err := csqlite.Open(c.path, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (2)"); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- c.Sync(context.Background()) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Sync did not return")
+	}
+	select {
+	case <-copies:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the full copy was not reported")
+	}
+	sameAs(t, c, name)
+}
+
+// noted counts the errors under target that c keeps for OnError.
+func noted(c *Capturer, target error) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, err := range c.later {
+		if errors.Is(err, target) {
+			n++
+		}
+	}
+	return n
 }
