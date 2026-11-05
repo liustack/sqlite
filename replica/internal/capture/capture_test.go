@@ -1715,3 +1715,33 @@ func TestStagingLimitReopen(t *testing.T) {
 		}
 	}
 }
+
+// Another process stages the database: Open fails, and touches nothing of
+// its staging.
+func TestOpenStagedElsewhere(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	db.Close()
+	unlock, err := lockStaging(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	snap := SnapshotDir(name)
+	if err := os.MkdirAll(snap, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Open(name, testOptions(t))
+	if err == nil {
+		c.Close()
+		t.Fatal("Open while another process stages")
+	}
+	t.Logf("Open: %v", err)
+	if _, err := os.Stat(snap); err != nil {
+		t.Fatalf("Open touched the staging of the other process: %v", err)
+	}
+	unlock()
+	c = open(t, name, testOptions(t))
+	c.Close()
+}

@@ -145,7 +145,8 @@ const closeUpload = 10 * time.Second
 // second write of a key (unless Config.SingleWriter), reads where the
 // replica ends, and goes on from there when the staged files do, else fails
 // with ErrDiverged (unless Config.FreshStart). An empty replica starts with
-// a full copy. ctx bounds the requests New makes.
+// a full copy. ctx bounds the requests New makes. One process replicates a
+// database at a time: New fails while another one does.
 func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if cfg.SyncInterval <= 0 {
 		cfg.SyncInterval = time.Second
@@ -178,10 +179,6 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		cfg.schedule(&r.sched)
 	}
 	r.status.Uploaded = uint64(end.txid)
-	// Before staging, which may need the room they take.
-	if err := dropCompactions(capture.StageDir(name)); err != nil {
-		return nil, err
-	}
 	r.c, err = capture.Open(name, capture.Options{
 		Interval:         cfg.SyncInterval,
 		CheckpointFrames: cfg.checkpointFrames,
@@ -189,6 +186,11 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		Uploaded:         end.txid,
 		OnError:          r.report,
 		Start: func(staged []capture.StagedFile) (*capture.Restart, error) {
+			// Once this process holds the staging, before it stages, which
+			// may need the room they take.
+			if err := dropCompactions(capture.StageDir(name)); err != nil {
+				return nil, err
+			}
 			return startFrom(end, staged, cfg.FreshStart)
 		},
 	})

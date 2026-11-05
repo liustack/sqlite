@@ -83,10 +83,10 @@ type Options struct {
 	// that goroutine, nor wait for a write to the database: the caller of
 	// Close may hold the write lock.
 	OnError func(error)
-	// Start, if set, is called once Open has the database, before it
-	// resumes, with the staged files in TXID order (their headers and
-	// trailers, not checked). An error stops Open. A Restart drops the
-	// staged files and starts over from it.
+	// Start, if set, is called once Open has the database and the lock of
+	// its staging, before it resumes, with the staged files in TXID order
+	// (their headers and trailers, not checked). An error stops Open. A
+	// Restart drops the staged files and starts over from it.
 	Start func(staged []StagedFile) (*Restart, error)
 }
 
@@ -124,6 +124,7 @@ type Capturer struct {
 	mode   os.FileMode
 	conn   *csqlite.Conn
 	detach func()
+	unlock func()   // of lockStaging
 	wal    *os.File // the WAL, once it exists
 
 	ctx    context.Context // done once Close starts
@@ -211,6 +212,11 @@ func (c *Capturer) open() error {
 		return err
 	}
 	c.detach = detach
+	// One process stages the database: the others are refused before they
+	// touch its staging.
+	if c.unlock, err = lockStaging(c.path); err != nil {
+		return err
+	}
 	// The capturer never waits for a lock: what is busy is tried again at
 	// the next step.
 	if err := c.conn.BusyTimeout(0); err != nil {
@@ -284,6 +290,9 @@ func (c *Capturer) release() {
 	}
 	if c.detach != nil {
 		c.detach()
+	}
+	if c.unlock != nil {
+		c.unlock()
 	}
 }
 

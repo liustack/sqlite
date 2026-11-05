@@ -281,6 +281,11 @@ func dropStaged(dir string, drop func(ltx.TXID) bool) error {
 // Open goes on from it. The folder must hold no LTX file. The folders it
 // makes are synced, up to the folder of path.
 func Stage(path, from string, min, max ltx.TXID) error {
+	unlock, err := lockStaging(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	dir := StageDir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -328,4 +333,28 @@ func Verify(r io.Reader) (h ltx.Header, t ltx.Trailer, err error) {
 		return ltx.Header{}, ltx.Trailer{}, err
 	}
 	return dec.Header(), dec.Trailer(), nil
+}
+
+var errStagedElsewhere = errors.New("capture: another process replicates the database")
+
+// lockStaging takes the lock of the staging of the database path, which
+// one process holds while it stages: <path>-replica/lock. The lock goes
+// with the process.
+func lockStaging(path string) (unlock func(), err error) {
+	dir := path + "-replica"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := lockFile(f); err != nil {
+		f.Close()
+		if errors.Is(err, errStagedElsewhere) {
+			return nil, fmt.Errorf("%w: %s", err, path)
+		}
+		return nil, err
+	}
+	return func() { f.Close() }, nil
 }
