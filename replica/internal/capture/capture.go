@@ -65,7 +65,8 @@ type Options struct {
 	// Limit is the most bytes of level 0 files staged and not uploaded yet
 	// (see Done): past it, staging stops until they are uploaded, and a full
 	// copy of the database follows them. Checkpoints go on, so the WAL
-	// stays bounded. Full copies do not count. 0 is no limit.
+	// stays bounded. The last full copy, which staging goes on from, does
+	// not count. 0 is no limit.
 	Limit int64
 	// Uploaded is the last TXID uploaded when Open runs.
 	Uploaded ltx.TXID
@@ -145,8 +146,7 @@ type Capturer struct {
 	closed     bool
 	// full says staging stopped at the limit: lost says so, and the full
 	// copy waits until nothing staged is pending.
-	full   bool
-	copied ltx.TXID // the TXID of the last full copy
+	full bool
 
 	snapMu sync.Mutex    // one snapshot at a time
 	snap   *csqlite.Conn // the connection snapshots read with, under mu
@@ -393,22 +393,26 @@ func (c *Capturer) Dir() string { return c.dir }
 // checkpoints when the WAL is long enough. Past the limit it stops staging
 // and only checkpoints, until nothing staged is pending.
 func (c *Capturer) step(ctx context.Context) error {
-	if err := c.goOn(); err != nil || c.full {
-		if err != nil {
-			return err
-		}
+	if err := c.goOn(); err != nil {
+		return err
+	}
+	if !c.full && c.over() {
+		c.full = true
+		c.lose(fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid))
+		c.report(c.lost)
+	}
+	if c.full {
 		return c.checkpointLost(ctx)
 	}
 	if c.lost != nil {
 		return c.fullCopy(c.lost)
 	}
-	if c.opt.Limit > 0 && c.pendingFrames() > c.opt.Limit {
-		c.full = true
-		c.lose(fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid))
-		c.report(c.lost)
-		return c.checkpointLost(ctx)
-	}
 	return c.stageAndCheckpoint(ctx)
+}
+
+// over says whether the staged files not uploaded passed Options.Limit.
+func (c *Capturer) over() bool {
+	return c.opt.Limit > 0 && c.counted() > c.opt.Limit
 }
 
 // The checkpoint of a step catches up with the writers before it takes the
@@ -819,7 +823,6 @@ func (c *Capturer) fullCopy(why error) error {
 		return err
 	}
 	c.addPending(hdr.MaxTXID, n, true)
-	c.copied = hdr.MaxTXID
 	if err == nil {
 		defer c.setDurable(hdr.MaxTXID)
 	}
@@ -1042,7 +1045,11 @@ func (c *Capturer) countPending() error {
 		if err != nil {
 			return err
 		}
-		pending = append(pending, stagedSize{max, info.Size(), max == c.copied})
+		full, err := isFullCopy(filepath.Join(c.dir, e.Name()))
+		if err != nil {
+			return err
+		}
+		pending = append(pending, stagedSize{max, info.Size(), full})
 	}
 	c.sizeMu.Lock()
 	defer c.sizeMu.Unlock()
@@ -1050,13 +1057,20 @@ func (c *Capturer) countPending() error {
 	return nil
 }
 
-// pendingFrames is the size of the staged files of frames not uploaded.
-func (c *Capturer) pendingFrames() int64 {
+// counted is the size of the staged files not uploaded that count against
+// Options.Limit: all but the last full copy.
+func (c *Capturer) counted() int64 {
 	c.sizeMu.Lock()
 	defer c.sizeMu.Unlock()
+	last := -1
+	for i, s := range c.pending {
+		if s.full {
+			last = i
+		}
+	}
 	var n int64
-	for _, s := range c.pending {
-		if !s.full {
+	for i, s := range c.pending {
+		if i != last {
 			n += s.size
 		}
 	}

@@ -239,6 +239,25 @@ func readStaged(name string) (StagedFile, error) {
 	return StagedFile{Min: h.MinTXID, TXID: h.MaxTXID, Pre: h.PreApplyChecksum, Post: t.PostApplyChecksum}, nil
 }
 
+// isFullCopy says whether the staged file name holds a full copy of the
+// database, which holds no frames of the WAL (setWALPos).
+func isFullCopy(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	var hb [ltx.HeaderSize]byte
+	if err := readFull(f, hb[:], 0); err != nil {
+		return false, err
+	}
+	var h ltx.Header
+	if err := h.UnmarshalBinary(hb[:]); err != nil {
+		return false, fmt.Errorf("the staged file %s: %w", name, err)
+	}
+	return h.WALSize == 0, nil
+}
+
 // dropStaged removes the staged files of dir whose TXID drop says, and the
 // temporary ones.
 func dropStaged(dir string, drop func(ltx.TXID) bool) error {

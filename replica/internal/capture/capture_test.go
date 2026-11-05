@@ -978,7 +978,8 @@ func TestStagingLimit(t *testing.T) {
 	}
 }
 
-// A database larger than the limit: its full copy does not stop staging.
+// A database larger than the limit: its full copy does not stop staging,
+// also after a restart, nothing uploaded.
 func TestStagingLimitLarge(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	db := openApp(t, name)
@@ -989,16 +990,59 @@ func TestStagingLimitLarge(t *testing.T) {
 	db.Close()
 	opt := testOptions(t)
 	opt.Limit = 64 << 10
-	c := open(t, name, opt)
-	db = openApp(t, name)
-	for i := range 5 {
-		run(t, db, "INSERT INTO t VALUES (1)")
-		if err := c.Sync(context.Background()); err != nil {
-			t.Fatalf("step %d: %v", i, err)
+	for range 2 {
+		c := open(t, name, opt)
+		db = openApp(t, name)
+		for i := range 5 {
+			run(t, db, "INSERT INTO t VALUES (1)")
+			if err := c.Sync(context.Background()); err != nil {
+				t.Fatalf("step %d: %v", i, err)
+			}
+		}
+		if c.FullCopies() != 0 {
+			t.Fatalf("%d full copies", c.FullCopies())
+		}
+		db.Close()
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if c.FullCopies() != 0 {
-		t.Fatalf("%d full copies", c.FullCopies())
+}
+
+// Another process checkpoints after each change, so that each step stages a
+// full copy: past the limit staging stops all the same, the copies count.
+func TestStagingLimitLost(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	for range 50 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	db.Close()
+	opt := testOptions(t)
+	opt.Limit = 64 << 10
+	c := open(t, name, opt)
+	raw, err := csqlite.Open(c.path, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	st, err := os.Stat(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 10 {
+		if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Sync(context.Background()); err != nil && !errors.Is(err, ErrStagingFull) {
+			t.Fatal(err)
+		}
+		// The last copy, which staging goes on from, and one step past the
+		// limit, a copy too.
+		if n := c.Pending(); n > opt.Limit+2*(st.Size()+8<<10) {
+			t.Fatalf("step %d: %d bytes pending, the limit is %d", i, n, opt.Limit)
+		}
 	}
 }
 
