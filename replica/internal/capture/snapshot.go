@@ -29,14 +29,26 @@ func SnapshotDir(path string) string { return filepath.Join(path+"-replica", "sn
 // the lock, so that writers do not wait for them, and their checksum must
 // be the one of the staged files. Checkpoints cannot reset the WAL while
 // the pages are read.
-func (c *Capturer) Snapshot(ctx context.Context) (string, ltx.TXID, error) {
+func (c *Capturer) Snapshot(ctx context.Context) (snap string, _ ltx.TXID, err error) {
 	c.snapMu.Lock()
 	defer c.snapMu.Unlock()
 	txid, post, err := c.pin(ctx)
 	if err != nil {
 		return "", 0, err
 	}
-	defer c.snap.Exec("ROLLBACK")
+	defer func() {
+		// A read transaction left open would keep checkpoints from
+		// resetting the WAL: the connection goes instead, and the snapshot.
+		if rerr := c.snap.Exec("ROLLBACK"); rerr != nil {
+			c.snap.Close()
+			c.snap = nil
+			if snap != "" {
+				os.Remove(snap)
+				snap = ""
+			}
+			err = errors.Join(err, rerr)
+		}
+	}()
 	size, err := c.snap.PageCount()
 	if err != nil {
 		return "", 0, err
