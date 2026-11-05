@@ -251,9 +251,18 @@ func (r *Replica) Status() Status {
 	return s
 }
 
-// Sync stages what was committed up to now and uploads it.
+// Sync stages what was committed up to now and uploads it. When staging
+// stopped at StagingLimit, it uploads what is staged first, so that staging
+// goes on.
 func (r *Replica) Sync(ctx context.Context) error {
-	if err := r.c.Sync(ctx); err != nil {
+	err := r.c.Sync(ctx)
+	if errors.Is(err, ErrStagingFull) {
+		if err := r.upload(ctx); err != nil {
+			return err
+		}
+		err = r.c.Sync(ctx)
+	}
+	if err != nil {
 		return err
 	}
 	return r.upload(ctx)

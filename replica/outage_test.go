@@ -158,24 +158,47 @@ func TestOutage(t *testing.T) {
 	if p99(1) > 3*p99(0)+5*time.Millisecond {
 		t.Fatalf("p99 of a commit: %v with the store down, %v up", p99(1), p99(0))
 	}
-	// Back: what was staged goes up, then the full copy that follows it.
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		syncErr := r.Sync(context.Background())
-		s := r.Status()
-		if syncErr == nil && s.Uploaded == s.Staged && s.Pending == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("not caught up: %+v, %v", s, syncErr)
-		}
-		time.Sleep(50 * time.Millisecond)
+	// Back: a Sync uploads what was staged, then the full copy that follows
+	// it, while the uploads in the background still wait to try again.
+	if err := r.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync with the store back: %v", err)
+	}
+	if s := r.Status(); s.Uploaded != s.Staged || s.Pending != 0 {
+		t.Fatalf("not caught up: %+v", s)
 	}
 	check("back", 1)
 	out, txid := restoreTo(t, cfg, RestoreOptions{})
 	if txid != r.Status().Uploaded || dump(t, out) != dump(t, name) {
 		t.Fatal("the replica does not restore the database")
 	}
+}
+
+// A Sync while staging is stopped uploads what is staged and goes on: it
+// does not wait for the uploads in the background to try again.
+func TestSyncStopped(t *testing.T) {
+	cfg := testConfig(t)
+	cfg, cnt := countingStore(t, cfg)
+	cfg.StagingLimit = 1
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	syncNow(t, r)
+	cnt.down.Store(1)
+	run(t, db, "INSERT INTO t VALUES (1)")
+	if err := r.Sync(context.Background()); err == nil {
+		t.Fatal("Sync with the store down")
+	}
+	run(t, db, "INSERT INTO t VALUES (2)")
+	if err := r.c.Sync(context.Background()); !errors.Is(err, ErrStagingFull) {
+		t.Fatalf("staging past the limit: %v, want ErrStagingFull", err)
+	}
+	cnt.down.Store(0)
+	syncNow(t, r)
+	if s := r.Status(); s.Uploaded != s.Staged || s.Pending != 0 {
+		t.Fatalf("not caught up: %+v", s)
+	}
+	sameAs(t, cfg, name)
 }
 
 // TestSoak runs for the time REPLICA_SOAK says (such as 10m), and is
