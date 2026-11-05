@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 // testConfig is a Config for a replica of its own on the test store, which
 // takes no step and compacts nothing in the background: the tests call Sync
 // and compact.
-func testConfig(t *testing.T) Config {
+func testConfig(t testing.TB) Config {
 	t.Helper()
 	s, prefix := s3test.Store(t)
 	return Config{
