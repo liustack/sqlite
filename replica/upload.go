@@ -14,6 +14,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/superfly/ltx"
@@ -27,12 +29,13 @@ import (
 // on, and the program's writes are not touched.
 var ErrConflict = errors.New("replica: another replicator writes to the replica")
 
-// run uploads the staged files as the capturer stages them, until ctx is
-// done. A failed upload is tried again later, longer after each failure up
-// to a minute. After a conflict it only drops what is staged.
+// run uploads the staged files as the capturer stages them, and then does
+// the other work on the replica that is due (maintain), until ctx is done.
+// Failed work is tried again later, longer after each failure up to a
+// minute. After a conflict it only drops what is staged.
 func (r *Replica) run(ctx context.Context) {
 	defer close(r.done)
-	var retry <-chan time.Time
+	var retry, due <-chan time.Time
 	wait := time.Second
 	reported := false // the conflict
 	for {
@@ -41,12 +44,16 @@ func (r *Replica) run(ctx context.Context) {
 			return
 		case <-r.c.Staged():
 		case <-retry:
+		case <-due:
 		}
-		retry = nil
-		err := r.upload(ctx)
+		retry, due = nil, nil
+		next, err := r.work(ctx)
 		switch {
 		case err == nil:
 			wait = time.Second
+			if !next.IsZero() {
+				due = time.After(time.Until(next))
+			}
 		case ctx.Err() != nil:
 			return
 		case errors.Is(err, ErrConflict):
@@ -62,17 +69,35 @@ func (r *Replica) run(ctx context.Context) {
 	}
 }
 
+// work uploads what is staged, then does what maintain does, and returns
+// when to run maintain again.
+func (r *Replica) work(ctx context.Context) (time.Time, error) {
+	if err := r.upload(ctx); err != nil {
+		return time.Time{}, err
+	}
+	select {
+	case r.busy <- struct{}{}:
+	case <-ctx.Done():
+		return time.Time{}, ctx.Err()
+	}
+	defer func() { <-r.busy }()
+	if err := r.conflict(); err != nil {
+		return time.Time{}, err
+	}
+	return r.maintain(ctx)
+}
+
 // upload uploads the staged files whose names are synced, in TXID order,
 // and removes those uploaded but the last staged, which the capturer
 // resumes from. It records its error in the status. ctx bounds the wait
 // for another upload too.
 func (r *Replica) upload(ctx context.Context) error {
 	select {
-	case r.uploading <- struct{}{}:
+	case r.busy <- struct{}{}:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	defer func() { <-r.uploading }()
+	defer func() { <-r.busy }()
 	err := r.uploadFiles(ctx)
 	r.setStatus(func(s *Status) {
 		if !errors.Is(s.Err, ErrConflict) {
@@ -105,10 +130,16 @@ func (r *Replica) uploadFiles(ctx context.Context) error {
 	return r.dropUploaded(min(r.uploaded(), durable-1))
 }
 
-// put uploads the staged file of txid, once: a 412 means the key has a
-// file, which is the same one when an earlier try got no answer.
+// put uploads the staged file of txid as level 0.
 func (r *Replica) put(ctx context.Context, txid ltx.TXID) error {
-	f, err := os.Open(filepath.Join(r.c.Dir(), ltx.FormatFilename(txid, txid)))
+	return r.putFile(ctx, 0, filepath.Join(r.c.Dir(), ltx.FormatFilename(txid, txid)))
+}
+
+// putFile uploads the LTX file name to level, once: a 412 means the key
+// has a file, which is the same one when an earlier try got no answer. It
+// adds the file to r.files.
+func (r *Replica) putFile(ctx context.Context, level int, name string) error {
+	f, err := os.Open(name)
 	if err != nil {
 		return err
 	}
@@ -123,14 +154,14 @@ func (r *Replica) put(ctx context.Context, txid ltx.TXID) error {
 	}
 	var h ltx.Header
 	if err := h.UnmarshalBinary(hb[:]); err != nil {
-		return fmt.Errorf("replica: the staged file of TXID %s: %w", txid, err)
+		return fmt.Errorf("replica: %s: %w", name, err)
 	}
 	sum := sha256.New()
 	if _, err := io.Copy(sum, io.NewSectionReader(f, 0, st.Size())); err != nil {
 		return err
 	}
 	digest := hex.EncodeToString(sum.Sum(nil))
-	key := levelKey(r.path, 0, txid)
+	key := levelKey(r.path, level, h.MinTXID, h.MaxTXID)
 	err = r.client.Put(ctx, key, f, st.Size(), s3.PutOptions{
 		IfNoneMatch: true,
 		Metadata: map[string]string{
@@ -138,17 +169,30 @@ func (r *Replica) put(ctx context.Context, txid ltx.TXID) error {
 			metaSHA256: digest,
 		},
 	})
-	if !errors.Is(err, s3.ErrPreconditionFailed) {
+	if errors.Is(err, s3.ErrPreconditionFailed) {
+		info, herr := r.client.Head(ctx, key)
+		if herr != nil {
+			return herr
+		}
+		if info.Metadata[metaSHA256] != digest {
+			// At any level: the replicator stops for good.
+			err := fmt.Errorf("%w: %s has another file", ErrConflict, key)
+			r.setStatus(func(s *Status) { s.Err = err })
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
-	info, err := r.client.Head(ctx, key)
-	if err != nil {
-		return err
-	}
-	if info.Metadata[metaSHA256] != digest {
-		return fmt.Errorf("%w: %s has another file", ErrConflict, key)
-	}
+	r.addFile(remoteFile{level: level, min: h.MinTXID, max: h.MaxTXID, key: key, size: st.Size(), modified: r.sched.now()})
 	return nil
+}
+
+// addFile adds f to r.files, in key order.
+func (r *Replica) addFile(f remoteFile) {
+	i, found := slices.BinarySearchFunc(r.files, f.key, func(g remoteFile, key string) int { return strings.Compare(g.key, key) })
+	if !found {
+		r.files = slices.Insert(r.files, i, f)
+	}
 }
 
 // dropUploaded removes the staged files up to txid.
@@ -158,8 +202,8 @@ func (r *Replica) dropUploaded(txid ltx.TXID) error {
 		return err
 	}
 	for _, e := range entries {
-		min, max, err := ltx.ParseFilename(e.Name())
-		if err != nil || min != max || max > txid {
+		_, max, err := ltx.ParseFilename(e.Name())
+		if err != nil || max > txid {
 			continue
 		}
 		if err := os.Remove(filepath.Join(r.c.Dir(), e.Name())); err != nil {

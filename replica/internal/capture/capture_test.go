@@ -785,7 +785,7 @@ func TestStage(t *testing.T) {
 	if err := os.WriteFile(from, []byte("ltx"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Stage(name, from, 7); err != nil {
+	if err := Stage(name, from, 7, 7); err != nil {
 		t.Fatal(err)
 	}
 	staged := filepath.Join(StageDir(name), ltx.FormatFilename(7, 7))
@@ -795,10 +795,74 @@ func TestStage(t *testing.T) {
 	if err := os.WriteFile(from, []byte("other"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Stage(name, from, 8); err == nil {
+	if err := Stage(name, from, 8, 8); err == nil {
 		t.Fatal("Stage into a folder with a staged file: no error")
 	}
 	if _, err := os.Stat(filepath.Join(StageDir(name), ltx.FormatFilename(8, 8))); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the second file was staged: %v", err)
 	}
+}
+
+// A snapshot taken while the program writes holds the database where the
+// staged files of its TXID leave it, and the writes go on staged after it.
+func TestSnapshot(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 8
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t SELECT randomblob(3000) FROM (WITH RECURSIVE s(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM s WHERE i < 300) SELECT i FROM s)")
+	step(t, c)
+	stop := make(chan struct{})
+	errs := make(chan error, 1)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				errs <- nil
+				return
+			default:
+			}
+			if _, err := db.Exec("INSERT INTO t VALUES (randomblob(500))"); err != nil {
+				errs <- err
+				return
+			}
+			if err := c.Sync(context.Background()); err != nil {
+				errs <- err
+				return
+			}
+		}
+	}()
+	snap, txid, err := c.Snapshot(context.Background())
+	close(stop)
+	if werr := <-errs; werr != nil {
+		t.Fatal(werr)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap != filepath.Join(SnapshotDir(c.path), ltx.FormatFilename(1, txid)) {
+		t.Fatalf("snapshot %s of TXID %s", snap, txid)
+	}
+	f, err := os.Open(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	dec := ltx.NewDecoder(f)
+	if err := dec.Verify(); err != nil {
+		t.Fatal(err)
+	}
+	staged, err := readStaged(filepath.Join(c.Dir(), ltx.FormatFilename(txid, txid)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post := dec.Trailer().PostApplyChecksum; post != staged.Post {
+		t.Fatalf("the snapshot of TXID %s has checksum %s, the staged file %s", txid, post, staged.Post)
+	}
+	step(t, c)
+	if c.TXID() <= txid {
+		t.Fatalf("nothing staged after the snapshot of TXID %s", txid)
+	}
+	sameAs(t, c, name)
 }

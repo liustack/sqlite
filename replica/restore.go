@@ -7,7 +7,6 @@ package replica
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -61,7 +60,7 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 	if err != nil {
 		return 0, err
 	}
-	files, err := restorePlan(ctx, client, path, ltx.TXID(opt.TXID))
+	files, err := restorePlan(ctx, client, path, ltx.TXID(opt.TXID), opt.At)
 	if err != nil {
 		return 0, err
 	}
@@ -83,17 +82,10 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 	defer last.Close()
 
 	a := applier{db: db, last: last}
-	for _, key := range files {
-		more, err := a.apply(ctx, client, key, opt.At)
-		if err != nil {
+	for _, f := range files {
+		if err := a.apply(ctx, client, f, opt.At); err != nil {
 			return 0, err
 		}
-		if !more {
-			break
-		}
-	}
-	if a.txid == 0 {
-		return 0, fmt.Errorf("replica: the replica has no file from before %s", opt.At.Format(time.RFC3339Nano))
 	}
 	if err := db.Sync(); err != nil {
 		return 0, err
@@ -116,7 +108,7 @@ func Restore(ctx context.Context, name string, cfg Config, opt RestoreOptions) (
 	if err := os.Link(tmp, name); err != nil {
 		return 0, fmt.Errorf("replica: placing the restored database: %w", err)
 	}
-	if err := capture.Stage(name, last.Name(), a.txid); err != nil {
+	if err := capture.Stage(name, last.Name(), a.min, a.txid); err != nil {
 		os.Remove(name)
 		return 0, err
 	}
@@ -149,34 +141,126 @@ func restoreTarget(name string) error {
 	return nil
 }
 
-// restorePlan lists the files to apply, in order, to restore TXID txid, the
-// last when 0: the level 0 files from TXID 1, with no gap.
-func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID) ([]string, error) {
-	var keys []string
+// restorePlan lists the files to apply, in order, to restore TXID txid
+// (the last when 0), or the state before at (when set): the newest
+// snapshot that fits, then each time the file of any level that goes on
+// from the TXIDs so far and reaches furthest, as litestream restore picks
+// them. Files may overlap the TXIDs before them. A gap is an error.
+func restorePlan(ctx context.Context, c *s3.Client, path string, txid ltx.TXID, at time.Time) ([]remoteFile, error) {
+	files, err := listRemote(ctx, c, path)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, ErrNoReplica
+	}
+	before := func(f remoteFile) (bool, error) {
+		if at.IsZero() {
+			return true, nil
+		}
+		t, err := fileTime(ctx, c, f.key)
+		return t.Before(at), err
+	}
+	var snaps, rest []remoteFile
+	for _, f := range files {
+		if f.level == snapshotLevel {
+			snaps = append(snaps, f)
+		} else {
+			rest = append(rest, f)
+		}
+	}
+	var plan []remoteFile
 	var end ltx.TXID
-	for o, err := range c.List(ctx, path+"/0000/", "") {
+	// The listing has the snapshots in TXID order.
+	for i := len(snaps) - 1; i >= 0; i-- {
+		s := snaps[i]
+		if s.min != 1 || txid != 0 && s.max > txid {
+			continue
+		}
+		ok, err := before(s)
 		if err != nil {
 			return nil, err
 		}
-		min, max, err := ltx.ParseFilename(strings.TrimPrefix(o.Key, path+"/0000/"))
+		if ok {
+			plan, end = append(plan, s), s.max
+			break
+		}
+	}
+	skip := map[string]bool{} // made at or after at
+	next := func() *remoteFile {
+		var best *remoteFile
+		for i := range rest {
+			f := &rest[i]
+			if skip[f.key] || f.min > end+1 || f.max <= end || txid != 0 && f.max > txid {
+				continue
+			}
+			if best == nil || f.max > best.max || f.max == best.max && (f.min < best.min || f.min == best.min && f.level > best.level) {
+				best = f
+			}
+		}
+		return best
+	}
+	for txid == 0 || end < txid {
+		f := next()
+		if f == nil {
+			break
+		}
+		ok, err := before(*f)
 		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			skip[f.key] = true
 			continue
 		}
-		if txid != 0 && end >= txid {
-			break // what comes after the target does not matter
-		}
-		if min != max || min != end+1 {
-			return nil, fmt.Errorf("replica: %s follows TXID %s: the replica is not whole", o.Key, end)
-		}
-		keys, end = append(keys, o.Key), max
+		plan, end = append(plan, *f), f.max
 	}
 	switch {
-	case end == 0:
-		return nil, ErrNoReplica
+	case end == 0 && !at.IsZero():
+		return nil, fmt.Errorf("replica: the replica has no state from before %s", at.Format(time.RFC3339Nano))
 	case txid != 0 && end != txid:
-		return nil, fmt.Errorf("replica: the replica ends at TXID %s, before %s", end, txid)
+		return nil, fmt.Errorf("replica: the files of the replica do not lead to TXID %s", txid)
+	case txid != 0:
+		return plan, nil
 	}
-	return keys, nil
+	// A file after a gap, which a restore to it would need, is an error.
+	var gap *remoteFile
+	for i := range rest {
+		if f := &rest[i]; f.min > end+1 && (gap == nil || f.min < gap.min) {
+			gap = f
+		}
+	}
+	if gap != nil {
+		ok, err := before(*gap)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return nil, fmt.Errorf("replica: %s follows TXID %s: the replica is not whole", gap.key, end)
+		}
+	}
+	if end == 0 {
+		return nil, errors.New("replica: the replica is not whole: it has no snapshot and no file from TXID 1")
+	}
+	return plan, nil
+}
+
+// fileTime is the time in the header of the LTX file key.
+func fileTime(ctx context.Context, c *s3.Client, key string) (time.Time, error) {
+	body, err := c.Get(ctx, key, 0, ltx.HeaderSize)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer body.Close()
+	var hb [ltx.HeaderSize]byte
+	if _, err := io.ReadFull(body, hb[:]); err != nil {
+		return time.Time{}, fmt.Errorf("replica: %s: %w", key, err)
+	}
+	var h ltx.Header
+	if err := h.UnmarshalBinary(hb[:]); err != nil {
+		return time.Time{}, fmt.Errorf("replica: %s: %w", key, err)
+	}
+	return time.UnixMilli(h.Timestamp), nil
 }
 
 // An applier applies LTX files to the database it restores, checking them.
@@ -184,61 +268,58 @@ type applier struct {
 	db   *os.File
 	last *os.File // a copy of the last file applied
 
-	txid     ltx.TXID
-	pageSize uint32
-	sums     []ltx.Checksum // of each page, 0 for one not written yet
-	sum      ltx.Checksum   // of the database
-	unset    int            // pages up to the end not written yet, but the lock page
-	page     []byte
+	min, txid ltx.TXID // of the last file applied
+	pageSize  uint32
+	sums      []ltx.Checksum // of each page, 0 for one not written yet
+	sum       ltx.Checksum   // of the database
+	unset     int            // pages up to the end not written yet, but the lock page
+	page      []byte
 }
 
-// apply downloads and applies the file key, unless it was made at or
-// after at (when set): more is false then. The file is downloaded whole
-// and its checksum checked before anything of it is used.
-func (a *applier) apply(ctx context.Context, c *s3.Client, key string, at time.Time) (more bool, err error) {
-	fail := func(err error) (bool, error) { return false, fmt.Errorf("replica: %s: %w", key, err) }
-	body, err := c.Get(ctx, key, 0, -1)
+// apply downloads and applies the file f, which must be from before at
+// (when set). The file is downloaded whole and its checksum checked before
+// anything of it is used.
+func (a *applier) apply(ctx context.Context, c *s3.Client, f remoteFile, at time.Time) error {
+	fail := func(err error) error { return fmt.Errorf("replica: %s: %w", f.key, err) }
+	body, err := c.Get(ctx, f.key, 0, -1)
 	if err != nil {
-		return false, err
+		return err
 	}
 	defer body.Close()
-	var hb [ltx.HeaderSize]byte
-	if _, err := io.ReadFull(body, hb[:]); err != nil {
-		return fail(err)
-	}
-	var stamp ltx.Header
-	if err := stamp.UnmarshalBinary(hb[:]); err != nil {
-		return fail(err)
-	}
-	if !at.IsZero() && !time.UnixMilli(stamp.Timestamp).Before(at) {
-		return false, nil
-	}
 	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
-		return false, err
+		return err
 	}
 	if err := a.last.Truncate(0); err != nil {
-		return false, err
+		return err
 	}
 	w := bufio.NewWriterSize(a.last, 1<<20)
-	if _, err := io.Copy(w, io.MultiReader(bytes.NewReader(hb[:]), body)); err != nil {
-		return false, err
+	if _, err := io.Copy(w, body); err != nil {
+		return err
 	}
 	if err := w.Flush(); err != nil {
-		return false, err
+		return err
 	}
 	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
-		return false, err
+		return err
 	}
-	if err := ltx.NewDecoder(bufio.NewReaderSize(a.last, 1<<20)).Verify(); err != nil {
+	dec := ltx.NewDecoder(bufio.NewReaderSize(a.last, 1<<20))
+	if err := dec.Verify(); err != nil {
 		return fail(err)
 	}
+	h := dec.Header()
+	switch {
+	case h.MinTXID != f.min || h.MaxTXID != f.max:
+		return fail(fmt.Errorf("holds TXIDs %s to %s, not those of its name", h.MinTXID, h.MaxTXID))
+	case !at.IsZero() && !time.UnixMilli(h.Timestamp).Before(at):
+		return fail(fmt.Errorf("made at %s, not before %s", time.UnixMilli(h.Timestamp).Format(time.RFC3339Nano), at.Format(time.RFC3339Nano)))
+	}
 	if _, err := a.last.Seek(0, io.SeekStart); err != nil {
-		return false, err
+		return err
 	}
 	if err := a.applyFile(bufio.NewReaderSize(a.last, 1<<20)); err != nil {
 		return fail(err)
 	}
-	return true, nil
+	return nil
 }
 
 // applyFile applies the LTX file in r, whose checksum was checked.
@@ -249,9 +330,11 @@ func (a *applier) applyFile(r io.Reader) error {
 	}
 	h := dec.Header()
 	switch {
-	case h.MinTXID != a.txid+1 || h.MaxTXID != h.MinTXID:
+	case h.MinTXID > a.txid+1 || h.MaxTXID <= a.txid:
 		return fmt.Errorf("holds TXIDs %s to %s after %s", h.MinTXID, h.MaxTXID, a.txid)
-	case a.txid > 0 && h.PreApplyChecksum != a.checksum():
+	// A file that overlaps the TXIDs before it starts from a state that
+	// is gone: only the checksum after it is checked.
+	case a.txid > 0 && h.MinTXID == a.txid+1 && h.PreApplyChecksum != a.checksum():
 		return fmt.Errorf("the database's checksum before it is %s, the database's is %s", h.PreApplyChecksum, a.checksum())
 	case a.txid > 0 && h.PageSize != a.pageSize:
 		return fmt.Errorf("page size %d after %d", h.PageSize, a.pageSize)
@@ -297,7 +380,7 @@ func (a *applier) applyFile(r io.Reader) error {
 	if post := dec.Trailer().PostApplyChecksum; post != a.checksum() {
 		return fmt.Errorf("the database's checksum after it is %s, the database's is %s", post, a.checksum())
 	}
-	a.txid = h.MaxTXID
+	a.min, a.txid = h.MinTXID, h.MaxTXID
 	return nil
 }
 

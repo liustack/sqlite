@@ -74,7 +74,7 @@ type Options struct {
 
 // A StagedFile is a staged LTX file, of one TXID.
 type StagedFile struct {
-	TXID      ltx.TXID
+	Min, TXID ltx.TXID     // the first and last TXID it holds: one but after a restore
 	Pre, Post ltx.Checksum // the checksums of the database before and after it
 }
 
@@ -128,6 +128,9 @@ type Capturer struct {
 	commitPage []byte // the page of the last commit frame scanned (capture)
 	fullCopies int
 	closed     bool
+
+	snapMu sync.Mutex    // one snapshot at a time
+	snap   *csqlite.Conn // the connection snapshots read with, under mu
 
 	durable atomic.Uint64 // the last TXID whose name is synced
 	staged  chan struct{} // gets a value when durable moves
@@ -195,6 +198,11 @@ func (c *Capturer) open() error {
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
 		return err
 	}
+	// A snapshot left by an earlier process is not uploaded: after a
+	// restart its TXIDs may name other states.
+	if err := os.RemoveAll(SnapshotDir(c.path)); err != nil {
+		return err
+	}
 	if err := c.start(); err != nil {
 		return err
 	}
@@ -226,6 +234,9 @@ func (c *Capturer) release() {
 		c.wal.Close()
 	}
 	c.conn.Close()
+	if c.snap != nil {
+		c.snap.Close()
+	}
 	if c.detach != nil {
 		c.detach()
 	}
@@ -304,6 +315,9 @@ func (c *Capturer) Sync(ctx context.Context) error {
 func (c *Capturer) Close() error {
 	c.cancel()
 	<-c.done
+	// A snapshot reads with c.snap, which release closes.
+	c.snapMu.Lock()
+	defer c.snapMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
@@ -394,17 +408,20 @@ func (c *Capturer) checkpoint(ctx context.Context) error {
 }
 
 // beginRead opens a read transaction on the capturer's connection.
-func (c *Capturer) beginRead() error {
-	if err := c.conn.Exec("BEGIN"); err != nil {
+func (c *Capturer) beginRead() error { return beginRead(c.conn) }
+
+// beginRead opens a read transaction on conn.
+func beginRead(conn *csqlite.Conn) error {
+	if err := conn.Exec("BEGIN"); err != nil {
 		return err
 	}
-	s, _, err := c.conn.Prepare("SELECT 1 FROM sqlite_schema LIMIT 1")
+	s, _, err := conn.Prepare("SELECT 1 FROM sqlite_schema LIMIT 1")
 	if err == nil {
 		_, err = s.Step()
 		s.Finalize()
 	}
 	if err != nil {
-		c.conn.Exec("ROLLBACK")
+		conn.Exec("ROLLBACK")
 	}
 	return err
 }

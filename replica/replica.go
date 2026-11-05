@@ -72,6 +72,12 @@ type Config struct {
 	// replaced): it uploads a full copy of the database as the replica's
 	// next TXID. Without it New fails with ErrDiverged.
 	FreshStart bool
+	// Retention is how long the replica keeps the database's past: a
+	// restore goes back that far at least. A snapshot of the database is
+	// uploaded every Retention or every day, the more often. Default 24h.
+	Retention time.Duration
+
+	schedule func(*schedule) // set by tests: changes the schedule
 	// OnError, if set, gets the errors of the work done in the background.
 	OnError func(error)
 }
@@ -99,7 +105,14 @@ type Replica struct {
 	cancel context.CancelFunc
 	done   chan struct{} // closed when run returns
 
-	uploading chan struct{} // holds a value during an upload: one at a time
+	// busy holds a value while the replicator works on the replica: one
+	// upload, compaction or deletion at a time.
+	busy  chan struct{}
+	files []remoteFile // the files of the replica, in key order, under busy
+	sched schedule
+	// A snapshot taken and not uploaded yet, under busy.
+	snap     string
+	snapTXID ltx.TXID
 
 	mu     sync.Mutex
 	status Status
@@ -118,6 +131,9 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if cfg.SyncInterval <= 0 {
 		cfg.SyncInterval = time.Second
 	}
+	if cfg.Retention <= 0 {
+		cfg.Retention = 24 * time.Hour
+	}
 	client, path, err := cfg.client()
 	if err != nil {
 		return nil, err
@@ -127,11 +143,18 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 			return nil, err
 		}
 	}
-	end, err := readEnd(ctx, client, path)
+	files, err := listRemote(ctx, client, path)
 	if err != nil {
 		return nil, err
 	}
-	r := &Replica{cfg: cfg, client: client, path: path, done: make(chan struct{}), uploading: make(chan struct{}, 1)}
+	end, err := readEnd(ctx, client, files)
+	if err != nil {
+		return nil, err
+	}
+	r := &Replica{cfg: cfg, client: client, path: path, files: files, sched: defaultSchedule(cfg.Retention), done: make(chan struct{}), busy: make(chan struct{}, 1)}
+	if cfg.schedule != nil {
+		cfg.schedule(&r.sched)
+	}
 	r.status.Uploaded = uint64(end.txid)
 	r.c, err = capture.Open(name, capture.Options{
 		Interval: cfg.SyncInterval,
@@ -160,7 +183,7 @@ func startFrom(end remoteEnd, staged []capture.StagedFile, fresh bool) (*capture
 		return nil, nil
 	}
 	for _, f := range staged {
-		if f.TXID == end.txid && f.Post == end.post || f.TXID == end.txid+1 && f.Pre == end.post {
+		if f.TXID == end.txid && f.Post == end.post || f.Min == end.txid+1 && f.Pre == end.post {
 			return nil, nil
 		}
 	}

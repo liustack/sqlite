@@ -236,7 +236,7 @@ func TestRestoreBad(t *testing.T) {
 		want  string                                 // in the error
 		spoil func(t *testing.T, body []byte) []byte // nil: delete the file
 	}{
-		{"gap", 0, "not whole", nil},
+		{"gap", 0, "do not lead", nil},
 		{"crc", 0, "checksum mismatch", func(t *testing.T, body []byte) []byte {
 			body[len(body)/2] ^= 0x40
 			return body
@@ -294,7 +294,7 @@ func TestRestoreBad(t *testing.T) {
 				tc.point = 2
 			}
 			bad := ltx.TXID(points[tc.point].txid)
-			key := levelKey(path, 0, bad)
+			key := levelKey(path, 0, bad, bad)
 			if tc.spoil == nil {
 				if err := c.Delete(ctx, key); err != nil {
 					t.Fatal(err)
@@ -370,5 +370,160 @@ func TestRestorePast(t *testing.T) {
 	out, _ := restoreTo(t, cfg, RestoreOptions{TXID: points[1].txid})
 	if _, err := New(context.Background(), out, cfg); !errors.Is(err, ErrDiverged) {
 		t.Fatalf("New after a restore to the past: %v", err)
+	}
+}
+
+// compactNow merges level from into level to, as the background work does.
+func compactNow(t *testing.T, r *Replica, from, to int) {
+	t.Helper()
+	r.busy <- struct{}{}
+	defer func() { <-r.busy }()
+	if _, err := r.compact(context.Background(), from, to); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The replica restores from a snapshot and compacted files, to every TXID
+// a file ends at and to every time, as litestream restore does, and a
+// database restored from a compacted file goes on replicating.
+func TestRestoreLevels(t *testing.T) {
+	ctx := context.Background()
+	cfg := testConfig(t)
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	var points []point
+	for i := range 12 {
+		run(t, db, fmt.Sprintf("INSERT INTO t VALUES (randomblob(%d))", 500+i*300))
+		if i == 7 {
+			run(t, db, "DELETE FROM t WHERE rowid < 4", "VACUUM")
+		}
+		syncNow(t, r)
+		time.Sleep(2 * time.Millisecond)
+		points = append(points, point{txid: r.Status().Uploaded, at: time.Now(), dump: dump(t, name)})
+		time.Sleep(2 * time.Millisecond)
+		switch i {
+		case 3:
+			compactNow(t, r, 0, snapshotLevel) // TXIDs 1 to 4ish, a snapshot
+		case 5, 9:
+			compactNow(t, r, 0, 1)
+		case 10:
+			compactNow(t, r, 1, 2)
+		}
+	}
+	// A TXID before the snapshot comes from the level 0 files.
+	if out, txid := restoreTo(t, cfg, RestoreOptions{TXID: points[1].txid}); txid != points[1].txid || dump(t, out) != points[1].dump {
+		t.Fatalf("restored TXID %d, want %d", txid, points[1].txid)
+	}
+	compactNow(t, r, 0, 1)
+	// The level 0 files the compacted ones hold go, but the last.
+	c, path := client(t, cfg)
+	files, err := listRemote(ctx, c, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var l1, last ltx.TXID
+	for _, f := range files {
+		if f.level == 1 {
+			l1 = max(l1, f.max)
+		}
+		last = max(last, f.max)
+	}
+	if l1 != last {
+		t.Fatalf("level 1 ends at %s, the replica at %s", l1, last)
+	}
+	ends := map[uint64]bool{}
+	for _, f := range files {
+		if f.level == 0 && f.max < last {
+			if err := c.Delete(ctx, f.key); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		ends[uint64(f.max)] = true
+	}
+	t.Logf("files: %v", ends)
+
+	// The latest state comes from the snapshot and the compacted files.
+	plan, err := restorePlan(ctx, c, path, 0, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, f := range plan {
+		if i == 0 && f.level != snapshotLevel || i > 0 && f.level == 0 {
+			t.Fatalf("plan: %+v", plan)
+		}
+	}
+	out, txid := restoreTo(t, cfg, RestoreOptions{})
+	if txid != uint64(last) {
+		t.Fatalf("restored TXID %d, the replica ends at %s", txid, last)
+	}
+	sameFile(t, out, litestreamRestore(t, cfg))
+
+	reached := uint64(0) // the last TXID a file ends at, up to the point
+	compared := 0
+	for _, p := range points {
+		for txid := reached + 1; txid <= p.txid; txid++ {
+			if ends[txid] {
+				reached = txid
+			}
+		}
+		out := filepath.Join(t.TempDir(), "restored.db")
+		_, err := Restore(ctx, out, cfg, RestoreOptions{TXID: p.txid})
+		switch {
+		case !ends[p.txid] && err == nil:
+			t.Fatalf("Restore TXID %d, which no file ends at: no error", p.txid)
+		case ends[p.txid] && err != nil:
+			t.Fatalf("Restore TXID %d: %v", p.txid, err)
+		case ends[p.txid]:
+			if got := dump(t, out); got != p.dump {
+				t.Fatalf("restored at TXID %d\n%s\nthen\n%s", p.txid, got, p.dump)
+			}
+		}
+		if reached == 0 {
+			continue
+		}
+		out, txid := restoreTo(t, cfg, RestoreOptions{At: p.at})
+		if txid != reached {
+			t.Fatalf("restored TXID %d at the time of TXID %d, want %d", txid, p.txid, reached)
+		}
+		// litestream restore takes times from the first upload of the files
+		// there to the last.
+		theirs, err := litestreamTry(t, cfg, "-timestamp", p.at.UTC().Format(time.RFC3339Nano))
+		if err != nil && !strings.Contains(err.Error(), "timestamp does not exist") {
+			t.Fatal(err)
+		}
+		if err == nil {
+			sameFile(t, out, theirs)
+			compared++
+		}
+	}
+	if litestreamBin(t) != "" && compared == 0 {
+		t.Fatal("litestream restore took none of the times")
+	}
+	t.Logf("%d times compared with litestream restore", compared)
+
+	// From the database restored from the compacted file, replication goes
+	// on without a full copy.
+	r.Close()
+	out, txid = restoreTo(t, cfg, RestoreOptions{})
+	staged, err := os.ReadDir(capture.StageDir(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(staged) != 1 || staged[0].Name() == ltx.FormatFilename(ltx.TXID(txid), ltx.TXID(txid)) {
+		t.Fatalf("staged: %v, want a compacted file", staged)
+	}
+	r2 := newReplica(t, out, cfg)
+	if n := r2.c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies", n)
+	}
+	db2 := openDB(t, out)
+	run(t, db2, "INSERT INTO t VALUES (42)")
+	syncNow(t, r2)
+	again, txid2 := restoreTo(t, cfg, RestoreOptions{})
+	if txid2 != txid+1 || dump(t, again) != dump(t, out) {
+		t.Fatalf("restored TXID %d after going on from %d", txid2, txid)
 	}
 }

@@ -39,7 +39,8 @@ func TestMain(m *testing.M) {
 }
 
 // testConfig is a Config for a replica of its own on the test store, which
-// takes no step in the background: the tests call Sync.
+// takes no step and compacts nothing in the background: the tests call Sync
+// and compact.
 func testConfig(t *testing.T) Config {
 	t.Helper()
 	s, prefix := s3test.Store(t)
@@ -50,6 +51,7 @@ func testConfig(t *testing.T) Config {
 		AllowHTTP:    true,
 		SyncInterval: time.Hour,
 		OnError:      func(err error) { t.Logf("replica: %v", err) },
+		schedule:     func(s *schedule) { s.levels = nil },
 	}
 }
 
@@ -261,7 +263,10 @@ func TestReplicate(t *testing.T) {
 		t.Fatalf("left by the probe: %s %v", o.Key, err)
 	}
 	// A file uploaded again, as after a PUT that got no answer, is ours.
-	if err := r.put(context.Background(), txid); err != nil {
+	r.busy <- struct{}{}
+	err = r.put(context.Background(), txid)
+	<-r.busy
+	if err != nil {
 		t.Fatalf("a second upload of TXID %s: %v", txid, err)
 	}
 }
@@ -437,30 +442,55 @@ func TestBackground(t *testing.T) {
 
 // `litestream restore` reads the replica: the latest state, and an earlier
 // TXID. LITESTREAM names the binary (v0.5.18), else the test is skipped.
-func TestLitestreamRestore(t *testing.T) {
+// litestreamBin is the litestream binary of LITESTREAM, "" when it is not
+// set. With S3_TEST_REQUIRED it must be.
+func litestreamBin(t *testing.T) string {
+	t.Helper()
 	bin := os.Getenv("LITESTREAM")
-	if bin == "" {
-		if os.Getenv("S3_TEST_REQUIRED") != "" {
-			t.Fatal("LITESTREAM is not set, and S3_TEST_REQUIRED is")
-		}
-		t.Skip("LITESTREAM is not set")
+	if bin == "" && os.Getenv("S3_TEST_REQUIRED") != "" {
+		t.Fatal("LITESTREAM is not set, and S3_TEST_REQUIRED is")
 	}
-	cfg := testConfig(t)
-	name, points := history(t, cfg)
+	return bin
+}
+
+// litestreamRestore has litestream restore the replica of cfg with args,
+// and returns the file it wrote, "" without LITESTREAM.
+func litestreamRestore(t *testing.T, cfg Config, args ...string) string {
+	t.Helper()
+	out, err := litestreamTry(t, cfg, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// litestreamTry is litestreamRestore, with the error of litestream.
+func litestreamTry(t *testing.T, cfg Config, args ...string) (string, error) {
+	t.Helper()
+	bin := litestreamBin(t)
+	if bin == "" {
+		return "", nil
+	}
 	cr, err := cfg.Credentials.Credentials(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	restore := func(args ...string) string {
-		t.Helper()
-		out := filepath.Join(t.TempDir(), "restored.db")
-		cmd := exec.Command(bin, append(append([]string{"restore", "-o", out}, args...), cfg.URL)...)
-		cmd.Env = append(os.Environ(), "AWS_ACCESS_KEY_ID="+cr.AccessKeyID, "AWS_SECRET_ACCESS_KEY="+cr.SecretAccessKey)
-		if b, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("litestream restore %v: %v\n%s", args, err, b)
-		}
-		return out
+	out := filepath.Join(t.TempDir(), "restored.db")
+	cmd := exec.Command(bin, append(append([]string{"restore", "-o", out}, args...), cfg.URL)...)
+	cmd.Env = append(os.Environ(), "AWS_ACCESS_KEY_ID="+cr.AccessKeyID, "AWS_SECRET_ACCESS_KEY="+cr.SecretAccessKey)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("litestream restore %v: %v\n%s", args, err, b)
 	}
+	return out, nil
+}
+
+func TestLitestreamRestore(t *testing.T) {
+	if litestreamBin(t) == "" {
+		t.Skip("LITESTREAM is not set")
+	}
+	cfg := testConfig(t)
+	name, points := history(t, cfg)
+	restore := func(args ...string) string { t.Helper(); return litestreamRestore(t, cfg, args...) }
 	theirs := restore()
 	if got, want := dump(t, theirs), dump(t, name); got != want {
 		t.Fatalf("litestream restored\n%s\nthe database\n%s", got, want)
@@ -483,10 +513,14 @@ func TestLitestreamRestore(t *testing.T) {
 	}
 }
 
-// sameFile checks that the files a and b hold the same bytes. It is called
-// before either is opened.
+// sameFile checks that the files a and b hold the same bytes, nothing when
+// b is "" (litestream restore did not run). It is called before either is
+// opened.
 func sameFile(t *testing.T, a, b string) {
 	t.Helper()
+	if b == "" {
+		return
+	}
 	ab, err := os.ReadFile(a)
 	if err != nil {
 		t.Fatal(err)
