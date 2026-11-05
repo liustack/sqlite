@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -437,7 +438,7 @@ func TestErrorScrubsRotatedToken(t *testing.T) {
 // A store may copy the token into any part of its answer: no error has it,
 // in what it prints or in the fields of an *Error.
 func TestErrorScrubsEveryField(t *testing.T) {
-	const token = "session-token-0123456789"
+	const token = "session+token/0123456789=" // escaped in a URL
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		io.Copy(io.Discard, req.Body)
 		tok := req.Header.Get("X-Amz-Security-Token")
@@ -477,8 +478,10 @@ func TestErrorScrubsEveryField(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%s: no error", what)
 		}
-		if strings.Contains(err.Error(), token) {
-			t.Errorf("%s: the error has the token: %v", what, err)
+		for _, tok := range []string{token, url.QueryEscape(token), url.PathEscape(token)} {
+			if strings.Contains(err.Error(), tok) {
+				t.Errorf("%s: the error has the token: %v", what, err)
+			}
 		}
 		var e *Error
 		if errors.As(err, &e) && strings.Contains(fmt.Sprintf("%+v", *e), token) {

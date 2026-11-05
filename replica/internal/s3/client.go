@@ -281,10 +281,13 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	sign(req, cr, c.region, "s3", c.now(), hash)
 	resp, err = c.http.Do(req)
 	if err != nil {
-		// Its URL may hold what the store sent, such as an upload ID.
+		// The query of its URL may hold what the store sent, such as an
+		// upload ID, escaped: it goes.
 		var ue *url.Error
 		if errors.As(err, &ue) {
-			err = &url.Error{Op: ue.Op, URL: scrub(req, ue.URL), Err: ue.Err}
+			u := *req.URL
+			u.RawQuery = ""
+			err = &url.Error{Op: ue.Op, URL: scrub(req, u.String()), Err: ue.Err}
 		}
 		return nil, reused, fmt.Errorf("s3: %s %s: %w: %w", r.op, r.key, ErrNoAnswer, p.why(err))
 	}
