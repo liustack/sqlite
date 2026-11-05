@@ -165,7 +165,7 @@ func (c *Client) putParts(ctx context.Context, key string, body io.ReaderAt, siz
 	}
 	var root struct{ XMLName xml.Name }
 	if xml.Unmarshal(answer, &root) != nil || root.XMLName.Local != "CompleteMultipartUploadResult" {
-		return errorOf(resp, "CompleteMultipartUpload", key, answer)
+		return c.errorOf(resp, "CompleteMultipartUpload", key, answer)
 	}
 	return nil
 }

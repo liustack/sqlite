@@ -19,6 +19,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,7 +43,7 @@ func TestMain(m *testing.M) {
 // testConfig is a Config for a replica of its own on the test store, which
 // takes no step and compacts nothing in the background: the tests call Sync
 // and compact.
-func testConfig(t *testing.T) Config {
+func testConfig(t testing.TB) Config {
 	t.Helper()
 	s, prefix := s3test.Store(t)
 	return Config{
@@ -349,7 +351,9 @@ func TestTwoReplicators(t *testing.T) {
 	if err := b.Sync(context.Background()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("the second replicator: %v, want ErrConflict", err)
 	}
-	if s := b.Status(); !errors.Is(s.Err, ErrConflict) {
+	// What it staged is dropped at once: nothing is pending, so that a
+	// staging stopped at its limit goes on.
+	if s := b.Status(); !errors.Is(s.Err, ErrConflict) || s.Pending != 0 {
 		t.Fatalf("status of the second: %+v", s)
 	}
 	// It stays stopped, and the program's writes go on.
@@ -576,5 +580,85 @@ func TestStatusErr(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("Close took %v", d)
+	}
+}
+
+// lockedBuilder is a strings.Builder that OnError writes to from the
+// background too.
+type lockedBuilder struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuilder) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuilder) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// No secret and no session token in what a program sees: the errors of New,
+// Sync, Close and Restore, the errors given to OnError, the status, and the
+// Config printed, against a store that puts the request's headers in its
+// errors.
+func TestNoSecrets(t *testing.T) {
+	const secret, token = "secret-0123456789", "token-0123456789"
+	var listOK atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		io.Copy(io.Discard, req.Body)
+		if listOK.Load() && req.Method == http.MethodGet && req.URL.Query().Get("list-type") == "2" {
+			fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>`)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?><Error><Code>InvalidToken</Code><Message>%s %s</Message></Error>`,
+			req.Header.Get("X-Amz-Security-Token"), req.Header.Get("Authorization"))
+	}))
+	defer srv.Close()
+	var seen lockedBuilder
+	cfg := Config{
+		URL:          "s3://bucket/app.db?endpoint=" + url.QueryEscape(srv.URL),
+		Credentials:  StaticCredentials(Credentials{AccessKeyID: "key", SecretAccessKey: secret, SessionToken: token}),
+		AllowHTTP:    true,
+		SyncInterval: 10 * time.Millisecond,
+		OnError:      func(err error) { fmt.Fprintln(&seen, err) },
+	}
+	fmt.Fprintf(&seen, "%v %+v %#v\n", cfg, cfg, cfg)
+	name := filepath.Join(t.TempDir(), "x.db")
+	// The probe fails.
+	if _, err := New(context.Background(), name, cfg); err == nil {
+		t.Fatal("New against a store that refuses all: no error")
+	} else {
+		fmt.Fprintln(&seen, err)
+	}
+	// Listing works, writes fail.
+	listOK.Store(true)
+	cfg.SingleWriter = true
+	r, err := New(context.Background(), name, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
+	fmt.Fprintln(&seen, r.Sync(context.Background()))
+	time.Sleep(100 * time.Millisecond)
+	fmt.Fprintf(&seen, "%v %+v\n", r.Status(), r.Status())
+	fmt.Fprintln(&seen, r.Close())
+	listOK.Store(false)
+	_, err = Restore(context.Background(), filepath.Join(t.TempDir(), "out.db"), cfg, RestoreOptions{})
+	fmt.Fprintln(&seen, err)
+	out := seen.String()
+	if !strings.Contains(out, "InvalidToken") {
+		t.Fatalf("no error of the store seen:\n%s", out)
+	}
+	for _, s := range []string{secret, token} {
+		if strings.Contains(out, s) {
+			t.Fatalf("%q is in what the program sees:\n%s", s, out)
+		}
 	}
 }

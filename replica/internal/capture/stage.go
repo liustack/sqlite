@@ -98,14 +98,15 @@ func setWALPos(h *ltx.Header, salt [8]byte, from, to uint32) {
 // written to a temporary name, synced, given the time of h (which Litestream
 // reads as the time of the file), renamed and its folder synced. placed is
 // true once it has its name, even when the folder then fails to sync: the
-// TXID is taken, and another file must not get it.
-func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(pgno uint32, data []byte) error) (ltx.Checksum, error)) (placed bool, err error) {
+// TXID is taken, and another file must not get it. size is the size of the
+// file.
+func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(pgno uint32, data []byte) error) (ltx.Checksum, error)) (placed bool, size int64, err error) {
 	name := filepath.Join(dir, ltx.FormatFilename(h.MinTXID, h.MaxTXID))
 	tmp := name + ".tmp"
 	// A file of that name left by a write that failed is written over.
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	err = func() error {
 		w := bufio.NewWriterSize(f, 1<<20)
@@ -129,6 +130,9 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 		if err := w.Flush(); err != nil {
 			return err
 		}
+		if size, err = f.Seek(0, io.SeekCurrent); err != nil {
+			return err
+		}
 		return f.Sync()
 	}()
 	if cerr := f.Close(); err == nil {
@@ -143,9 +147,9 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 	}
 	if err != nil {
 		os.Remove(tmp)
-		return false, err
+		return false, 0, err
 	}
-	return true, syncDir(dir)
+	return true, size, syncDir(dir)
 }
 
 // syncDir makes the names in dir durable. Tests make it fail.
@@ -233,6 +237,25 @@ func readStaged(name string) (StagedFile, error) {
 		return StagedFile{}, fmt.Errorf("the staged file %s: %w", name, err)
 	}
 	return StagedFile{Min: h.MinTXID, TXID: h.MaxTXID, Pre: h.PreApplyChecksum, Post: t.PostApplyChecksum}, nil
+}
+
+// isFullCopy says whether the staged file name holds a full copy of the
+// database, which holds no frames of the WAL (setWALPos).
+func isFullCopy(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	var hb [ltx.HeaderSize]byte
+	if err := readFull(f, hb[:], 0); err != nil {
+		return false, err
+	}
+	var h ltx.Header
+	if err := h.UnmarshalBinary(hb[:]); err != nil {
+		return false, fmt.Errorf("the staged file %s: %w", name, err)
+	}
+	return h.WALSize == 0, nil
 }
 
 // dropStaged removes the staged files of dir whose TXID drop says, and the

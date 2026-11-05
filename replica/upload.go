@@ -32,21 +32,23 @@ var ErrConflict = errors.New("replica: another replicator writes to the replica"
 // run uploads the staged files as the capturer stages them, and then does
 // the other work on the replica that is due (maintain), until ctx is done.
 // Failed work is tried again later, longer after each failure up to a
-// minute. After a conflict it only drops what is staged.
+// minute, and new staged files wait for that try: a store that is down gets
+// few requests. After a conflict it only drops what is staged.
 func (r *Replica) run(ctx context.Context) {
 	defer close(r.done)
 	var retry, due <-chan time.Time
+	staged := r.c.Staged()
 	wait := time.Second
 	reported := false // the conflict
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-r.c.Staged():
+		case <-staged:
 		case <-retry:
 		case <-due:
 		}
-		retry, due = nil, nil
+		retry, due, staged = nil, nil, r.c.Staged()
 		next, err := r.work(ctx)
 		switch {
 		case err == nil:
@@ -64,6 +66,7 @@ func (r *Replica) run(ctx context.Context) {
 		default:
 			r.report(err)
 			retry = time.After(wait)
+			staged = nil
 			wait = min(2*wait, time.Minute)
 		}
 	}
@@ -110,24 +113,24 @@ func (r *Replica) upload(ctx context.Context) error {
 func (r *Replica) uploadFiles(ctx context.Context) error {
 	// Durable is 1 or more once capture.Open returns.
 	durable := r.c.Durable()
-	if err := r.conflict(); err != nil {
-		// What is staged can no longer go to the replica: only the last
-		// file is kept, which the capturer goes on from.
-		if derr := r.dropUploaded(durable - 1); derr != nil {
+	err := r.conflict()
+	for txid := r.uploaded() + 1; err == nil && txid <= durable; txid++ {
+		if err = r.put(ctx, txid); err == nil {
+			r.setStatus(func(s *Status) { s.Uploaded = uint64(txid) })
+		}
+	}
+	switch {
+	case err == nil:
+		return r.c.Done(r.uploaded())
+	case errors.Is(err, ErrConflict):
+		// What is staged can no longer go to the replica, from the first
+		// conflict on: only the last file is kept, which the capturer goes
+		// on from. Nothing is pending, so staging does not stop.
+		if derr := r.c.Done(durable); derr != nil {
 			return derr
 		}
-		return err
 	}
-	for txid := r.uploaded() + 1; txid <= durable; txid++ {
-		if err := r.put(ctx, txid); err != nil {
-			if errors.Is(err, ErrConflict) {
-				r.setStatus(func(s *Status) { s.Err = err })
-			}
-			return err
-		}
-		r.setStatus(func(s *Status) { s.Uploaded = uint64(txid) })
-	}
-	return r.dropUploaded(min(r.uploaded(), durable-1))
+	return err
 }
 
 // put uploads the staged file of txid as level 0.
@@ -193,22 +196,4 @@ func (r *Replica) addFile(f remoteFile) {
 	if !found {
 		r.files = slices.Insert(r.files, i, f)
 	}
-}
-
-// dropUploaded removes the staged files up to txid.
-func (r *Replica) dropUploaded(txid ltx.TXID) error {
-	entries, err := os.ReadDir(r.c.Dir())
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		_, max, err := ltx.ParseFilename(e.Name())
-		if err != nil || max > txid {
-			continue
-		}
-		if err := os.Remove(filepath.Join(r.c.Dir(), e.Name())); err != nil {
-			return err
-		}
-	}
-	return nil
 }

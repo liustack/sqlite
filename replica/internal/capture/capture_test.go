@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"io"
 	"math/rand/v2"
@@ -17,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -865,4 +867,389 @@ func TestSnapshot(t *testing.T) {
 		t.Fatalf("nothing staged after the snapshot of TXID %s", txid)
 	}
 	sameAs(t, c, name)
+}
+
+// uploadAll copies the staged files to remote, as an uploader would, and
+// tells c they are uploaded.
+func uploadAll(t *testing.T, c *Capturer, remote string) {
+	t.Helper()
+	entries, err := os.ReadDir(c.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if _, _, err := ltx.ParseFilename(e.Name()); err != nil {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(c.Dir(), e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(remote, e.Name()), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	if n := c.Pending(); n != 0 {
+		t.Fatalf("%d bytes pending after all went up", n)
+	}
+}
+
+// At the limit, staging stops and keeps what it has, checkpoints go on, and
+// once all of it is uploaded a full copy goes on from it.
+func TestStagingLimit(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	remote := t.TempDir()
+	var full atomic.Int64
+	opt := testOptions(t)
+	opt.CheckpointFrames = 20
+	opt.Limit = 64 << 10
+	opt.OnError = func(err error) {
+		if errors.Is(err, ErrStagingFull) {
+			full.Add(1)
+		}
+		t.Logf("capture: %v", err)
+	}
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	uploadAll(t, c, remote)
+	var stopped ltx.TXID
+	for i := range 300 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+		err := c.Sync(context.Background())
+		switch {
+		case err == nil:
+			if stopped != 0 {
+				t.Fatalf("step %d staged after staging stopped", i)
+			}
+		case errors.Is(err, ErrStagingFull):
+			if stopped == 0 {
+				stopped = c.Durable()
+			}
+			if c.Durable() != stopped {
+				t.Fatalf("step %d: staged TXID %s after stopping at %s", i, c.Durable(), stopped)
+			}
+		default:
+			t.Fatal(err)
+		}
+		if n := c.Pending(); n > opt.Limit+32<<10 {
+			t.Fatalf("step %d: %d bytes pending, the limit is %d", i, n, opt.Limit)
+		}
+		if st, err := os.Stat(name + "-wal"); err != nil {
+			t.Fatal(err)
+		} else if st.Size() > 30*(4096+24)+32 {
+			t.Fatalf("step %d: the WAL has %d bytes", i, st.Size())
+		}
+	}
+	if stopped == 0 || full.Load() != 1 {
+		t.Fatalf("stopped at TXID %s, %d errors of a full staging", stopped, full.Load())
+	}
+	if _, _, err := c.Snapshot(context.Background()); err == nil {
+		t.Fatal("a snapshot while staging is stopped")
+	}
+	// S3 is back: what is staged goes up, then a full copy follows it.
+	uploadAll(t, c, remote)
+	step(t, c)
+	if c.Durable() != stopped+1 || c.FullCopies() != 1 {
+		t.Fatalf("staged TXID %s with %d full copies after the upload, want a full copy as %s", c.Durable(), c.FullCopies(), stopped+1)
+	}
+	for range 20 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))", "DELETE FROM t WHERE rowid % 5 = 0")
+		step(t, c)
+		uploadAll(t, c, remote)
+	}
+	out, txid := rebuild(t, remote)
+	if txid != c.TXID() {
+		t.Fatalf("rebuilt TXID %s, staged %s", txid, c.TXID())
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := pages(t, name)
+	for i, p := range want {
+		if p != nil && !bytes.Equal(got[i*len(p):(i+1)*len(p)], p) {
+			t.Fatalf("page %d differs", i+1)
+		}
+	}
+}
+
+// A database larger than the limit: its full copy does not stop staging,
+// also after a restart, nothing uploaded.
+func TestStagingLimitLarge(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	for range 50 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	db.Close()
+	opt := testOptions(t)
+	opt.Limit = 64 << 10
+	for range 2 {
+		c := open(t, name, opt)
+		db = openApp(t, name)
+		for i := range 5 {
+			run(t, db, "INSERT INTO t VALUES (1)")
+			if err := c.Sync(context.Background()); err != nil {
+				t.Fatalf("step %d: %v", i, err)
+			}
+		}
+		if c.FullCopies() != 0 {
+			t.Fatalf("%d full copies", c.FullCopies())
+		}
+		db.Close()
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Another process checkpoints after each change, so that each step stages a
+// full copy: past the limit staging stops all the same, the copies count.
+func TestStagingLimitLost(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	for range 50 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	db.Close()
+	opt := testOptions(t)
+	opt.Limit = 64 << 10
+	c := open(t, name, opt)
+	raw, err := csqlite.Open(c.path, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	st, err := os.Stat(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 10 {
+		if err := raw.Exec("INSERT INTO t VALUES (1); PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Sync(context.Background()); err != nil && !errors.Is(err, ErrStagingFull) {
+			t.Fatal(err)
+		}
+		// One database more than the limit: the copy staging goes on from.
+		if n := c.Pending(); n > opt.Limit+st.Size()+8<<10 {
+			t.Fatalf("step %d: %d bytes pending, the limit is %d", i, n, opt.Limit)
+		}
+	}
+}
+
+// The staged file whose folder did not sync when staging stopped is
+// uploaded all the same, so that staging goes on after.
+func TestStagingLimitSyncDir(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.Limit = 1
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	run(t, db, "INSERT INTO t VALUES (1)")
+	if err := c.Sync(context.Background()); !errors.Is(err, fail) {
+		t.Fatalf("Sync: %v", err)
+	}
+	syncDir = syncDirFS
+	if err := c.Sync(context.Background()); !errors.Is(err, ErrStagingFull) {
+		t.Fatalf("Sync: %v, want ErrStagingFull", err)
+	}
+	if c.Durable() != c.TXID() {
+		t.Fatalf("durable TXID %s after stopping at %s", c.Durable(), c.TXID())
+	}
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	step(t, c)
+	if c.FullCopies() != 1 {
+		t.Fatalf("%d full copies after the upload", c.FullCopies())
+	}
+}
+
+// A staged file whose folder did not sync is made durable by the next step,
+// also when nothing was committed since.
+func TestSyncDirIdle(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	fail := errors.New("no sync")
+	syncDir = func(string) error { return fail }
+	t.Cleanup(func() { syncDir = syncDirFS })
+	run(t, db, "CREATE TABLE t(x)")
+	if err := c.Sync(context.Background()); !errors.Is(err, fail) {
+		t.Fatalf("Sync: %v", err)
+	}
+	syncDir = syncDirFS
+	step(t, c)
+	if c.Durable() != c.TXID() {
+		t.Fatalf("durable TXID %s, staged %s", c.Durable(), c.TXID())
+	}
+}
+
+// A step that passes the limit stages no more: it does not catch up with
+// the writers, nor checkpoint, whether its first read of the WAL passed it
+// or a read as it caught up.
+func TestStagingLimitStep(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		before, more int // rows before the step, and at each point of it
+		files        ltx.TXID
+	}{
+		{"first read", 30, 1, 1},
+		{"catching up", 5, 300, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			name := filepath.Join(t.TempDir(), "x.db")
+			opt := testOptions(t)
+			opt.CheckpointFrames = 1
+			opt.Limit = 64 << 10
+			c := open(t, name, opt)
+			db := openApp(t, name)
+			run(t, db, "CREATE TABLE t(x)")
+			step(t, c)
+			if err := c.Done(c.Durable()); err != nil {
+				t.Fatal(err)
+			}
+			insert := func(n int) {
+				for range n {
+					run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+				}
+			}
+			insert(tc.before)
+			stepHook = func(string) { insert(tc.more) }
+			defer func() { stepHook = func(string) {} }()
+			before := c.TXID()
+			step(t, c)
+			if c.TXID() != before+tc.files {
+				t.Fatalf("the step staged TXIDs %s to %s past the limit", before+1, c.TXID())
+			}
+		})
+	}
+}
+
+// Writers go on through every step and checkpoint: no frame is checkpointed
+// away before it is staged, so the WAL is followed throughout and the staged
+// files rebuild the database.
+func TestCheckpointUnderWrites(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 50
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	db.SetMaxOpenConns(8)
+	run(t, db, "CREATE TABLE t(x)")
+	stop := make(chan struct{})
+	errc := make(chan error, 4)
+	for range 4 {
+		go func() {
+			for {
+				select {
+				case <-stop:
+					errc <- nil
+					return
+				default:
+				}
+				if _, err := db.Exec("INSERT INTO t VALUES (randomblob(500))"); err != nil {
+					errc <- err
+					return
+				}
+			}
+		}()
+	}
+	gens := map[[8]byte]bool{}
+	for start := time.Now(); time.Since(start) < 2*time.Second; {
+		step(t, c)
+		gens[c.gen] = true
+	}
+	close(stop)
+	for range 4 {
+		if err := <-errc; err != nil {
+			t.Fatal(err)
+		}
+	}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies: the WAL was lost", n)
+	}
+	if len(gens) < 3 {
+		t.Fatalf("the WAL started over %d times", len(gens)-1)
+	}
+	sameAs(t, c, name)
+}
+
+// A commit between the capture and the checkpoint outside the lock, and
+// another after it: the checkpoint copies none of the first, so the second
+// cannot start the WAL over before it is staged.
+func TestCheckpointGuard(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 1
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	stepHook = func(at string) { run(t, db, "INSERT INTO t VALUES ('"+at+"')") }
+	defer func() { stepHook = func(string) {} }()
+	run(t, db, "INSERT INTO t VALUES (1)")
+	step(t, c)
+	stepHook = func(string) {}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies: the WAL was lost", n)
+	}
+	sameAs(t, c, name)
+}
+
+// walChecksumRef is the WAL checksum as SQLite's walChecksumBytes writes it.
+func walChecksumRef(bigEndian bool, s [2]uint32, b []byte) [2]uint32 {
+	var order binary.ByteOrder = binary.LittleEndian
+	if bigEndian {
+		order = binary.BigEndian
+	}
+	s1, s2 := s[0], s[1]
+	for i := 0; i+8 <= len(b); i += 8 {
+		s1 += order.Uint32(b[i:]) + s2
+		s2 += order.Uint32(b[i+4:]) + s1
+	}
+	return [2]uint32{s1, s2}
+}
+
+func TestWALChecksum(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	for _, n := range []int{0, 8, 24, 4096, 65536} {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = byte(rng.Uint32())
+		}
+		for _, big := range []bool{false, true} {
+			s := [2]uint32{rng.Uint32(), rng.Uint32()}
+			if got, want := walChecksum(big, s, b), walChecksumRef(big, s, b); got != want {
+				t.Fatalf("%d bytes, big endian %t: %x, want %x", n, big, got, want)
+			}
+		}
+	}
+}
+
+func BenchmarkWALChecksum(b *testing.B) {
+	page := make([]byte, 4096)
+	b.SetBytes(int64(len(page)))
+	var s [2]uint32
+	for b.Loop() {
+		s = walChecksum(false, s, page)
+	}
 }

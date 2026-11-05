@@ -41,6 +41,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -61,6 +62,15 @@ type Options struct {
 	// CheckpointFrames is how many frames the WAL holds before the capturer
 	// checkpoints it. Default 1000, as SQLite's automatic checkpoints.
 	CheckpointFrames uint32
+	// Limit is the most bytes of level 0 files staged and not uploaded yet
+	// (see Done): past it, staging stops until they are uploaded, and a full
+	// copy of the database follows them. Checkpoints go on, so the WAL
+	// stays bounded. The last full copy, which staging goes on from, does
+	// not count, and the step that passes the limit stages no more after
+	// that one read of the WAL. 0 is no limit.
+	Limit int64
+	// Uploaded is the last TXID uploaded when Open runs.
+	Uploaded ltx.TXID
 	// OnError, if set, gets the errors of the reads made in the background,
 	// and an error under ErrFullCopy for each full copy staged because the
 	// WAL could not be followed.
@@ -89,6 +99,13 @@ type Restart struct {
 // staged because the WAL went on in a way the capturer could not follow, or
 // the database is not where the staged files end.
 var ErrFullCopy = errors.New("capture: staged a full copy of the database")
+
+// ErrStagingFull is under the error reported when staging stops at
+// Options.Limit, and the error of Sync while it is stopped.
+var ErrStagingFull = errors.New("capture: the staged files not uploaded reached the limit")
+
+// stepHook is called at points of a step that checkpoints. Tests set it.
+var stepHook = func(string) {}
 
 // closeWait is how long Close waits for the driver's write lock to
 // checkpoint. Tests shorten it.
@@ -128,12 +145,20 @@ type Capturer struct {
 	commitPage []byte // the page of the last commit frame scanned (capture)
 	fullCopies int
 	closed     bool
+	// full says staging stopped at the limit: lost says so, and the full
+	// copy waits until nothing staged is pending.
+	full bool
 
 	snapMu sync.Mutex    // one snapshot at a time
 	snap   *csqlite.Conn // the connection snapshots read with, under mu
+	guard  *csqlite.Conn // holds a read transaction while a step checkpoints, under mu
 
 	durable atomic.Uint64 // the last TXID whose name is synced
 	staged  chan struct{} // gets a value when durable moves
+
+	sizeMu  sync.Mutex
+	acked   ltx.TXID     // the last TXID uploaded
+	pending []stagedSize // the files staged after acked, in TXID order
 }
 
 // Open starts staging the changes of the database name, before the driver
@@ -212,7 +237,7 @@ func (c *Capturer) open() error {
 		return err
 	}
 	c.setDurable(c.txid)
-	return nil
+	return c.countPending()
 }
 
 // pragma is the value PRAGMA p gives.
@@ -236,6 +261,9 @@ func (c *Capturer) release() {
 	c.conn.Close()
 	if c.snap != nil {
 		c.snap.Close()
+	}
+	if c.guard != nil {
+		c.guard.Close()
 	}
 	if c.detach != nil {
 		c.detach()
@@ -305,7 +333,13 @@ func (c *Capturer) Sync(ctx context.Context) error {
 	if c.closed {
 		return errors.New("capture: closed")
 	}
-	return c.step(ctx)
+	if err := c.step(ctx); err != nil {
+		return err
+	}
+	if c.full {
+		return c.lost
+	}
+	return nil
 }
 
 // Close stages what is left, checkpoints and stops. When a write
@@ -327,7 +361,9 @@ func (c *Capturer) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
 	defer cancel()
 	err := c.step(ctx)
-	if err == nil {
+	if err == nil && c.full {
+		err = c.checkpointOnly(ctx)
+	} else if err == nil {
 		err = c.checkpoint(ctx)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -355,22 +391,141 @@ func (c *Capturer) FullCopies() int {
 func (c *Capturer) Dir() string { return c.dir }
 
 // step stages what was committed, or a full copy when the WAL was lost, and
-// checkpoints when the WAL is long enough.
+// checkpoints when the WAL is long enough. Past the limit it stops staging
+// and only checkpoints, until nothing staged is pending.
 func (c *Capturer) step(ctx context.Context) error {
+	// A staged file whose folder did not sync is not uploaded until it does.
+	if c.Durable() < c.txid {
+		if err := syncDir(c.dir); err != nil {
+			return err
+		}
+		c.setDurable(c.txid)
+	}
+	if err := c.goOn(); err != nil {
+		return err
+	}
+	if !c.full && c.over() {
+		c.stop()
+	}
+	if c.full {
+		return c.checkpointLost(ctx)
+	}
 	if c.lost != nil {
-		return c.fullCopy(c.lost)
+		return c.copyLost()
+	}
+	return c.stageAndCheckpoint(ctx)
+}
+
+// over says whether the staged files not uploaded passed Options.Limit.
+func (c *Capturer) over() bool {
+	return c.opt.Limit > 0 && c.counted() > c.opt.Limit
+}
+
+// stop stops staging at the limit. Its error replaces why the WAL was lost,
+// if it was: the full copy follows all the same.
+func (c *Capturer) stop() {
+	c.full = true
+	c.lost = fmt.Errorf("%w (%d bytes, at TXID %s): staging stops until they are uploaded", ErrStagingFull, c.opt.Limit, c.txid)
+	c.report(c.lost)
+}
+
+// copyLost stages the full copy that follows a lost WAL, or stops staging
+// when the staged files not uploaded, the last full copy too, passed the
+// limit: the new copy would make that one count.
+func (c *Capturer) copyLost() error {
+	if c.opt.Limit > 0 && c.Pending() > c.opt.Limit {
+		c.stop()
+		return nil
+	}
+	return c.fullCopy(c.lost)
+}
+
+// The checkpoint of a step catches up with the writers before it takes the
+// driver's write lock: it stages again, up to catchUps times, until fewer
+// than catchUpFrames frames came since.
+const (
+	catchUps      = 3
+	catchUpFrames = 256
+)
+
+// stageAndCheckpoint stages what was committed and, when the WAL holds
+// CheckpointFrames frames, checkpoints it. Writers wait only for the last
+// frames: the frames staged are copied into the database outside the
+// driver's write lock first, and the frames written meanwhile are staged
+// before the lock too, so that the lock is held for a short tail.
+func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
+	// A read transaction from before the capture keeps the checkpoint
+	// outside the lock from copying frames the capture did not stage. After
+	// it copied them all, a writer could start the WAL over and lose them.
+	if err := c.beginGuard(); err != nil {
+		return err
 	}
 	frames, err := c.capture()
+	if err != nil || c.lost != nil || frames < c.opt.CheckpointFrames || c.over() {
+		if gerr := c.endGuard(); err == nil {
+			err = gerr
+		}
+		if err == nil && c.lost != nil {
+			return c.copyLost()
+		}
+		return err
+	}
+	stepHook("captured")
+	_, _, err = c.conn.Checkpoint(csqlite.CheckpointPassive)
+	stepHook("backfilled")
+	if gerr := c.endGuard(); err == nil || busy(err) {
+		err = gerr
+	}
 	if err != nil {
 		return err
 	}
-	if c.lost != nil {
-		return c.fullCopy(c.lost)
+	for range catchUps {
+		gen, pos := c.gen, c.pos
+		if _, err := c.capture(); err != nil {
+			return err
+		}
+		if c.lost != nil {
+			return c.copyLost()
+		}
+		stepHook("caught up")
+		if c.over() {
+			return nil // the next step stops
+		}
+		if c.gen != gen || c.pos-pos < catchUpFrames {
+			break
+		}
 	}
-	if frames >= c.opt.CheckpointFrames {
-		return c.checkpoint(ctx)
+	return c.checkpoint(ctx)
+}
+
+// beginGuard opens a read transaction on c.guard.
+func (c *Capturer) beginGuard() error {
+	if c.guard == nil {
+		g, err := csqlite.Open(c.path, csqlite.OpenReadOnly|csqlite.OpenNoMutex, "")
+		if err != nil {
+			return err
+		}
+		c.guard = g
+	}
+	return beginRead(c.guard)
+}
+
+// endGuard ends the read transaction on c.guard. A transaction left open
+// would keep checkpoints from starting the WAL over: the connection goes
+// instead.
+func (c *Capturer) endGuard() error {
+	if err := c.guard.Exec("ROLLBACK"); err != nil {
+		c.guard.Close()
+		c.guard = nil
+		return err
 	}
 	return nil
+}
+
+// busy says whether err is SQLITE_BUSY.
+func busy(err error) bool {
+	var e *csqlite.Error
+	return errors.As(err, &e) && e.Primary() == 5
 }
 
 // checkpoint stages the WAL to its end under the driver's write lock of the
@@ -387,7 +542,7 @@ func (c *Capturer) checkpoint(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		return c.fullCopy(c.lost)
+		return c.copyLost()
 	}
 	defer unlock()
 	// The names of the staged files are kept before the frames go.
@@ -395,16 +550,42 @@ func (c *Capturer) checkpoint(ctx context.Context) error {
 		return err
 	}
 	c.setDurable(c.txid)
-	// TRUNCATE starts the WAL over, empty. With readers it cannot: the
-	// frames are still copied, and the next writer starts the WAL over.
-	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointTruncate); err != nil {
-		var e *csqlite.Error
-		if errors.As(err, &e) && e.Primary() == 5 { // SQLITE_BUSY
-			return nil
-		}
+	return c.truncate()
+}
+
+// truncate checkpoints the WAL. TRUNCATE starts it over, empty. With
+// readers it cannot: the frames are still copied, and the next writer starts
+// the WAL over. Call it holding the driver's write lock.
+func (c *Capturer) truncate() error {
+	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointTruncate); err != nil && !busy(err) {
 		return err
 	}
 	return nil
+}
+
+// checkpointLost checkpoints without staging, when the WAL is long enough:
+// once the WAL is lost, its frames are not staged.
+func (c *Capturer) checkpointLost(ctx context.Context) error {
+	if err := c.beginRead(); err != nil {
+		return err
+	}
+	h, err := c.conn.WALHeader()
+	c.endRead()
+	if err != nil || h.MaxFrame < c.opt.CheckpointFrames {
+		return err
+	}
+	return c.checkpointOnly(ctx)
+}
+
+// checkpointOnly checkpoints under the driver's write lock, staging
+// nothing.
+func (c *Capturer) checkpointOnly(ctx context.Context) error {
+	unlock, err := replhook.Lock(ctx, c.path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return c.truncate()
 }
 
 // beginRead opens a read transaction on the capturer's connection.
@@ -455,8 +636,12 @@ type version struct {
 }
 
 // capture stages the frames committed since the last step. It returns the
-// number of frames in the WAL.
+// number of frames in the WAL. Once the WAL is lost it does nothing: the
+// frames it would read no longer go on from what is staged.
 func (c *Capturer) capture() (uint32, error) {
+	if c.lost != nil {
+		return 0, nil
+	}
 	if err := c.beginRead(); err != nil {
 		return 0, err
 	}
@@ -569,7 +754,7 @@ func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]versi
 	for p := size + 1; p <= old; p++ {
 		post ^= c.sums[p-1] // the database got shorter
 	}
-	placed, err := stageFile(c.dir, c.mode, h, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
+	placed, n, err := stageFile(c.dir, c.mode, h, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
 		for i, p := range pgnos {
 			v := last[p]
 			data, err := readFrame(wal, wh, v.n, v.prev, c.frame)
@@ -591,6 +776,7 @@ func (c *Capturer) stageFrames(wal *os.File, wh walHeader, last map[uint32]versi
 	if !placed {
 		return err
 	}
+	c.addPending(h.MaxTXID, n, false)
 	if err == nil {
 		defer c.setDurable(h.MaxTXID)
 	}
@@ -645,7 +831,7 @@ func (c *Capturer) fullCopy(why error) error {
 	setWALPos(&hdr, h.Salt, h.MaxFrame, h.MaxFrame)
 	page := make([]byte, c.pageSize)
 	var post ltx.Checksum
-	placed, err := stageFile(c.dir, c.mode, hdr, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
+	placed, n, err := stageFile(c.dir, c.mode, hdr, func(put func(uint32, []byte) error) (ltx.Checksum, error) {
 		for p := uint32(1); p <= size; p++ {
 			if p == lock {
 				continue
@@ -665,6 +851,7 @@ func (c *Capturer) fullCopy(why error) error {
 	if !placed {
 		return err
 	}
+	c.addPending(hdr.MaxTXID, n, true)
 	if err == nil {
 		defer c.setDurable(hdr.MaxTXID)
 	}
@@ -844,3 +1031,124 @@ func (c *Capturer) Durable() ltx.TXID { return ltx.TXID(c.durable.Load()) }
 
 // Staged gets a value when Durable moves on.
 func (c *Capturer) Staged() <-chan struct{} { return c.staged }
+
+// The size of a staged file not uploaded yet.
+type stagedSize struct {
+	txid ltx.TXID
+	size int64
+	full bool // a full copy
+}
+
+// goOn stages the full copy that follows a stop at the limit, once nothing
+// staged is pending.
+func (c *Capturer) goOn() error {
+	if !c.full || c.pendingCount() > 0 {
+		return nil
+	}
+	c.full = false
+	return c.fullCopy(c.lost)
+}
+
+func (c *Capturer) addPending(txid ltx.TXID, size int64, full bool) {
+	c.sizeMu.Lock()
+	defer c.sizeMu.Unlock()
+	if txid > c.acked {
+		c.pending = append(c.pending, stagedSize{txid, size, full})
+	}
+}
+
+// countPending finds the staged files after Options.Uploaded, once Open
+// staged what it stages.
+func (c *Capturer) countPending() error {
+	entries, err := os.ReadDir(c.dir)
+	if err != nil {
+		return err
+	}
+	var pending []stagedSize
+	for _, e := range entries { // in TXID order: the names are zero-padded hex
+		_, max, err := ltx.ParseFilename(e.Name())
+		if err != nil || max <= c.opt.Uploaded {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			return err
+		}
+		full, err := isFullCopy(filepath.Join(c.dir, e.Name()))
+		if err != nil {
+			return err
+		}
+		pending = append(pending, stagedSize{max, info.Size(), full})
+	}
+	c.sizeMu.Lock()
+	defer c.sizeMu.Unlock()
+	c.acked, c.pending = c.opt.Uploaded, pending
+	return nil
+}
+
+// counted is the size of the staged files not uploaded that count against
+// Options.Limit: all but the last full copy.
+func (c *Capturer) counted() int64 {
+	c.sizeMu.Lock()
+	defer c.sizeMu.Unlock()
+	last := -1
+	for i, s := range c.pending {
+		if s.full {
+			last = i
+		}
+	}
+	var n int64
+	for i, s := range c.pending {
+		if i != last {
+			n += s.size
+		}
+	}
+	return n
+}
+
+func (c *Capturer) pendingCount() int {
+	c.sizeMu.Lock()
+	defer c.sizeMu.Unlock()
+	return len(c.pending)
+}
+
+// Pending is the size of the staged files not uploaded yet.
+func (c *Capturer) Pending() int64 {
+	c.sizeMu.Lock()
+	defer c.sizeMu.Unlock()
+	var n int64
+	for _, s := range c.pending {
+		n += s.size
+	}
+	return n
+}
+
+// Done records that the staged files up to txid are uploaded, or never
+// will be, and removes them but the last staged file, which the capturer
+// goes on from after a restart.
+func (c *Capturer) Done(txid ltx.TXID) error {
+	durable := c.Durable()
+	c.sizeMu.Lock()
+	if txid > c.acked {
+		c.acked = txid
+		i := 0
+		for i < len(c.pending) && c.pending[i].txid <= txid {
+			i++
+		}
+		c.pending = slices.Delete(c.pending, 0, i)
+	}
+	c.sizeMu.Unlock()
+	keep := min(txid, durable-1)
+	entries, err := os.ReadDir(c.dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if _, max, err := ltx.ParseFilename(e.Name()); err == nil && max <= keep {
+			if err := os.Remove(filepath.Join(c.dir, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

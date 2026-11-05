@@ -264,6 +264,8 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	if err != nil {
 		return nil, false, fmt.Errorf("s3: %s %s: credentials: %w", r.op, r.key, err)
 	}
+	// errorOf takes them out of what the store answers.
+	req = req.WithContext(context.WithValue(req.Context(), signedWith{}, cr))
 	sign(req, cr, c.region, "s3", c.now(), hash)
 	resp, err = c.http.Do(req)
 	if err != nil {
@@ -271,14 +273,19 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
-		return nil, reused, errorOf(resp, r.op, r.key, nil)
+		return nil, reused, c.errorOf(resp, r.op, r.key, nil)
 	}
 	return resp, reused, nil
 }
 
+// signedWith is the key of the credentials a request is signed with, in its
+// context.
+type signedWith struct{}
+
 // errorOf reads the error the store answered. body is what was read of it
-// already, nil if nothing was.
-func errorOf(resp *http.Response, op, key string, body []byte) *Error {
+// already, nil if nothing was. A store may put headers of the request in
+// its message: the secret and the session token are taken out.
+func (c *Client) errorOf(resp *http.Response, op, key string, body []byte) *Error {
 	if body == nil {
 		body, _ = io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	}
@@ -291,6 +298,13 @@ func errorOf(resp *http.Response, op, key string, body []byte) *Error {
 	e := &Error{Op: op, Key: key, StatusCode: resp.StatusCode, Code: x.Code, Message: x.Message, RequestID: x.RequestID}
 	if e.RequestID == "" {
 		e.RequestID = resp.Header.Get("X-Amz-Request-Id")
+	}
+	if cr, ok := resp.Request.Context().Value(signedWith{}).(Credentials); ok {
+		for _, s := range []string{cr.SecretAccessKey, cr.SessionToken} {
+			if s != "" {
+				e.Message = strings.ReplaceAll(e.Message, s, "<hidden>")
+			}
+		}
 	}
 	if e.StatusCode/100 == 3 {
 		e.Message = strings.TrimSpace(e.Message + " The endpoint or region does not match the bucket's.")
