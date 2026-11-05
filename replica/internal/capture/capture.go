@@ -36,6 +36,7 @@
 package capture
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -101,6 +102,7 @@ type Capturer struct {
 	sums       []ltx.Checksum // the checksum of each page there, of pgno-1, 0 for the lock page
 	summer     *pageSummer
 	frame      []byte
+	commitPage []byte // the page of the last commit frame scanned (capture)
 	fullCopies int
 	closed     bool
 }
@@ -157,6 +159,7 @@ func (c *Capturer) open() error {
 		return err
 	}
 	c.frame = make([]byte, frameSize(c.pageSize))
+	c.commitPage = make([]byte, c.pageSize)
 	st, err := os.Stat(c.path)
 	if err != nil {
 		return err
@@ -409,13 +412,27 @@ func (c *Capturer) capture() (uint32, error) {
 		cksum = wh.cksum
 	}
 	last := map[uint32]version{}
-	var n, last1 uint32 // commit frames, and the commit of frame MaxFrame
+	var n, last1 uint32 // commits, and the commit of frame MaxFrame
+	var repeat frame    // the last frame, if a commit frame: pgno and commit
 	end, err := scanFrames(wal, wh, from, h.MaxFrame, cksum, func(f *frame) error {
 		last[f.pgno] = version{f.n, f.prev}
-		if f.commit != 0 {
-			n++
-		}
 		last1 = f.commit
+		if f.commit == 0 {
+			repeat = frame{}
+			return nil
+		}
+		// With synchronous=FULL and no powersafe overwrite, SQLite
+		// repeats the last frame of a commit up to a sector boundary
+		// (walFrames). A repeat is not a commit of its own. A commit that
+		// writes exactly that frame again is not counted either: the
+		// count comes short, which stages a full copy, never misses a
+		// commit.
+		if f.pgno == repeat.pgno && f.commit == repeat.commit && bytes.Equal(f.data, c.commitPage) {
+			return nil
+		}
+		n++
+		repeat.pgno, repeat.commit = f.pgno, f.commit
+		copy(c.commitPage, f.data)
 		return nil
 	})
 	switch {

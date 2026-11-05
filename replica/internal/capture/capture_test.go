@@ -314,6 +314,27 @@ func TestCapture(t *testing.T) {
 	}
 }
 
+// With psow=0 and synchronous=FULL, SQLite repeats the last frame of each
+// commit up to a sector boundary: the repeats are not commits of their own.
+func TestPadding(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db, err := sql.Open("sqlite", "file:"+name+"?psow=0&_pragma=synchronous(FULL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	run(t, db, "CREATE TABLE t(x)")
+	for i := range 20 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(100 + "+strconv.Itoa(i)+"))")
+	}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies", n)
+	}
+	sameAs(t, c, name)
+}
+
 // The WAL is checkpointed and starts over, with and without a reader that
 // keeps TRUNCATE from emptying it: the frames are followed throughout.
 func TestCaptureCheckpoint(t *testing.T) {
