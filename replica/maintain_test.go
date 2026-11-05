@@ -8,6 +8,7 @@ package replica
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -544,5 +545,27 @@ func TestCompactOverlap(t *testing.T) {
 	out, txid := restoreTo(t, cfg, RestoreOptions{})
 	if txid != uint64(r.last(1)) || dump(t, out) != dump(t, name) {
 		t.Fatal("the replica does not restore the database")
+	}
+}
+
+// What a compaction killed on the way left is removed when the next New
+// starts.
+func TestCompactLeftovers(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	ltxDir := filepath.Join(name+"-replica", "ltx")
+	left := []string{filepath.Join(ltxDir, "compact"), filepath.Join(ltxDir, "compact-123")}
+	for _, d := range left {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "0000000000000001-0000000000000009.ltx"), []byte("left"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newReplica(t, name, testConfig(t))
+	for _, d := range left {
+		if _, err := os.Stat(d); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s is left (%v)", d, err)
+		}
 	}
 }

@@ -69,8 +69,12 @@ func (r *Replica) compact(ctx context.Context, from, to int) (bool, error) {
 		return false, nil
 	}
 
-	dir, err := os.MkdirTemp(filepath.Dir(r.c.Dir()), "compact-")
-	if err != nil {
+	// A process killed while it compacted left its files: they go first.
+	dir := r.compactDir()
+	if err := os.RemoveAll(dir); err != nil {
+		return false, err
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil {
 		return false, err
 	}
 	defer os.RemoveAll(dir)
@@ -170,4 +174,25 @@ func (r *Replica) download(ctx context.Context, f remoteFile, dir string) (*os.F
 	}
 	ok = true
 	return file, h, t, nil
+}
+
+// compactDir is the folder a compaction downloads and writes its files in.
+// Compactions run one at a time.
+func (r *Replica) compactDir() string {
+	return filepath.Join(filepath.Dir(r.c.Dir()), "compact")
+}
+
+// dropCompactions removes what compactions killed on the way left, also
+// the compact-* folders of earlier versions.
+func (r *Replica) dropCompactions() error {
+	old, err := filepath.Glob(filepath.Join(filepath.Dir(r.c.Dir()), "compact-*"))
+	if err != nil {
+		return err
+	}
+	for _, d := range append(old, r.compactDir()) {
+		if err := os.RemoveAll(d); err != nil {
+			return err
+		}
+	}
+	return nil
 }

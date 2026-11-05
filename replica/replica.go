@@ -191,6 +191,10 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := r.dropCompactions(); err != nil {
+		r.c.Close()
+		return nil, err
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 	go r.run(runCtx)
