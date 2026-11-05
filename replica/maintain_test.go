@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -111,16 +112,28 @@ func TestRetention(t *testing.T) {
 				level0++
 			}
 		}
-		if level0 > 2 {
+		// The clock moves 20 minutes a pass and level 0 files stay 30 minutes
+		// after a level 1 file holds them: those of the pass before stay, with
+		// the last one.
+		if level0 > 3 {
 			t.Fatalf("pass %d: %d files at level 0", i, level0)
 		}
 		if len(snaps) > 3 {
 			t.Fatalf("pass %d: %d snapshots, with a retention of 3 hours and a snapshot each 3 hours", i, len(snaps))
 		}
 		dropped = len(seen) - len(snaps)
-		from := ltx.TXID(1)
+		// The oldest kept point: the oldest snapshot, else the first end of a
+		// file. Level 0 files go once a level 1 file held them 30 minutes, so
+		// the ends inside it go with them.
+		var from ltx.TXID
 		if len(snaps) > 0 {
 			from = snaps[0].max
+		} else {
+			for end := range ends {
+				if from == 0 || end < from {
+					from = end
+				}
+			}
 		}
 		checked := 0
 		for txid, want := range dumps {
@@ -182,6 +195,11 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 	target, err := url.Parse(q.Get("endpoint"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The requests are signed for the proxy's host, which only a store of
+	// this machine takes: R2 and AWS check the host they are signed for.
+	if ip := net.ParseIP(target.Hostname()); target.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		t.Skip("goes through a proxy: needs a store on this machine, such as MinIO")
 	}
 	cnt := &counter{}
 	proxy := httputil.NewSingleHostReverseProxy(target)

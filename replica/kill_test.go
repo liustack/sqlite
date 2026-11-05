@@ -68,6 +68,10 @@ func killHelper(name, url string) int {
 		CREATE TABLE IF NOT EXISTS u(pad BLOB)`); err != nil {
 		return fail(err)
 	}
+	// The tables are in the replica before the first kill.
+	if err := r.Sync(context.Background()); err != nil {
+		return fail(err)
+	}
 	fmt.Println("ready")
 	errs := make(chan error)
 	for w := range 4 {
@@ -227,6 +231,9 @@ func TestKill(t *testing.T) {
 	if n := r.c.FullCopies(); n != 0 {
 		t.Fatalf("%d full copies at the end", n)
 	}
+	// What the last round staged goes up first: Close tries for 10 seconds
+	// only, which a store far away may not be enough for.
+	syncNow(t, r)
 	if err := r.Close(); err != nil {
 		t.Fatal(err)
 	}

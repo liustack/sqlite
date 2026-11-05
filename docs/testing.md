@@ -29,7 +29,7 @@ GOBIN=$PWD/.build go install github.com/minio/minio@RELEASE.2025-09-07T16-13-09Z
 MINIO=$PWD/.build/minio go test ./replica/...
 ```
 
-The tests start it on a free port and stop it. `S3_TEST_ENDPOINT` (with `S3_TEST_REGION`, `S3_TEST_BUCKET`, `S3_TEST_ACCESS_KEY`, `S3_TEST_SECRET_KEY`) runs them against a store that runs already, such as R2. The bucket must exist. With the MinIO image of that release already pulled, run it in Docker:
+The tests start it on a free port and stop it. `S3_TEST_ENDPOINT` (with `S3_TEST_REGION`, `S3_TEST_BUCKET`, `S3_TEST_ACCESS_KEY`, `S3_TEST_SECRET_KEY`) runs them against a store that runs already, such as R2. The bucket must exist. The tests that count or break requests go through a proxy on this machine, which signs nothing again, so they are skipped against a store elsewhere: R2 and AWS check the host a request was signed for. On R2 a test that restores many times takes minutes, so give `go test` a longer `-timeout`. With the MinIO image of that release already pulled, run it in Docker:
 
 ```sh
 docker run -d --rm --name sqlite-minio -p 127.0.0.1:19000:9000 \
