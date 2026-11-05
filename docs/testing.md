@@ -29,7 +29,19 @@ GOBIN=$PWD/.build go install github.com/minio/minio@RELEASE.2025-09-07T16-13-09Z
 MINIO=$PWD/.build/minio go test ./replica/...
 ```
 
-The tests start it on a free port and stop it. `S3_TEST_ENDPOINT` (with `S3_TEST_REGION`, `S3_TEST_BUCKET`, `S3_TEST_ACCESS_KEY`, `S3_TEST_SECRET_KEY`) runs them against a store that runs already, such as R2. CI runs them in the job `s3`, where `S3_TEST_REQUIRED` makes a missing store fail instead of skip. `replica/internal/s3test` starts the store for the tests of other packages.
+The tests start it on a free port and stop it. `S3_TEST_ENDPOINT` (with `S3_TEST_REGION`, `S3_TEST_BUCKET`, `S3_TEST_ACCESS_KEY`, `S3_TEST_SECRET_KEY`) runs them against a store that runs already, such as R2. The bucket must exist. With the MinIO image of that release already pulled, run it in Docker:
+
+```sh
+docker run -d --rm --name sqlite-minio -p 127.0.0.1:19000:9000 \
+  -e MINIO_ROOT_USER=testaccess -e MINIO_ROOT_PASSWORD=testsecret-0123456789 \
+  minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+docker exec sqlite-minio sh -c 'mc alias set local http://127.0.0.1:9000 testaccess testsecret-0123456789 && mc mb local/test'
+S3_TEST_ENDPOINT=http://127.0.0.1:19000 S3_TEST_REGION=us-east-1 S3_TEST_BUCKET=test \
+  S3_TEST_ACCESS_KEY=testaccess S3_TEST_SECRET_KEY=testsecret-0123456789 go test ./replica/...
+docker stop sqlite-minio
+```
+
+`TestCreateBucket` only runs against a MinIO the tests start, so it never makes buckets in another store. CI runs them in the job `s3`, where `S3_TEST_REQUIRED` makes a missing store fail instead of skip. `replica/internal/s3test` starts the store for the tests of other packages.
 
 The tests of `replica` rebuild the database from the files in the store, checking every checksum. `TestTwoReplicators` has two replicators with the same history write to one replica: the second must stop with `ErrConflict` at its first file, and the replica must hold the first one's database. `TestDiverged` checks that a replica written from another database is refused, and taken over with `FreshStart`. With `LITESTREAM` naming a litestream binary (v0.5.18, `go install github.com/benbjohnson/litestream/cmd/litestream@v0.5.18`), `TestLitestreamRestore` has it restore the replica from the store, the latest state and an earlier TXID. CI sets it.
 
