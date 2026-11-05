@@ -754,3 +754,45 @@ func TestRecheckLostAnswer(t *testing.T) {
 		t.Fatal("the replica is not the database")
 	}
 }
+
+// Close uploads what it staged before another process can stage the
+// database: the staging folder stays locked until then.
+func TestCloseHoldsStaging(t *testing.T) {
+	base := testConfig(t)
+	cfg, cnt := countingStore(t, base)
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
+	db.Close()
+
+	other := base
+	other.SingleWriter = true
+	var newErr error
+	tried := false
+	put := func(string) {
+		if tried {
+			return
+		}
+		tried = true
+		var s *Replica
+		if s, newErr = New(context.Background(), name, other); newErr == nil {
+			s.Close()
+		}
+	}
+	cnt.put.Store(&put)
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cnt.put.Store(nil)
+	if !tried {
+		t.Fatal("Close uploaded nothing")
+	}
+	if newErr == nil || !strings.Contains(newErr.Error(), "another process replicates") {
+		t.Fatalf("New while Close uploads: %v, want the staging folder locked", newErr)
+	}
+	r = newReplica(t, name, cfg)
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

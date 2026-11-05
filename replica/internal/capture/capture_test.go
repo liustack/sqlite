@@ -1750,3 +1750,24 @@ func TestOpenStagedElsewhere(t *testing.T) {
 	c = open(t, name, testOptions(t))
 	c.Close()
 }
+
+// With Hold, the staging folder stays locked after Close until Unlock.
+func TestCloseHolds(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.Hold = true
+	c := open(t, name, opt)
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := Open(name, testOptions(t)); err == nil {
+		d.Close()
+		t.Fatal("Open while the staging folder is held")
+	} else if !errors.Is(err, errStagedElsewhere) {
+		t.Fatal(err)
+	}
+	c.Unlock()
+	c.Unlock()
+	c = open(t, name, testOptions(t))
+	c.Close()
+}

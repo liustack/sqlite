@@ -190,6 +190,7 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		Limit:            cfg.StagingLimit,
 		Uploaded:         end.txid,
 		OnError:          r.report,
+		Hold:             true,
 		Start: func(staged []capture.StagedFile) (*capture.Restart, error) {
 			return startFrom(end, staged, cfg.FreshStart)
 		},
@@ -289,6 +290,8 @@ func (r *Replica) Close() error {
 	r.cancel()
 	<-r.done
 	err := r.c.Close()
+	// Another process stages the database only after this upload.
+	defer r.c.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), closeUpload)
 	defer cancel()
 	return errors.Join(err, r.upload(ctx))

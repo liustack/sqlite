@@ -88,6 +88,10 @@ type Options struct {
 	// (their headers and trailers, not checked). An error stops Open. A
 	// Restart drops the staged files and starts over from it.
 	Start func(staged []StagedFile) (*Restart, error)
+	// Hold keeps the staging folder locked after Close, until Unlock, so
+	// that the caller can upload what Close staged, and call Done, before
+	// another process stages the database.
+	Hold bool
 }
 
 // A StagedFile is a staged LTX file, of one TXID.
@@ -193,7 +197,7 @@ func Open(name string, opt Options) (*Capturer, error) {
 	c.later = nil
 	c.mu.Unlock()
 	if err != nil {
-		c.release()
+		c.release(false)
 		return nil, errors.Join(append([]error{err}, later...)...)
 	}
 	for _, e := range later {
@@ -284,8 +288,9 @@ func pragma(c *csqlite.Conn, p string) (string, error) {
 	return s.ColumnText(0), nil
 }
 
-// release gives back what Open took.
-func (c *Capturer) release() {
+// release gives back what Open took, but the lock of the staging folder
+// when hold.
+func (c *Capturer) release(hold bool) {
 	if c.wal != nil {
 		c.wal.Close()
 	}
@@ -296,8 +301,9 @@ func (c *Capturer) release() {
 	if c.detach != nil {
 		c.detach()
 	}
-	if c.unlock != nil {
+	if c.unlock != nil && !hold {
 		c.unlock()
+		c.unlock = nil
 	}
 }
 
@@ -444,7 +450,7 @@ func (c *Capturer) close() ([]error, error) {
 	if errors.Is(err, context.DeadlineExceeded) {
 		err = nil
 	}
-	c.release()
+	c.release(c.opt.Hold)
 	later := c.later
 	c.later = nil
 	return later, err
@@ -1235,4 +1241,15 @@ func (c *Capturer) Done(txid ltx.TXID) error {
 		}
 	}
 	return nil
+}
+
+// Unlock lets another process stage the database, after Close with
+// Options.Hold. It does nothing more when called again.
+func (c *Capturer) Unlock() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed && c.unlock != nil {
+		c.unlock()
+		c.unlock = nil
+	}
 }

@@ -167,6 +167,8 @@ type counter struct {
 	down atomic.Int32
 	// get, if set, runs before each GET of an object, given its path.
 	get atomic.Pointer[func(path string)]
+	// put, if set, runs before each PUT, given its path.
+	put atomic.Pointer[func(path string)]
 }
 
 func countingStore(t *testing.T, cfg Config) (Config, *counter) {
@@ -209,6 +211,9 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 		}
 		if req.Method == http.MethodPut {
 			cnt.puts.Store(req.URL.Path, true)
+			if f := cnt.put.Load(); f != nil {
+				(*f)(req.URL.Path)
+			}
 		}
 		if f := cnt.get.Load(); f != nil && req.Method == http.MethodGet && req.URL.RawQuery == "" {
 			(*f)(req.URL.Path)
