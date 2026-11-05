@@ -17,15 +17,17 @@ import (
 	"github.com/liustack/sqlite/internal/replhook"
 )
 
-// realName is name with the symbolic links of its folder resolved, as SQLite
-// names the file.
+// realName is the name SQLite gives the file name, the one replhook takes:
+// with symbolic links resolved on unix, with the folder as the system spells
+// it on windows (where a short 8.3 name stays short).
 func realName(t *testing.T, name string) string {
 	t.Helper()
-	dir, err := filepath.EvalSymlinks(filepath.Dir(name))
+	c, err := csqlite.Open(name, csqlite.OpenReadWrite|csqlite.OpenCreate|csqlite.OpenNoMutex, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(dir, filepath.Base(name))
+	defer c.Close()
+	return c.Filename("main")
 }
 
 func TestAttach(t *testing.T) {
