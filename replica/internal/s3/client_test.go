@@ -452,8 +452,15 @@ func TestErrorScrubsEveryField(t *testing.T) {
 			w.Header().Set("Content-Range", "bytes 0-1/"+tok)
 			w.WriteHeader(http.StatusPartialContent)
 			fmt.Fprint(w, "ab")
+		case req.URL.Query().Has("list-type"):
+			fmt.Fprintf(w, `<ListBucketResult><Contents><Key>k</Key><Size>%s</Size></Contents></ListBucketResult>`, tok)
 		case req.Method == http.MethodPost && req.URL.Query().Has("uploads"):
 			fmt.Fprintf(w, `<InitiateMultipartUploadResult><UploadId>u%s</UploadId></InitiateMultipartUploadResult>`, tok)
+		case req.URL.Path == "/bkt/drop" && req.URL.Query().Has("partNumber"):
+			// No answer: the error of the transport has the URL.
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close()
+			}
 		default: // the part and the abort of the upload
 			w.WriteHeader(http.StatusForbidden)
 		}
@@ -486,6 +493,11 @@ func TestErrorScrubsEveryField(t *testing.T) {
 	check("range", err)
 	body := []byte("data")
 	check("upload", c.Put(ctx, "upload", bytes.NewReader(body), int64(len(body)), PutOptions{Multipart: true}))
+	check("drop", c.Put(ctx, "drop", bytes.NewReader(body), int64(len(body)), PutOptions{Multipart: true}))
+	for _, err := range c.List(ctx, "", "") {
+		check("list", err)
+		break
+	}
 }
 
 // A store that stops sending or reading in the middle of a request: the

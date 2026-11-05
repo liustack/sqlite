@@ -281,6 +281,11 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	sign(req, cr, c.region, "s3", c.now(), hash)
 	resp, err = c.http.Do(req)
 	if err != nil {
+		// Its URL may hold what the store sent, such as an upload ID.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = &url.Error{Op: ue.Op, URL: scrub(req, ue.URL), Err: ue.Err}
+		}
 		return nil, reused, fmt.Errorf("s3: %s %s: %w: %w", r.op, r.key, ErrNoAnswer, p.why(err))
 	}
 	p.moved()
@@ -392,7 +397,11 @@ func readXML(resp *http.Response, limit int64, v any) error {
 	if int64(len(body)) > limit {
 		return fmt.Errorf("an answer of more than %d bytes", limit)
 	}
-	return xml.Unmarshal(body, v)
+	if err := xml.Unmarshal(body, v); err != nil {
+		// It may quote the answer.
+		return errors.New(scrub(resp.Request, err.Error()))
+	}
+	return nil
 }
 
 func parseInt(s string) (int64, error) { return strconv.ParseInt(s, 10, 64) }
