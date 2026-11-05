@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"slices"
@@ -97,8 +98,11 @@ func fileOf(path string) (os.FileInfo, error) {
 		return nil, err
 	}
 	// On windows the identity of the file is read when first compared:
-	// read it now, while path names it.
-	os.SameFile(fi, fi)
+	// read it now, while path names it. A FileInfo whose identity could not
+	// be read is the same as no file.
+	if !os.SameFile(fi, fi) {
+		return nil, fmt.Errorf("sqlite: %s: cannot read what file it is", path)
+	}
 	return fi, nil
 }
 
