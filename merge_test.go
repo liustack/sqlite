@@ -891,12 +891,20 @@ func TestMergeAfterSchemaChange(t *testing.T) {
 // More distinct statements than a connection caches, merged: the cache
 // makes room without closing a statement a batch is running.
 func TestMergeManyStatements(t *testing.T) {
+	const writers, each = 16, 300
 	db := mOpen(t, mPath(t))
-	db.SetMaxOpenConns(16)
+	db.SetMaxOpenConns(writers)
 	mExec(t, db, "CREATE TABLE t(x)")
+	// Every connection reads the schema before the writers start, and stays
+	// open. In rollback journal mode a connection cannot start a read while a
+	// COMMIT holds the file's PENDING or EXCLUSIVE lock, and with writes back
+	// to back SQLite's busy handler, which polls, can miss every gap between
+	// them until the busy timeout. That is SQLite's, not what this test is
+	// about.
+	db.SetMaxIdleConns(writers)
+	openAll(t, db, writers)
 	wl := statsOf(t, db)
 	merged0 := wl.stats.merged.Load()
-	const writers, each = 16, 300
 	var wg sync.WaitGroup
 	for w := range writers {
 		wg.Go(func() {
@@ -916,5 +924,23 @@ func TestMergeManyStatements(t *testing.T) {
 	// More than all the connections can cache: some made room.
 	if m := wl.stats.merged.Load() - merged0; m <= writers*maxCached {
 		t.Fatalf("%d statements merged, want more than %d connections cache", m, writers)
+	}
+}
+
+// openAll opens n connections of db at once, each having read the schema
+// (with a table t), and leaves them idle in the pool.
+func openAll(t *testing.T, db *sql.DB, n int) {
+	t.Helper()
+	for range n {
+		c, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Held to the end, so that the next is another connection.
+		defer c.Close()
+		var x int
+		if err := c.QueryRowContext(t.Context(), "SELECT count(*) FROM t").Scan(&x); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
