@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -196,11 +195,6 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The requests are signed for the proxy's host, which only a store of
-	// this machine takes: R2 and AWS check the host they are signed for.
-	if ip := net.ParseIP(target.Hostname()); target.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		t.Skip("goes through a proxy: needs a store on this machine, such as MinIO")
-	}
 	cnt := &counter{}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	// The request is signed for the proxy's host, which the store gets.
@@ -245,6 +239,22 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 	q.Set("endpoint", srv.URL)
 	u.RawQuery = q.Encode()
 	cfg.URL = u.String()
+	// The requests are signed for the proxy's host: a store that checks the
+	// host a request was signed for, as R2 and AWS do, refuses them.
+	c, path, err := cfg.client()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, err := range c.List(context.Background(), path+"/", "") {
+		var e *s3.Error
+		if errors.As(err, &e) && e.StatusCode == http.StatusForbidden {
+			t.Skipf("goes through a proxy, which this store refuses: %v", err)
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		break
+	}
+	cnt.n.Store(0)
 	return cfg, cnt
 }
 
