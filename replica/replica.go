@@ -86,7 +86,8 @@ type Config struct {
 	// may hold one database more. Default 1 GiB.
 	StagingLimit int64
 
-	schedule func(*schedule) // set by tests: changes the schedule
+	schedule         func(*schedule) // set by tests: changes the schedule
+	checkpointFrames uint32          // set by tests: capture.Options.CheckpointFrames
 	// OnError, if set, gets the errors of the work done in the background.
 	// It is called with no lock of the replica held, from New, Close or a
 	// goroutine of the replica, and should return soon, as a log does. It
@@ -178,10 +179,11 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	}
 	r.status.Uploaded = uint64(end.txid)
 	r.c, err = capture.Open(name, capture.Options{
-		Interval: cfg.SyncInterval,
-		Limit:    cfg.StagingLimit,
-		Uploaded: end.txid,
-		OnError:  r.report,
+		Interval:         cfg.SyncInterval,
+		CheckpointFrames: cfg.checkpointFrames,
+		Limit:            cfg.StagingLimit,
+		Uploaded:         end.txid,
+		OnError:          r.report,
 		Start: func(staged []capture.StagedFile) (*capture.Restart, error) {
 			return startFrom(end, staged, cfg.FreshStart)
 		},
