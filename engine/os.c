@@ -568,6 +568,17 @@ int go_wal_header(sqlite3 *db, void *out) {
   return SQLITE_OK;
 }
 
+/* go_wal_frames is the number of frames in the WAL of the main database of
+   db as the connection last saw it, 0 when it has no WAL. It needs no
+   transaction: right after the connection commits, it is the WAL that
+   commit left, and later it may be out of date. */
+unsigned go_wal_frames(sqlite3 *db) {
+  Pager *p;
+  if (!db->aDb[0].pBt) return 0;
+  p = sqlite3BtreePager(db->aDb[0].pBt);
+  return p->pWal ? p->pWal->hdr.mxFrame : 0;
+}
+
 /* go_page_count is the size of the main database of db in pages, as its
    read transaction sees it. */
 int go_page_count(sqlite3 *db, unsigned *n) {

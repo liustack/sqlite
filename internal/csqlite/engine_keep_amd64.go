@@ -564,6 +564,7 @@ var goasmKeep = []any{
 	go_strdup,
 	go_vtab_error,
 	go_vtabs_in_tx,
+	go_wal_frames,
 	go_wal_header,
 	goasm_chunked_memcpy,
 	goasm_chunked_memmove,

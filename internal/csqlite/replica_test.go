@@ -211,3 +211,31 @@ func TestWALHeaderChange(t *testing.T) {
 		t.Fatalf("a commit after TRUNCATE: %+v, before %+v", h3, h2)
 	}
 }
+
+// WALFrames is the length of the WAL a commit left, with no transaction
+// open, also once the WAL started over.
+func TestWALFrames(t *testing.T) {
+	w, r, _ := walDB(t)
+	if n := r.WALFrames(); n != 0 {
+		t.Fatalf("%d frames before the connection read the WAL", n)
+	}
+	beginRead(t, r)
+	h, err := r.WALHeader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(t, r, "COMMIT")
+	if n := w.WALFrames(); n != h.MaxFrame || n == 0 {
+		t.Fatalf("%d frames after the commits, the WAL has %d", n, h.MaxFrame)
+	}
+	exec(t, w, "PRAGMA wal_checkpoint(PASSIVE)")
+	exec(t, w, "INSERT INTO t VALUES (1)")
+	if n := w.WALFrames(); n != 1 {
+		t.Fatalf("%d frames after the WAL started over with one", n)
+	}
+	mem := open(t, ":memory:")
+	exec(t, mem, "CREATE TABLE t(x); INSERT INTO t VALUES (1)")
+	if n := mem.WALFrames(); n != 0 {
+		t.Fatalf("%d frames without a WAL", n)
+	}
+}

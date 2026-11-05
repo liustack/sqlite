@@ -85,6 +85,18 @@ func (c *Conn) WALHeader() (WALHeader, error) {
 	return h, nil
 }
 
+// WALFrames is the number of frames in the WAL of the main database as the
+// connection last saw it, 0 when it has no WAL or is broken. It needs no transaction:
+// right after the connection commits, it is the WAL that commit left, and
+// later it may be out of date.
+func (c *Conn) WALFrames() uint32 {
+	if c.brokenErr() != nil {
+		return 0
+	}
+	a := c.args()
+	return uint32(go_wal_frames(a.top, c.db))
+}
+
 // PageCount is the size of the main database in pages, as the open read
 // transaction sees it.
 func (c *Conn) PageCount() (uint32, error) {
