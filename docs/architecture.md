@@ -78,6 +78,8 @@ A C function `host_x` declared in `engine/host.h` becomes a call of the Go funct
 
 Inside the driver, a connection takes its file's write lock before a statement that may write (`sqlite3_stmt_readonly`), and gives it back once the connection is out of its transaction. Readers never take it. Without it, many writers of one process wait in SQLite's busy handler, whose sleeps grow (1, 2, 5 ms and up to 100 ms) while the writer that holds SQLite's lock waits for a thread: on an Apple M4, 64 goroutines that each insert one row took 1.7 ms per insert, and 12 µs with the lock. With cgo each call holds a thread of its own, which is why mattn/go-sqlite3 does not see this. Writers of other processes still meet SQLite's own locks.
 
+Readers still meet SQLite's locks in the default rollback journal mode: while a COMMIT holds the file locked, which lasts as long as its fsyncs, no connection can start a read, and SQLite's busy handler can miss every gap between commits that come back to back. With writes going on and a slow disk, a read, or the first statement of a new connection, can then wait the whole busy timeout and get `SQLITE_BUSY`. mattn/go-sqlite3 and modernc.org/sqlite do the same. In WAL mode readers never wait for writers: use it when a program reads while it writes.
+
 ## Group commit
 
 Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver takes the autocommit DML of many callers, runs it as one transaction and commits once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
