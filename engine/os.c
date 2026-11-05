@@ -366,16 +366,26 @@ char *go_strdup(const char *z) { return sqlite3_mprintf("%s", z); }
 static int isMain(const char *db) { return db && strcmp(db, "main") == 0; }
 static int isTemp(const char *db) { return db && strcmp(db, "temp") == 0; }
 
+/* isMainFile says schema db of connection conn is the main database: main,
+   or the same file attached under another name. */
+static int isMainFile(sqlite3 *conn, const char *db) {
+  if (isMain(db)) return 1;
+  const char *f = sqlite3_db_filename(conn, db), *m = sqlite3_db_filename(conn, "main");
+  return f && m && *m && strcmp(f, m) == 0;
+}
+
 /* goGuarded says a PRAGMA of name with argument arg (NULL for none) on schema
-   db (NULL for every one) would checkpoint the main database, turn its
-   automatic checkpoints back on, take it out of WAL mode, or lock it for one
-   connection: on a replicated database the replicator runs every checkpoint,
-   after it has read the frames (replica/internal/capture). */
-static int goGuarded(const char *name, const char *arg, const char *db) {
-  if (db && !isMain(db)) return 0;
+   db (NULL for every one) of connection conn would checkpoint the main
+   database, turn the automatic checkpoints back on, take the main database
+   out of WAL mode, or lock it for one connection: on a replicated database
+   the replicator runs every checkpoint, after it has read the frames
+   (replica/internal/capture). wal_autocheckpoint is of the connection,
+   whatever schema it names. */
+static int goGuarded(sqlite3 *conn, const char *name, const char *arg, const char *db) {
+  if (arg && sqlite3_stricmp(name, "wal_autocheckpoint") == 0) return 1;
+  if (db && !isMainFile(conn, db)) return 0;
   if (sqlite3_stricmp(name, "wal_checkpoint") == 0) return 1;
   if (!arg) return 0;
-  if (sqlite3_stricmp(name, "wal_autocheckpoint") == 0) return 1;
   if (sqlite3_stricmp(name, "journal_mode") == 0) return sqlite3_stricmp(arg, "wal") != 0;
   if (sqlite3_stricmp(name, "locking_mode") == 0) return sqlite3_stricmp(arg, "normal") != 0;
   return 0;
@@ -462,7 +472,7 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
        pragma reads its setting. */
     *flags |= GO_PRIVATE;
     if (b && !infoPragma(a)) *flags |= GO_STATE;
-    if (w->guard && goGuarded(a, b, db)) {
+    if (w->guard && goGuarded(w->db, a, b, db)) {
       w->flags |= GO_GUARDED;
       return SQLITE_DENY;
     }

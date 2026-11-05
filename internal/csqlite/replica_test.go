@@ -141,13 +141,18 @@ func TestCheckpointTruncate(t *testing.T) {
 }
 
 func TestGuard(t *testing.T) {
-	c := open(t, filepath.Join(t.TempDir(), "x.db"))
-	exec(t, c, "PRAGMA journal_mode=WAL; ATTACH ':memory:' AS aux")
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name)
+	// same is the main database again, under another name.
+	exec(t, c, "PRAGMA journal_mode=WAL; ATTACH ':memory:' AS aux; ATTACH '"+name+"' AS same")
 	c.SetGuard(true)
 	for _, sql := range []string{
 		"PRAGMA wal_checkpoint", "PRAGMA wal_checkpoint(TRUNCATE)", "PRAGMA main.wal_checkpoint",
 		"PRAGMA wal_autocheckpoint=100", "PRAGMA journal_mode=DELETE", "PRAGMA main.journal_mode=memory",
 		"PRAGMA locking_mode=EXCLUSIVE",
+		// wal_autocheckpoint is of the connection, whatever the schema.
+		"PRAGMA temp.wal_autocheckpoint=100", "PRAGMA aux.wal_autocheckpoint=100",
+		"PRAGMA same.wal_checkpoint(TRUNCATE)", "PRAGMA same.journal_mode=DELETE", "PRAGMA same.locking_mode=EXCLUSIVE",
 	} {
 		if s, _, err := c.Prepare(sql); !errors.Is(err, ErrGuarded) {
 			if s != nil {
@@ -162,7 +167,7 @@ func TestGuard(t *testing.T) {
 	for _, sql := range []string{
 		"PRAGMA journal_mode=wal", "PRAGMA journal_mode", "PRAGMA wal_autocheckpoint", "PRAGMA locking_mode",
 		"PRAGMA locking_mode=normal", "PRAGMA aux.journal_mode=memory", "PRAGMA aux.wal_checkpoint",
-		"PRAGMA synchronous=NORMAL",
+		"PRAGMA synchronous=NORMAL", "PRAGMA temp.journal_mode=memory", "PRAGMA same.journal_mode",
 	} {
 		if err := c.Exec(sql); err != nil {
 			t.Errorf("%s: %v", sql, err)
