@@ -596,13 +596,31 @@ func (c *conn) cached(sql string) (*stmt, error) {
 // maxCached is the most statements a connection keeps for the queue.
 const maxCached = 64
 
-// execCached runs a statement with no parameters from the cache.
+// execCached runs a statement of a batch with no parameters, such as
+// SAVEPOINT merge. These few are kept apart from the statements of the
+// requests and never closed while c is open: making room in c.cache for a
+// request then never closes a statement in use, such as the request's own
+// before its SAVEPOINT.
 func (c *conn) execCached(sql string) error {
-	s, err := c.cached(sql)
-	if err != nil {
-		return err
+	s := c.control[sql]
+	if s == nil {
+		p, tail, err := c.c.Prepare(sql)
+		if err != nil {
+			return err
+		}
+		if p == nil || tail != "" {
+			if p != nil {
+				p.Finalize()
+			}
+			return fmt.Errorf("sqlite: %q is not one statement", sql)
+		}
+		if c.control == nil {
+			c.control = map[string]*stmt{}
+		}
+		s = newStmt(c, p, sql, false)
+		c.control[sql] = s
 	}
-	_, err = s.s.Step()
+	_, err := s.s.Step()
 	if rerr := s.s.Reset(); err == nil {
 		err = rerr
 	}

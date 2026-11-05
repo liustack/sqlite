@@ -26,6 +26,7 @@ type conn struct {
 	writing     bool       // the connection holds wl
 	busyTimeout time.Duration
 	cache       map[string]*stmt // statements of the queue (writer.go)
+	control     map[string]*stmt // BEGIN, SAVEPOINT, COMMIT and the like of a batch (writer.go)
 
 	// key is the connector's key: group commit merges only between
 	// connections of one key (writer.go).
@@ -118,6 +119,9 @@ func (c *conn) Close() error {
 		c.wl.release(c)
 	}
 	for _, s := range c.cache {
+		s.Close()
+	}
+	for _, s := range c.control {
 		s.Close()
 	}
 	if c.wl != nil {
