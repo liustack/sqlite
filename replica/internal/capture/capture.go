@@ -476,6 +476,7 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 		if c.lost != nil {
 			return c.fullCopy(c.lost)
 		}
+		stepHook("caught up")
 		if c.over() {
 			return nil // the next step stops
 		}

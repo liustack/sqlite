@@ -1083,28 +1083,43 @@ func TestStagingLimitSyncDir(t *testing.T) {
 }
 
 // A step that passes the limit stages no more: it does not catch up with
-// the writers, nor checkpoint.
+// the writers, nor checkpoint, whether its first read of the WAL passed it
+// or a read as it caught up.
 func TestStagingLimitStep(t *testing.T) {
-	name := filepath.Join(t.TempDir(), "x.db")
-	opt := testOptions(t)
-	opt.CheckpointFrames = 1
-	opt.Limit = 64 << 10
-	c := open(t, name, opt)
-	db := openApp(t, name)
-	run(t, db, "CREATE TABLE t(x)")
-	step(t, c)
-	if err := c.Done(c.Durable()); err != nil {
-		t.Fatal(err)
-	}
-	for range 30 {
-		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
-	}
-	stepHook = func(string) { run(t, db, "INSERT INTO t VALUES (randomblob(3000))") }
-	defer func() { stepHook = func(string) {} }()
-	before := c.TXID()
-	step(t, c)
-	if c.TXID() != before+1 {
-		t.Fatalf("the step staged TXIDs %s to %s past the limit", before+1, c.TXID())
+	for _, tc := range []struct {
+		name         string
+		before, more int // rows before the step, and at each point of it
+		files        ltx.TXID
+	}{
+		{"first read", 30, 1, 1},
+		{"catching up", 5, 300, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			name := filepath.Join(t.TempDir(), "x.db")
+			opt := testOptions(t)
+			opt.CheckpointFrames = 1
+			opt.Limit = 64 << 10
+			c := open(t, name, opt)
+			db := openApp(t, name)
+			run(t, db, "CREATE TABLE t(x)")
+			step(t, c)
+			if err := c.Done(c.Durable()); err != nil {
+				t.Fatal(err)
+			}
+			insert := func(n int) {
+				for range n {
+					run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+				}
+			}
+			insert(tc.before)
+			stepHook = func(string) { insert(tc.more) }
+			defer func() { stepHook = func(string) {} }()
+			before := c.TXID()
+			step(t, c)
+			if c.TXID() != before+tc.files {
+				t.Fatalf("the step staged TXIDs %s to %s past the limit", before+1, c.TXID())
+			}
+		})
 	}
 }
 
