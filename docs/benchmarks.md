@@ -221,7 +221,7 @@ Allocations per op, lower is better:
 
 [Replication](replication.md) copies each commit inside the program, so it costs CPU in the program's process. `BenchmarkGroupCommit` in `replica` inserts one row per call from 8 or 64 goroutines at once (WAL, `synchronous=NORMAL`), with replication off and on. The store is a MinIO on two other threads of the same machine, so that its work does not fall on the benchmark's, as a store on another machine's would not.
 
-Commit `def7170`, Go 1.27.2, the linux/amd64 VM above, Linux 7.3.0-1003-gcp. 6 runs each, compared with benchstat (`~` is no difference it can tell from noise). Load average 1.12 before and 1.92 after.
+Commit `def7170`, Go 1.27.2, the linux/amd64 VM above, Linux 7.3.0-1003-gcp. 6 runs each, compared with benchstat (`~` is no difference it can tell from noise). Load average 1.12 before and 1.92 after. The raw output is in [bench/published/replica/](../bench/published/replica/).
 
 One thread (`GOMAXPROCS=1`, cores 0 and 4, MinIO on 3 and 7):
 

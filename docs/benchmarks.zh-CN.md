@@ -213,7 +213,7 @@
 
 [复制](replication.zh-CN.md)在程序里复制每次提交，所以 CPU 花在程序自己的进程里。`replica` 里的 `BenchmarkGroupCommit` 让 8 个或 64 个 goroutine 同时插入，每次一行（WAL，`synchronous=NORMAL`），分别关掉和打开复制。存储是同一台机器另外两个线程上的 MinIO，它的开销不落在基准的线程上，就像存储在别的机器上时一样。
 
-提交 `def7170`，Go 1.27.2，上面那台 linux/amd64 虚拟机，Linux 7.3.0-1003-gcp。每组跑 6 轮，用 benchstat 比较（`~` 表示和噪声分不开）。负载开始前 1.12，结束后 1.92。
+提交 `def7170`，Go 1.27.2，上面那台 linux/amd64 虚拟机，Linux 7.3.0-1003-gcp。每组跑 6 轮，用 benchstat 比较（`~` 表示和噪声分不开）。负载开始前 1.12，结束后 1.92。原始输出在 [bench/published/replica/](../bench/published/replica/)。
 
 单线程（`GOMAXPROCS=1`，核 0 和 4，MinIO 在 3 和 7）：
 
