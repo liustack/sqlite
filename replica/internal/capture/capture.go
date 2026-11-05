@@ -66,7 +66,8 @@ type Options struct {
 	// (see Done): past it, staging stops until they are uploaded, and a full
 	// copy of the database follows them. Checkpoints go on, so the WAL
 	// stays bounded. The last full copy, which staging goes on from, does
-	// not count. 0 is no limit.
+	// not count, and the step that passes the limit stages no more after
+	// that one read of the WAL. 0 is no limit.
 	Limit int64
 	// Uploaded is the last TXID uploaded when Open runs.
 	Uploaded ltx.TXID
@@ -449,7 +450,7 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 		return err
 	}
 	frames, err := c.capture()
-	if err != nil || c.lost != nil || frames < c.opt.CheckpointFrames {
+	if err != nil || c.lost != nil || frames < c.opt.CheckpointFrames || c.over() {
 		if gerr := c.endGuard(); err == nil {
 			err = gerr
 		}
@@ -474,6 +475,9 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 		}
 		if c.lost != nil {
 			return c.fullCopy(c.lost)
+		}
+		if c.over() {
+			return nil // the next step stops
 		}
 		if c.gen != gen || c.pos-pos < catchUpFrames {
 			break

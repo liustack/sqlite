@@ -1082,6 +1082,32 @@ func TestStagingLimitSyncDir(t *testing.T) {
 	}
 }
 
+// A step that passes the limit stages no more: it does not catch up with
+// the writers, nor checkpoint.
+func TestStagingLimitStep(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 1
+	opt.Limit = 64 << 10
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	if err := c.Done(c.Durable()); err != nil {
+		t.Fatal(err)
+	}
+	for range 30 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	stepHook = func(string) { run(t, db, "INSERT INTO t VALUES (randomblob(3000))") }
+	defer func() { stepHook = func(string) {} }()
+	before := c.TXID()
+	step(t, c)
+	if c.TXID() != before+1 {
+		t.Fatalf("the step staged TXIDs %s to %s past the limit", before+1, c.TXID())
+	}
+}
+
 // Writers go on through every step and checkpoint: no frame is checkpointed
 // away before it is staged, so the WAL is followed throughout and the staged
 // files rebuild the database.
