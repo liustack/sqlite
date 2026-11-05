@@ -1000,3 +1000,76 @@ func TestStagingLimitLarge(t *testing.T) {
 		t.Fatalf("%d full copies", c.FullCopies())
 	}
 }
+
+// Writers go on through every step and checkpoint: no frame is checkpointed
+// away before it is staged, so the WAL is followed throughout and the staged
+// files rebuild the database.
+func TestCheckpointUnderWrites(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 50
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	db.SetMaxOpenConns(8)
+	run(t, db, "CREATE TABLE t(x)")
+	stop := make(chan struct{})
+	errc := make(chan error, 4)
+	for range 4 {
+		go func() {
+			for {
+				select {
+				case <-stop:
+					errc <- nil
+					return
+				default:
+				}
+				if _, err := db.Exec("INSERT INTO t VALUES (randomblob(500))"); err != nil {
+					errc <- err
+					return
+				}
+			}
+		}()
+	}
+	gens := map[[8]byte]bool{}
+	for start := time.Now(); time.Since(start) < 2*time.Second; {
+		step(t, c)
+		gens[c.gen] = true
+	}
+	close(stop)
+	for range 4 {
+		if err := <-errc; err != nil {
+			t.Fatal(err)
+		}
+	}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies: the WAL was lost", n)
+	}
+	if len(gens) < 3 {
+		t.Fatalf("the WAL started over %d times", len(gens)-1)
+	}
+	sameAs(t, c, name)
+}
+
+// A commit between the capture and the checkpoint outside the lock, and
+// another after it: the checkpoint copies none of the first, so the second
+// cannot start the WAL over before it is staged.
+func TestCheckpointGuard(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 1
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	step(t, c)
+	stepHook = func(at string) { run(t, db, "INSERT INTO t VALUES ('"+at+"')") }
+	defer func() { stepHook = func(string) {} }()
+	run(t, db, "INSERT INTO t VALUES (1)")
+	step(t, c)
+	stepHook = func(string) {}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies: the WAL was lost", n)
+	}
+	sameAs(t, c, name)
+}

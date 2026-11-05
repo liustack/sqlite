@@ -102,6 +102,9 @@ var ErrFullCopy = errors.New("capture: staged a full copy of the database")
 // Options.Limit, and the error of Sync while it is stopped.
 var ErrStagingFull = errors.New("capture: the staged files not uploaded reached the limit")
 
+// stepHook is called at points of a step that checkpoints. Tests set it.
+var stepHook = func(string) {}
+
 // closeWait is how long Close waits for the driver's write lock to
 // checkpoint. Tests shorten it.
 var closeWait = 5 * time.Second
@@ -147,6 +150,7 @@ type Capturer struct {
 
 	snapMu sync.Mutex    // one snapshot at a time
 	snap   *csqlite.Conn // the connection snapshots read with, under mu
+	guard  *csqlite.Conn // holds a read transaction while a step checkpoints, under mu
 
 	durable atomic.Uint64 // the last TXID whose name is synced
 	staged  chan struct{} // gets a value when durable moves
@@ -256,6 +260,9 @@ func (c *Capturer) release() {
 	c.conn.Close()
 	if c.snap != nil {
 		c.snap.Close()
+	}
+	if c.guard != nil {
+		c.guard.Close()
 	}
 	if c.detach != nil {
 		c.detach()
@@ -401,17 +408,91 @@ func (c *Capturer) step(ctx context.Context) error {
 		c.report(c.lost)
 		return c.checkpointLost(ctx)
 	}
+	return c.stageAndCheckpoint(ctx)
+}
+
+// The checkpoint of a step catches up with the writers before it takes the
+// driver's write lock: it stages again, up to catchUps times, until fewer
+// than catchUpFrames frames came since.
+const (
+	catchUps      = 3
+	catchUpFrames = 256
+)
+
+// stageAndCheckpoint stages what was committed and, when the WAL holds
+// CheckpointFrames frames, checkpoints it. Writers wait only for the last
+// frames: the frames staged are copied into the database outside the
+// driver's write lock first, and the frames written meanwhile are staged
+// before the lock too, so that the lock is held for a short tail.
+func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
+	// A read transaction from before the capture keeps the checkpoint
+	// outside the lock from copying frames the capture did not stage. After
+	// it copied them all, a writer could start the WAL over and lose them.
+	if err := c.beginGuard(); err != nil {
+		return err
+	}
 	frames, err := c.capture()
+	if err != nil || c.lost != nil || frames < c.opt.CheckpointFrames {
+		if gerr := c.endGuard(); err == nil {
+			err = gerr
+		}
+		if err == nil && c.lost != nil {
+			return c.fullCopy(c.lost)
+		}
+		return err
+	}
+	stepHook("captured")
+	_, _, err = c.conn.Checkpoint(csqlite.CheckpointPassive)
+	stepHook("backfilled")
+	if gerr := c.endGuard(); err == nil || busy(err) {
+		err = gerr
+	}
 	if err != nil {
 		return err
 	}
-	if c.lost != nil {
-		return c.fullCopy(c.lost)
+	for range catchUps {
+		gen, pos := c.gen, c.pos
+		if _, err := c.capture(); err != nil {
+			return err
+		}
+		if c.lost != nil {
+			return c.fullCopy(c.lost)
+		}
+		if c.gen != gen || c.pos-pos < catchUpFrames {
+			break
+		}
 	}
-	if frames >= c.opt.CheckpointFrames {
-		return c.checkpoint(ctx)
+	return c.checkpoint(ctx)
+}
+
+// beginGuard opens a read transaction on c.guard.
+func (c *Capturer) beginGuard() error {
+	if c.guard == nil {
+		g, err := csqlite.Open(c.path, csqlite.OpenReadOnly|csqlite.OpenNoMutex, "")
+		if err != nil {
+			return err
+		}
+		c.guard = g
+	}
+	return beginRead(c.guard)
+}
+
+// endGuard ends the read transaction on c.guard. A transaction left open
+// would keep checkpoints from starting the WAL over: the connection goes
+// instead.
+func (c *Capturer) endGuard() error {
+	if err := c.guard.Exec("ROLLBACK"); err != nil {
+		c.guard.Close()
+		c.guard = nil
+		return err
 	}
 	return nil
+}
+
+// busy says whether err is SQLITE_BUSY.
+func busy(err error) bool {
+	var e *csqlite.Error
+	return errors.As(err, &e) && e.Primary() == 5
 }
 
 // checkpoint stages the WAL to its end under the driver's write lock of the
@@ -443,11 +524,7 @@ func (c *Capturer) checkpoint(ctx context.Context) error {
 // readers it cannot: the frames are still copied, and the next writer starts
 // the WAL over. Call it holding the driver's write lock.
 func (c *Capturer) truncate() error {
-	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointTruncate); err != nil {
-		var e *csqlite.Error
-		if errors.As(err, &e) && e.Primary() == 5 { // SQLITE_BUSY
-			return nil
-		}
+	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointTruncate); err != nil && !busy(err) {
 		return err
 	}
 	return nil
