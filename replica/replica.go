@@ -88,9 +88,10 @@ type Config struct {
 
 	schedule func(*schedule) // set by tests: changes the schedule
 	// OnError, if set, gets the errors of the work done in the background.
-	// It is called with no lock held, from a goroutine of the replica (or
-	// from New), and may call the replica. What it has not got when Close
-	// runs, Close returns.
+	// It is called with no lock of the replica held, from New, Close or a
+	// goroutine of the replica, and should return soon, as a log does. It
+	// must not call Close, which waits for those goroutines, nor wait for a
+	// write to the database: the caller of Close may hold the write lock.
 	OnError func(error)
 }
 

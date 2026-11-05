@@ -76,9 +76,10 @@ type Options struct {
 	Uploaded ltx.TXID
 	// OnError, if set, gets the errors of the reads made in the background,
 	// and an error under ErrFullCopy for each full copy staged because the
-	// WAL could not be followed. It is called by Open or the goroutine of the
-	// background steps, with no lock of the capturer or the driver held, so
-	// it may call the capturer. What it has not got at Close, Close returns.
+	// WAL could not be followed. Open, Close and the goroutine of the
+	// background steps call it with no lock of the capturer held. It must
+	// not call Close, which waits for that goroutine, nor wait for a write
+	// to the database: the caller of Close may hold the write lock.
 	OnError func(error)
 	// Start, if set, is called once Open has the database, before it
 	// resumes, with the staged files in TXID order (their headers and
@@ -334,9 +335,8 @@ func (c *Capturer) run() {
 	}
 }
 
-// note keeps err for OnError, which the next step gives it, with no lock
-// held: OnError may call the capturer or write to the database. c.mu is
-// held.
+// note keeps err for OnError, which the next step, or Close, gives it with
+// no lock held. c.mu is held.
 func (c *Capturer) note(err error) {
 	c.later = append(c.later, err)
 }
@@ -371,13 +371,24 @@ func (c *Capturer) Sync(ctx context.Context) error {
 func (c *Capturer) Close() error {
 	c.cancel()
 	<-c.done
+	later, err := c.close()
+	// No step comes for what was noted.
+	for _, e := range later {
+		c.report(e)
+	}
+	return err
+}
+
+// close is Close once the background steps stopped. It returns what was
+// noted for OnError.
+func (c *Capturer) close() ([]error, error) {
 	// A snapshot reads with c.snap, which release closes.
 	c.snapMu.Lock()
 	defer c.snapMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
-		return nil
+		return nil, nil
 	}
 	c.closed = true
 	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
@@ -392,11 +403,9 @@ func (c *Capturer) Close() error {
 		err = nil
 	}
 	c.release()
-	// No step comes for what was noted: it is returned, not reported, as the
-	// caller may hold the driver's write lock, which OnError may wait for.
-	err = errors.Join(append([]error{err}, c.later...)...)
+	later := c.later
 	c.later = nil
-	return err
+	return later, err
 }
 
 // TXID is the TXID of the last staged file.

@@ -1326,10 +1326,9 @@ func TestStagingLimitAtCommitSyncDir(t *testing.T) {
 	}
 }
 
-// The errors of the writes, kept for the next step, are returned by Close
-// when no step comes, not reported: OnError may call the capturer, which
-// Close holds.
-func TestCloseReturnsLater(t *testing.T) {
+// The errors of the writes, kept for the next step, are reported by Close
+// when no step comes, with no lock held: OnError may call the capturer.
+func TestCloseReportsLater(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")
 	opt := testOptions(t)
 	opt.CheckpointFrames = 1
@@ -1353,14 +1352,14 @@ func TestCloseReturnsLater(t *testing.T) {
 	go func() { done <- c.Close() }()
 	select {
 	case err := <-done:
-		if !errors.Is(err, fail) {
-			t.Fatalf("Close: %v, want the error of the write", err)
+		if err != nil {
+			t.Fatalf("Close: %v", err)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Close did not return")
 	}
-	if n := reports.Load(); n != 0 {
-		t.Fatalf("Close reported %d errors to OnError", n)
+	if reports.Load() == 0 {
+		t.Fatal("Close dropped the errors of the writes")
 	}
 }
 
