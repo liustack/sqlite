@@ -15,6 +15,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/superfly/ltx"
 
@@ -29,8 +30,45 @@ const (
 	metaSHA256 = "sqlite-sha256"        // of the file, to know our own write after a 412
 )
 
-func levelKey(path string, level int, txid ltx.TXID) string {
-	return fmt.Sprintf("%s/%04x/%s", path, level, ltx.FormatFilename(txid, txid))
+// snapshotLevel is the level of the snapshots: files from TXID 1.
+const snapshotLevel = 9
+
+func levelKey(path string, level int, min, max ltx.TXID) string {
+	return fmt.Sprintf("%s/%04x/%s", path, level, ltx.FormatFilename(min, max))
+}
+
+// A remoteFile is an LTX file of the replica.
+type remoteFile struct {
+	level    int
+	min, max ltx.TXID
+	key      string
+	size     int64
+	modified time.Time // when the store got it
+}
+
+// listRemote lists the LTX files of the replica in key order: by level,
+// then by TXID.
+func listRemote(ctx context.Context, c *s3.Client, path string) ([]remoteFile, error) {
+	var files []remoteFile
+	for o, err := range c.List(ctx, path+"/", "") {
+		if err != nil {
+			return nil, err
+		}
+		level, name, ok := strings.Cut(strings.TrimPrefix(o.Key, path+"/"), "/")
+		if !ok || len(level) != 4 {
+			continue
+		}
+		n, err := strconv.ParseUint(level, 16, 16)
+		if err != nil || n > snapshotLevel {
+			continue
+		}
+		min, max, err := ltx.ParseFilename(name)
+		if err != nil {
+			continue
+		}
+		files = append(files, remoteFile{level: int(n), min: min, max: max, key: o.Key, size: o.Size, modified: o.LastModified})
+	}
+	return files, nil
 }
 
 // remoteEnd is where the replica ends: its last TXID and the checksum of
@@ -40,36 +78,21 @@ type remoteEnd struct {
 	post ltx.Checksum
 }
 
-// readEnd lists the replica's files and reads the trailer of the last.
-func readEnd(ctx context.Context, c *s3.Client, path string) (remoteEnd, error) {
-	var last s3.Object
-	var end remoteEnd
-	for o, err := range c.List(ctx, path+"/", "") {
-		if err != nil {
-			return remoteEnd{}, err
-		}
-		level, name, ok := strings.Cut(strings.TrimPrefix(o.Key, path+"/"), "/")
-		if !ok || len(level) != 4 {
-			continue
-		}
-		if _, err := strconv.ParseUint(level, 16, 8); err != nil {
-			continue
-		}
-		_, max, err := ltx.ParseFilename(name)
-		if err != nil {
-			continue
-		}
-		if max > end.txid {
-			end.txid, last = max, o
+// readEnd reads the trailer of the last of the replica.s files.
+func readEnd(ctx context.Context, c *s3.Client, files []remoteFile) (remoteEnd, error) {
+	var last remoteFile
+	for _, f := range files {
+		if f.max > last.max {
+			last = f
 		}
 	}
-	if end.txid == 0 {
-		return end, nil
+	if last.max == 0 {
+		return remoteEnd{}, nil
 	}
-	if last.Size < ltx.HeaderSize+ltx.TrailerSize {
-		return remoteEnd{}, fmt.Errorf("replica: %s is too short for an LTX file", last.Key)
+	if last.size < ltx.HeaderSize+ltx.TrailerSize {
+		return remoteEnd{}, fmt.Errorf("replica: %s is too short for an LTX file", last.key)
 	}
-	r, err := c.Get(ctx, last.Key, last.Size-ltx.TrailerSize, ltx.TrailerSize)
+	r, err := c.Get(ctx, last.key, last.size-ltx.TrailerSize, ltx.TrailerSize)
 	if err != nil {
 		return remoteEnd{}, err
 	}
@@ -80,10 +103,9 @@ func readEnd(ctx context.Context, c *s3.Client, path string) (remoteEnd, error) 
 	}
 	var t ltx.Trailer
 	if len(b) != ltx.TrailerSize || t.UnmarshalBinary(b) != nil || t.PostApplyChecksum&ltx.ChecksumFlag == 0 {
-		return remoteEnd{}, fmt.Errorf("replica: %s has no trailer with a checksum", last.Key)
+		return remoteEnd{}, fmt.Errorf("replica: %s has no trailer with a checksum", last.key)
 	}
-	end.post = t.PostApplyChecksum
-	return end, nil
+	return remoteEnd{txid: last.max, post: t.PostApplyChecksum}, nil
 }
 
 // ErrNoConditionalWrites is the error of New on a store that does not

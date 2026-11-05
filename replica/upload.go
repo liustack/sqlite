@@ -14,6 +14,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/superfly/ltx"
@@ -68,11 +70,11 @@ func (r *Replica) run(ctx context.Context) {
 // for another upload too.
 func (r *Replica) upload(ctx context.Context) error {
 	select {
-	case r.uploading <- struct{}{}:
+	case r.busy <- struct{}{}:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	defer func() { <-r.uploading }()
+	defer func() { <-r.busy }()
 	err := r.uploadFiles(ctx)
 	r.setStatus(func(s *Status) {
 		if !errors.Is(s.Err, ErrConflict) {
@@ -105,10 +107,16 @@ func (r *Replica) uploadFiles(ctx context.Context) error {
 	return r.dropUploaded(min(r.uploaded(), durable-1))
 }
 
-// put uploads the staged file of txid, once: a 412 means the key has a
-// file, which is the same one when an earlier try got no answer.
+// put uploads the staged file of txid as level 0.
 func (r *Replica) put(ctx context.Context, txid ltx.TXID) error {
-	f, err := os.Open(filepath.Join(r.c.Dir(), ltx.FormatFilename(txid, txid)))
+	return r.putFile(ctx, 0, filepath.Join(r.c.Dir(), ltx.FormatFilename(txid, txid)))
+}
+
+// putFile uploads the LTX file name to level, once: a 412 means the key
+// has a file, which is the same one when an earlier try got no answer. It
+// adds the file to r.files.
+func (r *Replica) putFile(ctx context.Context, level int, name string) error {
+	f, err := os.Open(name)
 	if err != nil {
 		return err
 	}
@@ -123,14 +131,14 @@ func (r *Replica) put(ctx context.Context, txid ltx.TXID) error {
 	}
 	var h ltx.Header
 	if err := h.UnmarshalBinary(hb[:]); err != nil {
-		return fmt.Errorf("replica: the staged file of TXID %s: %w", txid, err)
+		return fmt.Errorf("replica: %s: %w", name, err)
 	}
 	sum := sha256.New()
 	if _, err := io.Copy(sum, io.NewSectionReader(f, 0, st.Size())); err != nil {
 		return err
 	}
 	digest := hex.EncodeToString(sum.Sum(nil))
-	key := levelKey(r.path, 0, txid)
+	key := levelKey(r.path, level, h.MinTXID, h.MaxTXID)
 	err = r.client.Put(ctx, key, f, st.Size(), s3.PutOptions{
 		IfNoneMatch: true,
 		Metadata: map[string]string{
@@ -138,17 +146,27 @@ func (r *Replica) put(ctx context.Context, txid ltx.TXID) error {
 			metaSHA256: digest,
 		},
 	})
-	if !errors.Is(err, s3.ErrPreconditionFailed) {
+	if errors.Is(err, s3.ErrPreconditionFailed) {
+		info, herr := r.client.Head(ctx, key)
+		if herr != nil {
+			return herr
+		}
+		if info.Metadata[metaSHA256] != digest {
+			return fmt.Errorf("%w: %s has another file", ErrConflict, key)
+		}
+	} else if err != nil {
 		return err
 	}
-	info, err := r.client.Head(ctx, key)
-	if err != nil {
-		return err
-	}
-	if info.Metadata[metaSHA256] != digest {
-		return fmt.Errorf("%w: %s has another file", ErrConflict, key)
-	}
+	r.addFile(remoteFile{level: level, min: h.MinTXID, max: h.MaxTXID, key: key, size: st.Size(), modified: time.Now()})
 	return nil
+}
+
+// addFile adds f to r.files, in key order.
+func (r *Replica) addFile(f remoteFile) {
+	i, found := slices.BinarySearchFunc(r.files, f.key, func(g remoteFile, key string) int { return strings.Compare(g.key, key) })
+	if !found {
+		r.files = slices.Insert(r.files, i, f)
+	}
 }
 
 // dropUploaded removes the staged files up to txid.
@@ -158,8 +176,8 @@ func (r *Replica) dropUploaded(txid ltx.TXID) error {
 		return err
 	}
 	for _, e := range entries {
-		min, max, err := ltx.ParseFilename(e.Name())
-		if err != nil || min != max || max > txid {
+		_, max, err := ltx.ParseFilename(e.Name())
+		if err != nil || max > txid {
 			continue
 		}
 		if err := os.Remove(filepath.Join(r.c.Dir(), e.Name())); err != nil {

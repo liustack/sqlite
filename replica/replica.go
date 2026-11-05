@@ -99,7 +99,10 @@ type Replica struct {
 	cancel context.CancelFunc
 	done   chan struct{} // closed when run returns
 
-	uploading chan struct{} // holds a value during an upload: one at a time
+	// busy holds a value while the replicator works on the replica: one
+	// upload, compaction or deletion at a time.
+	busy  chan struct{}
+	files []remoteFile // the files of the replica, in key order, under busy
 
 	mu     sync.Mutex
 	status Status
@@ -127,11 +130,15 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 			return nil, err
 		}
 	}
-	end, err := readEnd(ctx, client, path)
+	files, err := listRemote(ctx, client, path)
 	if err != nil {
 		return nil, err
 	}
-	r := &Replica{cfg: cfg, client: client, path: path, done: make(chan struct{}), uploading: make(chan struct{}, 1)}
+	end, err := readEnd(ctx, client, files)
+	if err != nil {
+		return nil, err
+	}
+	r := &Replica{cfg: cfg, client: client, path: path, files: files, done: make(chan struct{}), busy: make(chan struct{}, 1)}
 	r.status.Uploaded = uint64(end.txid)
 	r.c, err = capture.Open(name, capture.Options{
 		Interval: cfg.SyncInterval,
@@ -160,7 +167,7 @@ func startFrom(end remoteEnd, staged []capture.StagedFile, fresh bool) (*capture
 		return nil, nil
 	}
 	for _, f := range staged {
-		if f.TXID == end.txid && f.Post == end.post || f.TXID == end.txid+1 && f.Pre == end.post {
+		if f.TXID == end.txid && f.Post == end.post || f.Min == end.txid+1 && f.Pre == end.post {
 			return nil, nil
 		}
 	}

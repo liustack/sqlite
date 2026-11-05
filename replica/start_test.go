@@ -16,8 +16,8 @@ import (
 
 func TestStartFrom(t *testing.T) {
 	const a, b, c, x = ltx.ChecksumFlag | 1, ltx.ChecksumFlag | 2, ltx.ChecksumFlag | 3, ltx.ChecksumFlag | 9
-	chain := []capture.StagedFile{{TXID: 3, Pre: a, Post: b}, {TXID: 4, Pre: b, Post: c}}
-	from1 := []capture.StagedFile{{TXID: 1, Post: a}, {TXID: 2, Pre: a, Post: b}}
+	chain := []capture.StagedFile{{Min: 3, TXID: 3, Pre: a, Post: b}, {Min: 4, TXID: 4, Pre: b, Post: c}}
+	from1 := []capture.StagedFile{{Min: 1, TXID: 1, Post: a}, {Min: 2, TXID: 2, Pre: a, Post: b}}
 	restart := func(txid ltx.TXID, post ltx.Checksum) *capture.Restart {
 		return &capture.Restart{TXID: txid, Post: post}
 	}

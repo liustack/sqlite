@@ -785,7 +785,7 @@ func TestStage(t *testing.T) {
 	if err := os.WriteFile(from, []byte("ltx"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Stage(name, from, 7); err != nil {
+	if err := Stage(name, from, 7, 7); err != nil {
 		t.Fatal(err)
 	}
 	staged := filepath.Join(StageDir(name), ltx.FormatFilename(7, 7))
@@ -795,7 +795,7 @@ func TestStage(t *testing.T) {
 	if err := os.WriteFile(from, []byte("other"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Stage(name, from, 8); err == nil {
+	if err := Stage(name, from, 8, 8); err == nil {
 		t.Fatal("Stage into a folder with a staged file: no error")
 	}
 	if _, err := os.Stat(filepath.Join(StageDir(name), ltx.FormatFilename(8, 8))); !errors.Is(err, os.ErrNotExist) {

@@ -40,7 +40,7 @@ func lastStaged(dir string) (hdr ltx.Header, post ltx.Checksum, ok bool, err err
 		return hdr, 0, false, err
 	}
 	var last string
-	var max ltx.TXID
+	var min, max ltx.TXID
 	for _, e := range entries {
 		name := e.Name()
 		if strings.HasSuffix(name, ".tmp") {
@@ -49,12 +49,12 @@ func lastStaged(dir string) (hdr ltx.Header, post ltx.Checksum, ok bool, err err
 			}
 			continue
 		}
-		min, mx, err := ltx.ParseFilename(name)
-		if err != nil || min != mx {
+		mn, mx, err := ltx.ParseFilename(name)
+		if err != nil {
 			continue
 		}
 		if mx > max {
-			max, last = mx, name
+			min, max, last = mn, mx, name
 		}
 	}
 	if last == "" {
@@ -70,7 +70,7 @@ func lastStaged(dir string) (hdr ltx.Header, post ltx.Checksum, ok bool, err err
 		return hdr, 0, false, fmt.Errorf("the staged file %s: %w", last, err)
 	}
 	hdr = dec.Header()
-	if hdr.MinTXID != max || hdr.MaxTXID != max {
+	if hdr.MinTXID != min || hdr.MaxTXID != max {
 		return hdr, 0, false, fmt.Errorf("the staged file %s holds TXIDs %s to %s", last, hdr.MinTXID, hdr.MaxTXID)
 	}
 	return hdr, dec.Trailer().PostApplyChecksum, true, nil
@@ -186,15 +186,15 @@ func stagedFiles(dir string) ([]StagedFile, error) {
 	var files []StagedFile
 	for _, e := range entries {
 		min, max, err := ltx.ParseFilename(e.Name())
-		if err != nil || min != max {
+		if err != nil {
 			continue
 		}
 		f, err := readStaged(filepath.Join(dir, e.Name()))
 		if err != nil {
 			return nil, err
 		}
-		if f.TXID != max {
-			return nil, fmt.Errorf("the staged file %s holds TXID %s", e.Name(), f.TXID)
+		if f.Min != min || f.TXID != max {
+			return nil, fmt.Errorf("the staged file %s holds TXIDs %s to %s", e.Name(), f.Min, f.TXID)
 		}
 		files = append(files, f)
 	}
@@ -232,10 +232,7 @@ func readStaged(name string) (StagedFile, error) {
 	if err := t.UnmarshalBinary(tb[:]); err != nil {
 		return StagedFile{}, fmt.Errorf("the staged file %s: %w", name, err)
 	}
-	if h.MinTXID != h.MaxTXID {
-		return StagedFile{}, fmt.Errorf("the staged file %s holds TXIDs %s to %s", name, h.MinTXID, h.MaxTXID)
-	}
-	return StagedFile{TXID: h.MaxTXID, Pre: h.PreApplyChecksum, Post: t.PostApplyChecksum}, nil
+	return StagedFile{Min: h.MinTXID, TXID: h.MaxTXID, Pre: h.PreApplyChecksum, Post: t.PostApplyChecksum}, nil
 }
 
 // dropStaged removes the staged files of dir whose TXID drop says, and the
@@ -257,11 +254,11 @@ func dropStaged(dir string, drop func(ltx.TXID) bool) error {
 	return syncDir(dir)
 }
 
-// Stage moves the LTX file from, which holds TXID txid and leaves the
+// Stage moves the LTX file from, which holds TXIDs min to max and leaves the
 // database path as it is now, into the staging folder of path, so that
 // Open goes on from it. The folder must hold no LTX file. The folders it
 // makes are synced, up to the folder of path.
-func Stage(path, from string, txid ltx.TXID) error {
+func Stage(path, from string, min, max ltx.TXID) error {
 	dir := StageDir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -275,7 +272,7 @@ func Stage(path, from string, txid ltx.TXID) error {
 			return fmt.Errorf("capture: %s holds staged files already", dir)
 		}
 	}
-	if err := rename(from, filepath.Join(dir, ltx.FormatFilename(txid, txid))); err != nil {
+	if err := rename(from, filepath.Join(dir, ltx.FormatFilename(min, max))); err != nil {
 		return err
 	}
 	for d := dir; ; d = filepath.Dir(d) {

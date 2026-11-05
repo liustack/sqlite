@@ -74,7 +74,7 @@ type Options struct {
 
 // A StagedFile is a staged LTX file, of one TXID.
 type StagedFile struct {
-	TXID      ltx.TXID
+	Min, TXID ltx.TXID     // the first and last TXID it holds: one but after a restore
 	Pre, Post ltx.Checksum // the checksums of the database before and after it
 }
 
