@@ -805,3 +805,47 @@ func TestCloseHoldsStaging(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Close ends a Sync whose upload hangs before it lets another process stage
+// the database: once Close returns, nothing of the replicator uploads.
+func TestCloseEndsSync(t *testing.T) {
+	cfg, cnt := countingStore(t, testConfig(t))
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
+
+	held := make(chan struct{})
+	free := make(chan struct{})
+	defer close(free)
+	var once sync.Once
+	put := func(string) {
+		once.Do(func() {
+			close(held)
+			<-free
+		})
+	}
+	cnt.put.Store(&put)
+	synced := make(chan error, 1)
+	go func() { synced <- r.Sync(context.Background()) }()
+	<-held
+
+	closed := make(chan error, 1)
+	go func() { closed <- r.Close() }()
+	select {
+	case <-closed:
+	case <-time.After(closeUpload + 5*time.Second):
+		t.Fatal("Close did not return")
+	}
+	select {
+	case err := <-synced:
+		if err == nil {
+			t.Fatal("the Sync Close ended did not fail")
+		}
+	default:
+		t.Fatal("Close returned while a Sync still uploads")
+	}
+	if err := r.Sync(context.Background()); err == nil {
+		t.Fatal("Sync after Close")
+	}
+}

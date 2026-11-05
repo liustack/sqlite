@@ -146,8 +146,11 @@ type Replica struct {
 	path   string // of the replica in the bucket
 	c      *capture.Capturer
 
+	// stop is done once Close starts. It ends run and the Syncs.
+	stop   context.Context
 	cancel context.CancelFunc
 	done   chan struct{} // closed when run returns
+	closed bool          // under busy: Close has uploaded, nothing more goes
 
 	// busy holds a value while the replicator works on the replica: one
 	// upload, compaction or deletion at a time.
@@ -223,9 +226,8 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if err != nil {
 		return nil, err
 	}
-	runCtx, cancel := context.WithCancel(context.Background())
-	r.cancel = cancel
-	go r.run(runCtx)
+	r.stop, r.cancel = context.WithCancel(context.Background())
+	go r.run(r.stop)
 	return r, nil
 }
 
@@ -293,8 +295,11 @@ func (r *Replica) Status() Status {
 
 // Sync stages what was committed up to now and uploads it. When staging
 // stopped at StagingLimit, it uploads what is staged first, so that staging
-// goes on.
+// goes on. Close ends it.
 func (r *Replica) Sync(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(r.stop, cancel)()
 	err := r.c.Sync(ctx)
 	if errors.Is(err, ErrStagingFull) {
 		if err := r.upload(ctx); err != nil {
@@ -308,19 +313,29 @@ func (r *Replica) Sync(ctx context.Context) error {
 	return r.upload(ctx)
 }
 
-// Close stages what is left, checkpoints, and uploads what is staged,
-// trying for 10 seconds, waiting for a Sync that uploads too. What it could
-// not upload stays staged, for the next New.
+// Close ends the Syncs under way, stages what is left, checkpoints, and
+// uploads what is staged, trying for 10 seconds. What it could not upload
+// stays staged, for the next New. Sync fails after Close.
 func (r *Replica) Close() error {
 	r.cancel()
 	<-r.done
 	err := r.c.Close()
-	// Another process stages the database only after this upload.
+	// The Syncs let go of busy soon, their requests ended. Another process
+	// may stage the database once this one uploads no more.
+	r.busy <- struct{}{}
+	defer func() { <-r.busy }()
+	if r.closed {
+		return err
+	}
+	r.closed = true
 	defer r.c.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), closeUpload)
 	defer cancel()
-	return errors.Join(err, r.upload(ctx))
+	return errors.Join(err, r.uploadHeld(ctx))
 }
+
+// errClosed is the error of an upload after Close.
+var errClosed = errors.New("replica: closed")
 
 // client is the client of the store of cfg.URL and the path of the replica
 // in the bucket.

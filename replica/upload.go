@@ -111,6 +111,14 @@ func (r *Replica) upload(ctx context.Context) error {
 		return ctx.Err()
 	}
 	defer func() { <-r.busy }()
+	if r.closed {
+		return errClosed
+	}
+	return r.uploadHeld(ctx)
+}
+
+// uploadHeld is upload, holding busy.
+func (r *Replica) uploadHeld(ctx context.Context) error {
 	err := r.uploadFiles(ctx)
 	r.setStatus(func(s *Status) {
 		if !errors.Is(s.Err, ErrConflict) {
