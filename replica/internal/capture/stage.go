@@ -256,15 +256,16 @@ func readStaged(name string) (StagedFile, error) {
 	return StagedFile{TXID: h.MaxTXID, Pre: h.PreApplyChecksum, Post: t.PostApplyChecksum}, nil
 }
 
-// dropStaged removes the staged files of dir, and the temporary ones.
-func dropStaged(dir string) error {
+// dropStaged removes the staged files of dir whose TXID drop says, and the
+// temporary ones.
+func dropStaged(dir string, drop func(ltx.TXID) bool) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if _, _, err := ltx.ParseFilename(name); err != nil && !strings.HasSuffix(name, ".tmp") {
+		if _, max, err := ltx.ParseFilename(name); err == nil && !drop(max) || err != nil && !strings.HasSuffix(name, ".tmp") {
 			continue
 		}
 		if err := os.Remove(filepath.Join(dir, name)); err != nil {

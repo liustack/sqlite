@@ -29,11 +29,12 @@ var ErrConflict = errors.New("replica: another replicator writes to the replica"
 
 // run uploads the staged files as the capturer stages them, until ctx is
 // done. A failed upload is tried again later, longer after each failure up
-// to a minute. A conflict stops it.
+// to a minute. After a conflict it only drops what is staged.
 func (r *Replica) run(ctx context.Context) {
 	defer close(r.done)
 	var retry <-chan time.Time
 	wait := time.Second
+	reported := false // the conflict
 	for {
 		select {
 		case <-ctx.Done():
@@ -49,8 +50,10 @@ func (r *Replica) run(ctx context.Context) {
 		case ctx.Err() != nil:
 			return
 		case errors.Is(err, ErrConflict):
-			r.report(err)
-			return
+			if !reported {
+				r.report(err)
+				reported = true
+			}
 		default:
 			r.report(err)
 			retry = time.After(wait)
@@ -61,14 +64,35 @@ func (r *Replica) run(ctx context.Context) {
 
 // upload uploads the staged files whose names are synced, in TXID order,
 // and removes those uploaded but the last staged, which the capturer
-// resumes from.
+// resumes from. It records its error in the status. ctx bounds the wait
+// for another upload too.
 func (r *Replica) upload(ctx context.Context) error {
-	r.upMu.Lock()
-	defer r.upMu.Unlock()
+	select {
+	case r.uploading <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-r.uploading }()
+	err := r.uploadFiles(ctx)
+	r.setStatus(func(s *Status) {
+		if !errors.Is(s.Err, ErrConflict) {
+			s.Err = err
+		}
+	})
+	return err
+}
+
+func (r *Replica) uploadFiles(ctx context.Context) error {
+	// Durable is 1 or more once capture.Open returns.
+	durable := r.c.Durable()
 	if err := r.conflict(); err != nil {
+		// What is staged can no longer go to the replica: only the last
+		// file is kept, which the capturer goes on from.
+		if derr := r.dropUploaded(durable - 1); derr != nil {
+			return derr
+		}
 		return err
 	}
-	durable := r.c.Durable()
 	for txid := r.uploaded() + 1; txid <= durable; txid++ {
 		if err := r.put(ctx, txid); err != nil {
 			if errors.Is(err, ErrConflict) {
@@ -76,7 +100,7 @@ func (r *Replica) upload(ctx context.Context) error {
 			}
 			return err
 		}
-		r.setStatus(func(s *Status) { s.Uploaded, s.Err = uint64(txid), nil })
+		r.setStatus(func(s *Status) { s.Uploaded = uint64(txid) })
 	}
 	return r.dropUploaded(min(r.uploaded(), durable-1))
 }

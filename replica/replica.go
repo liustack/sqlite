@@ -99,7 +99,7 @@ type Replica struct {
 	cancel context.CancelFunc
 	done   chan struct{} // closed when run returns
 
-	upMu sync.Mutex // one upload at a time
+	uploading chan struct{} // holds a value during an upload: one at a time
 
 	mu     sync.Mutex
 	status Status
@@ -139,7 +139,7 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Replica{cfg: cfg, client: client, path: path, done: make(chan struct{})}
+	r := &Replica{cfg: cfg, client: client, path: path, done: make(chan struct{}), uploading: make(chan struct{}, 1)}
 	r.status.Uploaded = uint64(end.txid)
 	r.c, err = capture.Open(name, capture.Options{
 		Interval: cfg.SyncInterval,
@@ -227,7 +227,7 @@ func (r *Replica) Sync(ctx context.Context) error {
 }
 
 // Close stages what is left, checkpoints, and uploads what is staged,
-// trying for 10 seconds. What it could not upload stays staged, for the
+// trying for 10 seconds, waiting for a Sync that uploads too. What it could not upload stays staged, for the
 // next New.
 func (r *Replica) Close() error {
 	r.cancel()

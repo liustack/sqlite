@@ -796,13 +796,19 @@ func (c *Capturer) resume(last ltx.Header, post ltx.Checksum) (bool, error) {
 	return true, nil
 }
 
-// restart drops the staged files and stages a full copy as r.TXID+1.
+// restart drops the staged files and stages a full copy as r.TXID+1. The
+// files after r.TXID go first, so that none is left behind the copy. Those
+// before go once it is placed: a crash between leaves either the copy to
+// go on from, or the old files, and the next start decides again.
 func (c *Capturer) restart(r Restart) error {
-	if err := dropStaged(c.dir); err != nil {
+	if err := dropStaged(c.dir, func(t ltx.TXID) bool { return t > r.TXID }); err != nil {
 		return err
 	}
 	c.txid, c.post = r.TXID, r.Post
-	return c.fullCopy(nil)
+	if err := c.fullCopy(nil); err != nil {
+		return err
+	}
+	return dropStaged(c.dir, func(t ltx.TXID) bool { return t <= r.TXID })
 }
 
 // setDurable records that the names of the staged files up to txid are

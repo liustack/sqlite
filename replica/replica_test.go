@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -346,6 +348,10 @@ func TestTwoReplicators(t *testing.T) {
 	if err := b.Sync(context.Background()); !errors.Is(err, ErrConflict) {
 		t.Fatalf("the second replicator again: %v, want ErrConflict", err)
 	}
+	// What it stages is dropped, but the last file.
+	if entries, err := os.ReadDir(b.c.Dir()); err != nil || len(entries) != 1 {
+		t.Fatalf("staged by the second replicator: %v %v", entries, err)
+	}
 	run(t, dbA, "INSERT INTO t VALUES ('a2')")
 	syncNow(t, a)
 	sameAs(t, cfg, name)
@@ -466,5 +472,50 @@ func TestLitestreamRestore(t *testing.T) {
 	}
 	if got := dump(t, restore("-txid", fmt.Sprintf("%016x", early))); got != earlyDump {
 		t.Fatalf("litestream restored at TXID %x\n%s\nthen\n%s", early, got, earlyDump)
+	}
+}
+
+// A store that lists an empty replica and refuses every write: the error of
+// the uploads is in the status, with no secret, and Close does not wait on
+// it.
+func TestStatusErr(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodGet && req.URL.Query().Get("list-type") == "2" {
+			fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>`)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>`)
+	}))
+	defer srv.Close()
+	const secret = "secret-0123456789"
+	cfg := Config{
+		URL:          "s3://bucket/app.db?endpoint=" + url.QueryEscape(srv.URL),
+		Credentials:  StaticCredentials(Credentials{AccessKeyID: "key", SecretAccessKey: secret}),
+		AllowHTTP:    true,
+		SingleWriter: true,
+		SyncInterval: time.Hour,
+	}
+	name := filepath.Join(t.TempDir(), "x.db")
+	r, err := New(context.Background(), name, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Sync(context.Background()); err == nil {
+		t.Fatal("Sync to a store that refuses writes: no error")
+	}
+	s := r.Status()
+	if s.Err == nil || s.Uploaded != 0 || s.Staged != 1 {
+		t.Fatalf("status %+v", s)
+	}
+	if strings.Contains(fmt.Sprintf("%v %+v", s.Err, s), secret) {
+		t.Fatalf("the status shows the secret: %v", s.Err)
+	}
+	start := time.Now()
+	if err := r.Close(); err == nil {
+		t.Fatal("Close with nothing uploaded: no error")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("Close took %v", d)
 	}
 }

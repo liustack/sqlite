@@ -730,3 +730,49 @@ func TestStartRestart(t *testing.T) {
 		t.Fatalf("header %+v", h)
 	}
 }
+
+// A restart into the staged files that stops once the full copy is placed
+// (here, its folder fails to sync) leaves the copy to go on from: the files
+// after it are gone already.
+func TestRestartStopped(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db := openApp(t, name)
+	for i := range 3 {
+		run(t, db, "CREATE TABLE t"+strconv.Itoa(i)+"(x)")
+		step(t, c)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	const post = ltx.ChecksumFlag | 12345
+	opt := testOptions(t)
+	opt.Start = func([]StagedFile) (*Restart, error) { return &Restart{TXID: 2, Post: post}, nil }
+	fail := errors.New("no sync")
+	n := 0 // the first sync is of the drop of the files after TXID 2
+	syncDir = func(string) error {
+		if n++; n == 1 {
+			return nil
+		}
+		return fail
+	}
+	_, err := Open(name, opt)
+	syncDir = syncDirFS
+	if !errors.Is(err, fail) {
+		t.Fatalf("Open: %v", err)
+	}
+	files, err := stagedFiles(stageDir(realPath(t, name)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 || files[2].TXID != 3 || files[2].Pre != post {
+		t.Fatalf("staged after the stopped restart: %+v", files)
+	}
+	opt.Start = nil
+	c = open(t, name, opt)
+	if c.TXID() != 3 || c.FullCopies() != 0 {
+		t.Fatalf("TXID %s, %d full copies", c.TXID(), c.FullCopies())
+	}
+}
