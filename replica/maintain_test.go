@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -556,7 +557,12 @@ func TestCompactOverlap(t *testing.T) {
 // What a compaction killed on the way left is removed when the next New
 // starts.
 func TestCompactLeftovers(t *testing.T) {
-	name := filepath.Join(t.TempDir(), "x.db")
+	// A name that is no glob pattern.
+	dir := filepath.Join(t.TempDir(), "a[b*")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(dir, "x.db")
 	ltxDir := filepath.Join(name+"-replica", "ltx")
 	left := []string{filepath.Join(ltxDir, "compact"), filepath.Join(ltxDir, "compact-123")}
 	for _, d := range left {
@@ -572,5 +578,25 @@ func TestCompactLeftovers(t *testing.T) {
 		if _, err := os.Stat(d); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("%s is left (%v)", d, err)
 		}
+	}
+}
+
+// The files of a compaction are copies of the database: only the user of
+// the process reads them.
+func TestCompactDirMode(t *testing.T) {
+	stage := filepath.Join(t.TempDir(), "x.db-replica", "ltx", "0")
+	if err := os.MkdirAll(stage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := makeCompactDir(stage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && st.Mode().Perm() != 0o700 {
+		t.Fatalf("mode %v, want 0700", st.Mode().Perm())
 	}
 }

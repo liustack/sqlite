@@ -8,10 +8,13 @@ package replica
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/superfly/ltx"
 
@@ -69,12 +72,8 @@ func (r *Replica) compact(ctx context.Context, from, to int) (bool, error) {
 		return false, nil
 	}
 
-	// A process killed while it compacted left its files: they go first.
-	dir := r.compactDir()
-	if err := os.RemoveAll(dir); err != nil {
-		return false, err
-	}
-	if err := os.Mkdir(dir, 0o755); err != nil {
+	dir, err := makeCompactDir(r.c.Dir())
+	if err != nil {
 		return false, err
 	}
 	defer os.RemoveAll(dir)
@@ -176,22 +175,33 @@ func (r *Replica) download(ctx context.Context, f remoteFile, dir string) (*os.F
 	return file, h, t, nil
 }
 
-// compactDir is the folder a compaction downloads and writes its files in.
-// Compactions run one at a time.
-func (r *Replica) compactDir() string {
-	return filepath.Join(filepath.Dir(r.c.Dir()), "compact")
+// makeCompactDir makes the folder a compaction downloads and writes its
+// files in, beside the staging folder stage, empty. Compactions run one at
+// a time. The files are copies of the database: only the user reads them.
+func makeCompactDir(stage string) (string, error) {
+	// A process killed while it compacted left its files: they go first.
+	dir := filepath.Join(filepath.Dir(stage), "compact")
+	if err := os.RemoveAll(dir); err != nil {
+		return "", err
+	}
+	return dir, os.Mkdir(dir, 0o700)
 }
 
-// dropCompactions removes what compactions killed on the way left, also
-// the compact-* folders of earlier versions.
-func (r *Replica) dropCompactions() error {
-	old, err := filepath.Glob(filepath.Join(filepath.Dir(r.c.Dir()), "compact-*"))
-	if err != nil {
+// dropCompactions removes what compactions killed on the way left beside
+// the staging folder stage, also the compact-* folders of earlier versions.
+func dropCompactions(stage string) error {
+	parent := filepath.Dir(stage)
+	entries, err := os.ReadDir(parent)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
 		return err
 	}
-	for _, d := range append(old, r.compactDir()) {
-		if err := os.RemoveAll(d); err != nil {
-			return err
+	for _, e := range entries {
+		if n := e.Name(); n == "compact" || strings.HasPrefix(n, "compact-") {
+			if err := os.RemoveAll(filepath.Join(parent, n)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

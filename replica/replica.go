@@ -178,6 +178,10 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		cfg.schedule(&r.sched)
 	}
 	r.status.Uploaded = uint64(end.txid)
+	// Before staging, which may need the room they take.
+	if err := dropCompactions(capture.StageDir(name)); err != nil {
+		return nil, err
+	}
 	r.c, err = capture.Open(name, capture.Options{
 		Interval:         cfg.SyncInterval,
 		CheckpointFrames: cfg.checkpointFrames,
@@ -189,10 +193,6 @@ func New(ctx context.Context, name string, cfg Config) (*Replica, error) {
 		},
 	})
 	if err != nil {
-		return nil, err
-	}
-	if err := r.dropCompactions(); err != nil {
-		r.c.Close()
 		return nil, err
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
