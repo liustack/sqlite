@@ -913,7 +913,8 @@ func TestMergeManyStatements(t *testing.T) {
 	if n := mCount(t, db, "SELECT count(DISTINCT x) FROM t"); n != writers*each {
 		t.Fatalf("%d rows, want %d", n, writers*each)
 	}
-	if m := wl.stats.merged.Load() - merged0; m < 2*maxCached {
-		t.Fatalf("%d statements merged, want more than the cache holds", m)
+	// More than all the connections can cache: some made room.
+	if m := wl.stats.merged.Load() - merged0; m <= writers*maxCached {
+		t.Fatalf("%d statements merged, want more than %d connections cache", m, writers)
 	}
 }
