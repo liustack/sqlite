@@ -152,7 +152,8 @@ func TestCompleteErrorIn200(t *testing.T) {
 	}
 }
 
-// A list that goes back or never ends is an error.
+// A list that goes back or never ends is an error, also one whose pages
+// repeat the last object with new tokens.
 func TestListChecksPages(t *testing.T) {
 	for name, pages := range map[string][]string{
 		"out of order": {`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>t1</NextContinuationToken><Contents><Key>p/b</Key></Contents></ListBucketResult>`,
@@ -161,6 +162,10 @@ func TestListChecksPages(t *testing.T) {
 			`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>t1</NextContinuationToken><Contents><Key>p/b</Key></Contents></ListBucketResult>`},
 		"no token":     {`<ListBucketResult><IsTruncated>true</IsTruncated><Contents><Key>p/a</Key></Contents></ListBucketResult>`},
 		"other prefix": {`<ListBucketResult><Contents><Key>q/a</Key></Contents></ListBucketResult>`},
+		"repeats on new tokens": {`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>t1</NextContinuationToken><Contents><Key>p/a</Key></Contents></ListBucketResult>`,
+			`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>t2</NextContinuationToken><Contents><Key>p/a</Key></Contents></ListBucketResult>`,
+			`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>t1</NextContinuationToken><Contents><Key>p/a</Key></Contents></ListBucketResult>`},
+		"same key, other object": {`<ListBucketResult><Contents><Key>p/a</Key><Size>1</Size><ETag>"x"</ETag></Contents><Contents><Key>p/a</Key><Size>2</Size><ETag>"y"</ETag></Contents></ListBucketResult>`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			n := 0
@@ -564,4 +569,32 @@ func TestStalled(t *testing.T) {
 	bounded("put", func() error {
 		return c.Put(ctx, "put", bytes.NewReader(big), int64(len(big)), PutOptions{})
 	})
+}
+
+// A key listed twice in a row, the same object both times, is listed once:
+// MinIO does that while objects are written.
+func TestListRepeatedKey(t *testing.T) {
+	pages := []string{
+		`<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>t1</NextContinuationToken>` +
+			`<Contents><Key>p/a</Key><Size>1</Size><ETag>"x"</ETag></Contents>` +
+			`<Contents><Key>p/b</Key><Size>2</Size><ETag>"y"</ETag></Contents>` +
+			`<Contents><Key>p/b</Key><Size>2</Size><ETag>"y"</ETag></Contents></ListBucketResult>`,
+		`<ListBucketResult><Contents><Key>p/b</Key><Size>2</Size><ETag>"y"</ETag></Contents>` +
+			`<Contents><Key>p/c</Key><Size>3</Size><ETag>"z"</ETag></Contents></ListBucketResult>`,
+	}
+	n := 0
+	c := fakeStore(t, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, pages[n])
+		n++
+	})
+	var keys []string
+	for o, err := range c.List(context.Background(), "p/", "") {
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, o.Key)
+	}
+	if got := strings.Join(keys, " "); got != "p/a p/b p/c" {
+		t.Fatalf("listed %s, want p/a p/b p/c", got)
+	}
 }

@@ -259,6 +259,7 @@ type Object struct {
 func (c *Client) List(ctx context.Context, prefix, startAfter string) iter.Seq2[Object, error] {
 	return func(yield func(Object, error) bool) {
 		last, token := startAfter, ""
+		var prev Object // the last object given
 		for {
 			kv := []string{"list-type", "2"}
 			if c.listPage > 0 {
@@ -288,14 +289,23 @@ func (c *Client) List(ctx context.Context, prefix, startAfter string) iter.Seq2[
 				yield(Object{}, fmt.Errorf("s3: LIST %s: %w", prefix, err))
 				return
 			}
+			fresh := 0 // the objects of the page not given before
 			for _, o := range page.Contents {
+				// MinIO lists an object twice in a row at times while
+				// objects are written: the same object again says nothing
+				// new.
+				if prev.Key != "" && o.Key == prev.Key && o.Size == prev.Size &&
+					o.ETag == prev.ETag && o.LastModified.Equal(prev.LastModified) {
+					continue
+				}
 				// Checked so that a store that loops or skips is an error,
 				// not a wrong list.
 				if !strings.HasPrefix(o.Key, prefix) || o.Key <= last {
 					yield(Object{}, fmt.Errorf("s3: LIST %s: key %q out of order after %q", prefix, scrub(resp.Request, o.Key), scrub(resp.Request, last)))
 					return
 				}
-				last = o.Key
+				last, prev = o.Key, o
+				fresh++
 				if !yield(o, nil) {
 					return
 				}
@@ -305,6 +315,11 @@ func (c *Client) List(ctx context.Context, prefix, startAfter string) iter.Seq2[
 			}
 			if page.NextContinuationToken == "" || page.NextContinuationToken == token {
 				yield(Object{}, errors.New("s3: LIST "+prefix+": a truncated page with no new continuation token"))
+				return
+			}
+			// A page of repeats only would let a store loop on new tokens.
+			if len(page.Contents) > 0 && fresh == 0 {
+				yield(Object{}, errors.New("s3: LIST "+prefix+": a truncated page with no new key"))
 				return
 			}
 			token = page.NextContinuationToken
