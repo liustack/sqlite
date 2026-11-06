@@ -23,6 +23,9 @@
 // A result that may be longer than 1,000,000,000 bytes is an error, each
 // group the template names counted as long as its whole match.
 //
+// A pattern longer than 50,000 bytes (what SQLite takes for LIKE) or with
+// more than 100 groups is an error: the memory a match takes grows with both.
+//
 // A NULL argument gives NULL. A REAL argument is an error: write
 // CAST(x AS TEXT). A pattern that does not compile is the error of the
 // statement.
@@ -151,6 +154,14 @@ var cache struct {
 
 const cacheSize = 256
 
+// maxPattern and maxGroups bound the memory of a match, which grows with the
+// length of the pattern times its groups: at both, it stays near 16 MiB. The
+// length is what SQLite takes for a LIKE pattern.
+const (
+	maxPattern = 50000
+	maxGroups  = 100
+)
+
 func compile(p string) (*regexp.Regexp, error) {
 	cache.Lock()
 	re, ok := cache.m[p]
@@ -158,9 +169,15 @@ func compile(p string) (*regexp.Regexp, error) {
 	if ok {
 		return re, nil
 	}
+	if len(p) > maxPattern {
+		return nil, fmt.Errorf("regexp: the pattern is longer than %d bytes", maxPattern)
+	}
 	re, err := regexp.Compile(p)
 	if err != nil {
 		return nil, err
+	}
+	if re.NumSubexp() > maxGroups {
+		return nil, fmt.Errorf("regexp: the pattern has more than %d groups", maxGroups)
 	}
 	cache.Lock()
 	if cache.m == nil || len(cache.m) >= cacheSize {
