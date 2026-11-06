@@ -674,3 +674,46 @@ func TestCompactLeftoversLink(t *testing.T) {
 		t.Fatalf("%s is left (%v)", left, err)
 	}
 }
+
+// A merge stops once its context ends: ltx's Compactor does not look at
+// it, and the merge of a compaction would hold up Close.
+func TestMergeCanceled(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.manual = true // no upload but the Syncs of the test
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	syncNow(t, r)
+	from := ltx.TXID(r.Status().Uploaded) + 1
+	for i := range 3 {
+		run(t, db, fmt.Sprintf("INSERT INTO t VALUES (%d)", i))
+		if err := r.c.Sync(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var inputs []io.Reader
+	var first, last ltx.Header
+	var post ltx.Checksum
+	for txid := from; txid <= r.c.Durable(); txid++ {
+		b, err := os.ReadFile(filepath.Join(r.c.Dir(), ltx.FormatFilename(txid, txid)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		h, tr, err := capture.Verify(bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if txid == from {
+			first = h
+		}
+		last, post = h, tr.PostApplyChecksum
+		inputs = append(inputs, bytes.NewReader(b))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := merge(ctx, filepath.Join(t.TempDir(), "out.ltx"), inputs, first, last, post)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("a merge with its context ended: %v, want context.Canceled", err)
+	}
+}

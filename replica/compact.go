@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/superfly/ltx"
 
@@ -159,6 +160,10 @@ func makeCompactDir(dir string) error {
 // and checks it against them: it must start where first does, end where
 // last does, with the checksum post and the time of last.
 func merge(ctx context.Context, name string, inputs []io.Reader, first, last ltx.Header, post ltx.Checksum) error {
+	inputs = slices.Clone(inputs)
+	for i, in := range inputs {
+		inputs[i] = ctxReader{ctx, in}
+	}
 	out, err := os.Create(name)
 	if err != nil {
 		return err
@@ -181,7 +186,7 @@ func merge(ctx context.Context, name string, inputs []io.Reader, first, last ltx
 	if _, err := out.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	h, tr, err := capture.Verify(out)
+	h, tr, err := capture.Verify(ctxReader{ctx, out})
 	if err != nil {
 		return fmt.Errorf("the file merged from TXIDs %s to %s: %w", first.MinTXID, last.MaxTXID, err)
 	}
@@ -190,4 +195,18 @@ func merge(ctx context.Context, name string, inputs []io.Reader, first, last ltx
 		return fmt.Errorf("the file merged from TXIDs %s to %s does not match the files merged", first.MinTXID, last.MaxTXID)
 	}
 	return nil
+}
+
+// ctxReader is r, failing once ctx is done: ltx's Compactor does not look
+// at its context, and a merge of many large files would go on after it.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
