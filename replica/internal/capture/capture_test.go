@@ -1684,7 +1684,8 @@ func TestStagingLimitReopen(t *testing.T) {
 		if n := staged(); n > opt.Limit+2*st.Size()+16<<10 {
 			t.Fatalf("open %d: %d bytes staged, the limit is %d", i, n, opt.Limit)
 		}
-		if err := c.Close(); err != nil {
+		// Staging is stopped: Close says what is committed is not staged.
+		if err := c.Close(); err != nil && !errors.Is(err, ErrStagingFull) {
 			t.Fatal(err)
 		}
 		// The WAL starts over: the staged files cannot go on.
@@ -1770,4 +1771,50 @@ func TestCloseHolds(t *testing.T) {
 	c.Unlock()
 	c = open(t, name, testOptions(t))
 	c.Close()
+}
+
+// Close with staging stopped at the limit leaves what was committed since
+// unstaged: it says so, so that a caller does not take the staging for whole.
+// It does also when a write transaction keeps it from checkpointing.
+func TestCloseStagingStopped(t *testing.T) {
+	for _, busy := range []bool{false, true} {
+		t.Run(map[bool]string{false: "idle", true: "busy"}[busy], func(t *testing.T) {
+			name := filepath.Join(t.TempDir(), "x.db")
+			opt := testOptions(t)
+			opt.Limit = 1
+			c := open(t, name, opt)
+			db := openApp(t, name)
+			run(t, db, "CREATE TABLE t(x)")
+			for i := 0; ; i++ {
+				run(t, db, "INSERT INTO t VALUES (1)")
+				err := c.Sync(context.Background())
+				if errors.Is(err, ErrStagingFull) {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if i == 10 {
+					t.Fatal("staging did not stop")
+				}
+			}
+			run(t, db, "INSERT INTO t VALUES (2)")
+			if busy {
+				tx, err := db.Begin()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer tx.Rollback()
+				if _, err := tx.Exec("INSERT INTO t VALUES (3)"); err != nil {
+					t.Fatal(err)
+				}
+				wait := closeWait
+				closeWait = 50 * time.Millisecond
+				t.Cleanup(func() { closeWait = wait })
+			}
+			if err := c.Close(); !errors.Is(err, ErrStagingFull) {
+				t.Fatalf("Close with staging stopped: %v, want ErrStagingFull", err)
+			}
+		})
+	}
 }
