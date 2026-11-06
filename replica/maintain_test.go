@@ -601,8 +601,9 @@ func TestCompactOverlap(t *testing.T) {
 // What a compaction killed on the way left is removed when the next New
 // starts.
 func TestCompactLeftovers(t *testing.T) {
-	// A name that is no glob pattern.
-	dir := filepath.Join(t.TempDir(), "a[b*")
+	// A name that is a glob pattern, which matches "abc" and not itself, and
+	// one windows takes.
+	dir := filepath.Join(t.TempDir(), "a[b]c")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

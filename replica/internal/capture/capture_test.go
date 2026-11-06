@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"io/fs"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -382,7 +383,9 @@ func TestCaptureCheckpoint(t *testing.T) {
 
 // crashImage copies the files of the database name, its WAL and its staging
 // folder, as a crash of the process would leave them: nothing is closed or
-// checkpointed. It returns the name of the copy.
+// checkpointed. The lock of the staging went with the process: the copy has
+// the file, empty, and windows would not let its locked bytes be read. It
+// returns the name of the copy.
 func crashImage(t *testing.T, name string) string {
 	t.Helper()
 	copy := filepath.Join(t.TempDir(), "crashed.db")
@@ -395,7 +398,24 @@ func crashImage(t *testing.T, name string) string {
 			t.Fatal(err)
 		}
 	}
-	if err := os.CopyFS(copy+"-replica", os.DirFS(name+"-replica")); err != nil {
+	staged := os.DirFS(name + "-replica")
+	err := fs.WalkDir(staged, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(copy+"-replica", filepath.FromSlash(p))
+		if d.IsDir() {
+			return os.MkdirAll(to, 0o755)
+		}
+		var b []byte
+		if p != "lock" {
+			if b, err = fs.ReadFile(staged, p); err != nil {
+				return err
+			}
+		}
+		return os.WriteFile(to, b, 0o644)
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	return copy
