@@ -22,21 +22,21 @@ It is for Go programs that keep their data in SQLite and want to stay plain Go: 
 Time per operation, lower is better, the median of 6 runs. The best of a row is in bold when its 95% confidence interval overlaps no other driver's. WAL, `synchronous=NORMAL`, the same settings checked on every driver.
 
 <!-- bench:readme-linux-amd64 -->
-**linux/amd64** (AMD EPYC 7B13, Go 1.27.2, commit `cc1ede5`):
+**linux/amd64** (AMD EPYC 7B13, Go 1.27.2, commit `bc87680`):
 
 | Workload | this driver | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| Insert one row | **18.7 µs** | 19.6 µs | 23.4 µs | 21.5 µs |
-| Insert 1000 rows in a transaction | **1.30 ms** | 1.47 ms | 1.94 ms | 1.67 ms |
-| Read one row by key | **3.58 µs** | 6.70 µs | 8.45 µs | 6.54 µs |
-| Read 100k rows | **34.9 ms** | 73.4 ms | 76.4 ms | 50.2 ms |
-| Join and group | 2.87 ms | **2.63 ms** | 4.51 ms | 4.37 ms |
-| Find a user with 400 comments | **509 µs** | 830 µs | 1.05 ms | 762 µs |
-| Read 100 rows of 200 KB text | 8.85 ms | **6.99 ms** | 8.13 ms | 8.02 ms |
-| Read by key, 8 threads | **1.65 µs** | 2.00 µs | 2.18 µs | 2.29 µs |
-| Insert, 8 goroutines at once | **9.43 µs** | 19.4 µs | 24.2 µs | 21.9 µs |
-| Insert, 64 goroutines at once | **3.40 µs** | 20.2 µs | 27.0 µs | 27.0 µs |
-| Insert, 64 goroutines, `synchronous=FULL` | **21.0 µs** | 2.48 ms | 5.31 ms | 1.12 ms |
+| Insert one row | **18.5 µs** | 19.5 µs | 22.9 µs | 21.0 µs |
+| Insert 1000 rows in a transaction | **1.30 ms** | 1.46 ms | 1.95 ms | 1.65 ms |
+| Read one row by key | **3.61 µs** | 6.69 µs | 8.32 µs | 6.53 µs |
+| Read 100k rows | **34.4 ms** | 72.0 ms | 71.3 ms | 50.7 ms |
+| Join and group | 2.87 ms | **2.62 ms** | 4.50 ms | 4.34 ms |
+| Find a user with 400 comments | **514 µs** | 836 µs | 1.01 ms | 755 µs |
+| Read 100 rows of 200 KB text | 7.23 ms | **6.77 ms** | 7.89 ms | 7.81 ms |
+| Read by key, 8 threads | 1.69 µs | 2.31 µs | 2.25 µs | 2.09 µs |
+| Insert, 8 goroutines at once | **9.56 µs** | 19.3 µs | 24.7 µs | 21.8 µs |
+| Insert, 64 goroutines at once | **3.60 µs** | 20.3 µs | 27.6 µs | 26.6 µs |
+| Insert, 64 goroutines, `synchronous=FULL` | **21.3 µs** | 2.29 ms | 4.26 ms | 1.10 ms |
 <!-- /bench:readme-linux-amd64 -->
 
 <!-- bench:readme-darwin-arm64 -->
