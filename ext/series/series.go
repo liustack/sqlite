@@ -76,6 +76,9 @@ func (table) Schema() string {
 func (table) BestIndex(info *sqlite.IndexInfo) error {
 	idxNum := 0
 	startSeen := false
+	// valueLater says a constraint on value would give the start, but not
+	// in this plan: in a join, the other table has to come first.
+	valueLater := false
 	unusable := 0
 	// The constraints on start, stop, step, LIMIT, OFFSET, value= or >= or
 	// >, value<= or <.
@@ -95,6 +98,12 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			continue
 		}
 		if c.Column < colStart {
+			if (c.Column == colValue || c.Column == colRowID) && !c.Usable {
+				switch op {
+				case sqlite.IndexEQ, sqlite.IndexIs, sqlite.IndexGE, sqlite.IndexGT:
+					valueLater = true
+				}
+			}
 			if (c.Column == colValue || c.Column == colRowID) && c.Usable {
 				switch op {
 				case sqlite.IndexEQ, sqlite.IndexIs:
@@ -156,6 +165,9 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 		}
 	}
 	if !startSeen {
+		if valueLater {
+			return sqlite.ErrUnusablePlan
+		}
 		return errors.New(`first argument to "generate_series()" missing or unusable`)
 	}
 	if unusable&^idxNum != 0 {

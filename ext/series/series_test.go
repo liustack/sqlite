@@ -113,3 +113,16 @@ func TestRealEnds(t *testing.T) {
 		n(bottom, `value = -9223372036854775808.0`):  "1",
 	})
 }
+
+// TestJoinOnValue: a join that gives the start through value from another
+// table. The planner also tries the order with generate_series first, where
+// the constraint is not usable: that plan is refused, not the statement.
+// SQLite's own fails it.
+func TestJoinOnValue(t *testing.T) {
+	db := sqltest.Open(t, series.Option())
+	sqltest.Want(t, db, map[string]string{
+		`WITH t(x) AS (VALUES (1), (2)) SELECT group_concat(s.value) FROM t JOIN generate_series s ON s.value = t.x`:             "1,2",
+		`WITH t(x) AS (VALUES (1), (2)) SELECT group_concat(s.value) FROM t CROSS JOIN generate_series s ON s.value = t.x`:       "1,2",
+		`WITH t(x) AS (VALUES (5)) SELECT group_concat(s.value) FROM t JOIN generate_series s ON s.value >= t.x AND s.value < 8`: "5,6,7",
+	})
+}
