@@ -152,14 +152,26 @@ func TestReplaceManyGroups(t *testing.T) {
 func TestPatternLimits(t *testing.T) {
 	db := sqltest.Open(t, regexp.Option())
 	var n int
-	ok := strings.Repeat("(a)", 100) + strings.Repeat("b", 50000-300)
-	if err := db.QueryRow(`SELECT regexp_like('x', ?)`, ok).Scan(&n); err != nil {
-		t.Fatalf("a pattern at both limits: %v", err)
+	for _, ok := range []string{
+		strings.Repeat("b", 50000),
+		strings.Repeat("(a)", 100) + strings.Repeat("b", 10000),
+		"(a?){1000}",
+		"[a-z]{2,1000}",
+	} {
+		if err := db.QueryRow(`SELECT regexp_like('x', ?)`, ok).Scan(&n); err != nil {
+			t.Fatalf("a pattern within the limits, %d bytes: %v", len(ok), err)
+		}
 	}
+	big := "regexp: the pattern is too large with its repeats written out"
 	for _, c := range []struct{ pattern, err string }{
 		{strings.Repeat("b", 50001), "regexp: the pattern is longer than 50000 bytes"},
 		{strings.Repeat("(a)", 101), "regexp: the pattern has more than 100 groups"},
 		{strings.Repeat("(?P<n>a)", 101), "regexp: the pattern has more than 100 groups"},
+		{"(?:" + strings.Repeat("(a?)", 100) + "){512}", big},
+		{"(?:" + strings.Repeat("a", 2000) + "){100}", big},
+		{strings.Repeat("(?:a?){1000}", 51), big},
+		{strings.Repeat("(a?)", 100) + strings.Repeat("a?", 24800), big},
+		{strings.Repeat("(a)", 100) + strings.Repeat("b", 10100), big},
 	} {
 		for _, q := range []string{`SELECT regexp_like('x', ?)`, `SELECT regexp_substr('x', ?)`, `SELECT regexp_replace('x', ?, 'y')`, `SELECT 'x' REGEXP ?`} {
 			err := db.QueryRow(q, c.pattern).Scan(new(any))
