@@ -148,44 +148,44 @@ Allocations per op, lower is better:
 ## darwin/arm64
 
 <!-- bench:darwin-arm64 -->
-Commit `90e0e83`, Go 1.27.2, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 threads, 2026-11-04. The median of 6 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.74 2.04 2.23, after: 6.79 5.38 4.28. Other work ran on the machine: read differences under 30% as noise.
+Commit `92ec4bf`, Go 1.27.2, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 threads, 2026-11-06. The median of 6 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 7.03 3.81 3.05, after: 3.93 3.57 3.26. Other work ran on the machine: read differences under 30% as noise.
 
 Time per op, lower is better:
 
 | Benchmark | this driver | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert | 6.32 µs ±16% | 6.21 µs ±28% | 7.96 µs ±19% | 7.00 µs ±9% |
-| InsertTx | **456 µs** ±8% | 594 µs ±35% | 748 µs ±20% | 583 µs ±22% |
-| Point | **1.12 µs** ±10% | 1.96 µs ±22% | 2.86 µs ±71% | 2.07 µs ±14% |
-| Scan | **14.4 ms** ±19% | 31.6 ms ±18% | 30.1 ms ±23% | 20.7 ms ±17% |
-| Aggregate | 1.56 ms ±15% | 1.19 ms ±18% | 2.65 ms ±33% | 1.90 ms ±17% |
-| PointParallel | 1.29 µs ±36% | 1.69 µs ±34% | 1.79 µs ±73% | 2.49 µs ±9% |
-| InsertParallel/g=1 | 6.29 µs ±15% | 6.26 µs ±4% | 7.33 µs ±55% | 6.91 µs ±15% |
-| InsertParallel/g=8 | **3.30 µs** ±28% | 6.94 µs ±6% | 8.12 µs ±19% | 43.5 µs ±53% |
-| InsertParallel/g=64 | **1.37 µs** ±31% | 9.53 µs ±12% | 8.28 ms ±100% | 83.3 µs ±24% |
-| InsertParallelFull/g=1 | 61.5 µs ±35% | 83.0 µs ±31% | 64.8 µs ±71% | 61.1 µs ±17% |
-| InsertParallelFull/g=8 | **19.8 µs** ±62% | 94.7 µs ±26% | 120 µs ±33% | 54.7 µs ±50% |
-| InsertParallelFull/g=64 | **2.33 µs** ±19% | 158 µs ±52% | 22.0 ms ±84% | 87.3 µs ±16% |
-| Real/insert | 578 µs ±16% | 569 µs ±71% | 1.05 ms ±17% | 718 µs ±12% |
-| Real/query | **236 µs** ±17% | 396 µs ±16% | 594 µs ±7% | 345 µs ±4% |
-| Many/n=10 | **2.93 µs** ±40% | 5.48 µs ±58% | 5.51 µs ±6% | 4.45 µs ±4% |
-| Many/n=100 | 19.8 µs ±38% | 38.7 µs ±10% | 37.0 µs ±9% | 26.9 µs ±12% |
-| Many/n=1000 | **196 µs** ±17% | 377 µs ±68% | 351 µs ±6% | 254 µs ±12% |
-| Large/size=50k | 1.00 ms ±17% | 971 µs ±191% | 1.01 ms ±21% | 873 µs ±22% |
-| Large/size=200k | 4.87 ms ±30% | 3.58 ms ±19% | 3.99 ms ±16% | 3.64 ms ±13% |
-| Readers/g=2 | 8.76 ms ±112% | 19.2 ms ±17% | 16.7 ms ±22% | 11.4 ms ±26% |
-| Readers/g=4 | 6.39 ms ±41% | 13.7 ms ±24% | 12.2 ms ±14% | 7.80 ms ±26% |
-| Readers/g=8 | 5.59 ms ±24% | 11.5 ms ±40% | 9.68 ms ±19% | 6.37 ms ±31% |
-| ReadWrite | 2.04 µs ±36% | 3.41 µs ±33% | 2.83 µs ±26% | 5.10 µs ±6% |
-| geomean | 78.3 µs | 152 µs | 281 µs | 159 µs |
+| Insert | 6.28 µs ±4% | 5.93 µs ±17% | 7.40 µs ±7% | 6.92 µs ±2% |
+| InsertTx | 479 µs ±22% | 556 µs ±12% | 739 µs ±3% | 570 µs ±8% |
+| Point | **1.15 µs** ±57% | 1.93 µs ±18% | 2.78 µs ±2% | 2.06 µs ±12% |
+| Scan | **14.2 ms** ±9% | 30.0 ms ±40% | 29.8 ms ±3% | 20.4 ms ±11% |
+| Aggregate | 1.34 ms ±13% | **1.14 ms** ±15% | 2.62 ms ±1% | 1.85 ms ±19% |
+| PointParallel | **1.17 µs** ±7% | 1.49 µs ±4% | 1.74 µs ±5% | 2.37 µs ±12% |
+| InsertParallel/g=1 | 6.24 µs ±10% | 6.01 µs ±4% | 7.31 µs ±3% | 7.01 µs ±12% |
+| InsertParallel/g=8 | **3.09 µs** ±5% | 6.86 µs ±84% | 8.15 µs ±10% | 36.8 µs ±19% |
+| InsertParallel/g=64 | **1.16 µs** ±14% | 10.0 µs ±17% | 5.65 ms ±77% | 81.1 µs ±19% |
+| InsertParallelFull/g=1 | 64.2 µs ±63% | 52.0 µs ±58% | 53.9 µs ±39% | 58.0 µs ±191% |
+| InsertParallelFull/g=8 | **12.4 µs** ±102% | 55.5 µs ±56% | 106 µs ±57% | 51.3 µs ±275% |
+| InsertParallelFull/g=64 | **1.66 µs** ±144% | 108 µs ±86% | 29.5 ms ±26% | 88.2 µs ±71% |
+| Real/insert | 570 µs ±2% | 586 µs ±6% | 1.01 ms ±1% | 742 µs ±7% |
+| Real/query | **226 µs** ±1% | 367 µs ±3% | 553 µs ±5% | 341 µs ±9% |
+| Many/n=10 | **2.75 µs** ±15% | 4.94 µs ±2% | 5.30 µs ±2% | 4.37 µs ±7% |
+| Many/n=100 | **19.6 µs** ±19% | 34.6 µs ±3% | 33.1 µs ±0% | 26.7 µs ±7% |
+| Many/n=1000 | **193 µs** ±11% | 339 µs ±2% | 319 µs ±1% | 252 µs ±2% |
+| Large/size=50k | 820 µs ±8% | 812 µs ±20% | 899 µs ±5% | 871 µs ±10% |
+| Large/size=200k | 3.39 ms ±6% | 3.36 ms ±20% | 3.73 ms ±14% | 3.62 ms ±4% |
+| Readers/g=2 | **7.74 ms** ±5% | 16.0 ms ±18% | 15.8 ms ±1% | 11.4 ms ±16% |
+| Readers/g=4 | **5.27 ms** ±18% | 10.7 ms ±20% | 10.2 ms ±74% | 7.67 ms ±68% |
+| Readers/g=8 | **4.68 ms** ±17% | 9.12 ms ±24% | 8.65 ms ±22% | 6.45 ms ±22% |
+| ReadWrite | **1.43 µs** ±16% | 2.28 µs ±11% | 2.54 µs ±11% | 4.86 µs ±8% |
+| geomean | 69.5 µs | 131 µs | 262 µs | 155 µs |
 
 Rates, higher is better:
 
 | Benchmark | this driver | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Large/size=50k | 5000 MB/s ±14% | 5170 MB/s ±66% | 4976 MB/s ±17% | 5728 MB/s ±18% |
-| Large/size=200k | 4114 MB/s ±23% | 5592 MB/s ±16% | 5014 MB/s ±14% | 5490 MB/s ±12% |
-| ReadWrite | 23887 writes/s ±46% | 13377 writes/s ±21% | 24145 writes/s ±23% | 19710 writes/s ±5% |
+| Large/size=50k | 6094 MB/s ±8% | 6159 MB/s ±16% | 5562 MB/s ±5% | 5743 MB/s ±9% |
+| Large/size=200k | 5906 MB/s ±6% | 5949 MB/s ±17% | 5365 MB/s ±12% | 5523 MB/s ±4% |
+| ReadWrite | **32601 writes/s** ±9% | 16171 writes/s ±11% | 27775 writes/s ±8% | 20503 writes/s ±7% |
 
 Allocations per op, lower is better:
 
@@ -198,18 +198,18 @@ Allocations per op, lower is better:
 | Aggregate | **1.01k** | 2.00k | 2.01k | **1.01k** |
 | PointParallel | **13** | 18 | 30 | 19 |
 | InsertParallel/g=1 | **4** | 5 | 6 | 5 |
-| InsertParallel/g=8 | 9 | **5** | 6 | **5** |
-| InsertParallel/g=64 | 9 | **5** | 38 | 7 |
+| InsertParallel/g=8 | 11 | **6** | 7 | **6** |
+| InsertParallel/g=64 | 10 | **6** | 32 | 8 |
 | InsertParallelFull/g=1 | **4** | 5 | 6 | 5 |
-| InsertParallelFull/g=8 | 9 | **5** | 6 | **5** |
-| InsertParallelFull/g=64 | 9 | **5** | 77 | 7 |
+| InsertParallelFull/g=8 | 10 | **6** | 7 | **6** |
+| InsertParallelFull/g=64 | 10 | **6** | 77 | 8 |
 | Real/insert | 4.22k | 4.65k | 5.05k | **2.97k** |
-| Real/query | **4.44k** | 7.90k | 7.93k | **4.44k** |
+| Real/query | **4.44k** | 7.91k | 7.93k | **4.44k** |
 | Many/n=10 | **57** | 78 | 90 | 67 |
 | Many/n=100 | **507** | 708 | 720 | 517 |
 | Many/n=1000 | **5.75k** | 8.50k | 8.51k | 5.76k |
 | Large/size=50k | **407** | 608 | 620 | 417 |
-| Large/size=200k | **407** | 609 | 620 | 417 |
+| Large/size=200k | **407** | 608 | 621 | 417 |
 | Readers/g=2 | **400k** | 800k | 800k | **400k** |
 | Readers/g=4 | **400k** | 800k | 800k | **400k** |
 | Readers/g=8 | **400k** | 800k | 800k | **400k** |
@@ -253,7 +253,7 @@ MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -coun
 - **Many writers** are where group commit shows: from 8 writers up, one commit carries many inserts. At 64 writers an insert costs 3.40 µs against 20 to 27 µs with the other drivers (8 threads). With `synchronous=FULL` the gap grows with the cost of a commit: at 64 writers an insert costs 19 to 21 µs against 0.94 to 33 ms. On the busy Mac, modernc at 64 writers spends its time in SQLite's busy handler, whose sleeps grow while the writer that holds the lock waits for a thread.
 - **Readers next to a writer** (ReadWrite, 8 threads): this driver serves the readers fastest (2.59 µs a read against 3.34 to 5.85 µs), and ncruces lets the writer do the most (28.8k writes a second against 18.0k).
 - **One writer** (Insert) is close to mattn on both machines. The time goes to the WAL write and the locks SQLite's protocol asks for, the same system calls for every driver.
-- **Join and group** (Aggregate), which is all work inside the engine, is 9% (linux) to 31% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
+- **Join and group** (Aggregate), which is all work inside the engine, is 9% (linux) to 18% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
 - **Large text values** are read slower than with every other driver: 100 rows of 200 KB take 8.85 ms against 6.99 to 8.13 ms on linux. Where that time goes is not measured yet.
 - **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`, Go 1.27), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
 - **Point on linux** includes one `fstat` per query, for every driver: when the WAL is empty, as it is in a fresh copy of the fixture, SQLite reads the size of the database file at the start of each read. A system call costs about 0.8 µs on this VM, which is most of the gap between linux and darwin in that row.
