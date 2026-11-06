@@ -138,3 +138,126 @@ func exactVarPop(vals []any) float64 {
 	out, _ := m2.Quo(m2, n).Float64()
 	return out
 }
+
+// TestEdges: values that mix a base, a scale and the ends of int64 and
+// float64.
+func TestEdges(t *testing.T) {
+	db := sqltest.Open(t, stats.Option())
+	sqltest.Want(t, db, map[string]string{
+		// A second overflow after the scale is set leaves it as it was.
+		`SELECT stddev_pop(column1) FROM (VALUES (1.7976931348623157e308), (-1.7976931348623157e308), (-1.7976931348623157e308), (1.7976931348623157e308))`: "1.7976931348623157e+308",
+		// The sum of squares, scaled down, does not round to zero.
+		`SELECT stddev_pop(column1) FROM (VALUES (1e300), (-1e300), (1e-300))`: "8.164965809277261e+299",
+		// Small values neither underflow.
+		`SELECT stddev_pop(column1) FROM (VALUES (0), (2e-200))`: "1e-200",
+		`SELECT var_pop(column1) FROM (VALUES (0), (2e-150))`:    "1e-300",
+		`SELECT stddev_pop(column1) FROM (VALUES (0), (1e-320))`: "5e-321",
+		// An INTEGER base keeps the fraction of a REAL near it.
+		`SELECT var_pop(column1) FROM (VALUES (-1), (-0.9999999999999716))`: "2.0194839173657902e-28",
+		// A REAL base that is an integer keeps INTEGER values past 2^53.
+		`SELECT var_pop(column1) FROM (VALUES (9007199254740992.0), (9007199254740993))`:                              "0.25",
+		`SELECT var_pop(column1) FROM (VALUES (9.2233720368547758e18), (9223372036854775807), (9223372036854775806))`: "0.6666666666666666",
+	})
+}
+
+// TestRandomEdges compares with the exact variance on short runs of values
+// drawn from the ends of the ranges.
+func TestRandomEdges(t *testing.T) {
+	db := sqltest.Open(t, stats.Option())
+	r := rand.New(rand.NewPCG(3, 4))
+	pick := []func() any{
+		func() any { return int64(1<<53) + r.Int64N(16) - 8 },
+		func() any { return float64(int64(1<<53) + r.Int64N(16) - 8) },
+		func() any { return math.MaxInt64 - r.Int64N(4096) },
+		func() any { return math.MinInt64 + r.Int64N(4096) },
+		func() any { return float64(r.Int64N(5) - 2) },
+		func() any { return float64(r.Int64N(5)-2) + r.Float64()*0x1p-40 },
+		func() any { return r.Int64N(5) - 2 },
+		func() any { return math.MaxFloat64 * (2*r.Float64() - 1) },
+		func() any { return math.Ldexp(2*r.Float64()-1, 450+r.IntN(10)-5) },
+		func() any { return math.Ldexp(2*r.Float64()-1, -1074+r.IntN(60)) },
+		func() any { return math.Ldexp(2*r.Float64()-1, r.IntN(2046)-1022) },
+		func() any { return 0x1p63 * (1 - r.Float64()*0x1p-50) },
+		func() any { return -0x1p63 },
+	}
+	fns := []string{"var_pop", "stddev_pop", "var_samp", "stddev_samp"}
+	for i := range 20000 {
+		n := 2 + r.IntN(5)
+		vals := make([]any, n)
+		q := `FROM (VALUES (?)`
+		for j := range vals {
+			vals[j] = pick[r.IntN(len(pick))]()
+			if j > 0 {
+				q += `, (?)`
+			}
+		}
+		q += `)`
+		want := exactMoments(vals)
+		for k, w := range want {
+			var got float64
+			err := db.QueryRow(`SELECT `+fns[k]+`(column1) `+q, vals...).Scan(&got)
+			if math.IsInf(w, 0) {
+				if err == nil {
+					t.Errorf("case %d %v: result %d = %g, want an overflow", i, vals, k, got)
+				}
+				continue
+			}
+			if err != nil {
+				if w < math.MaxFloat64*(1-1e-12) {
+					t.Errorf("case %d %v: result %d: %v, want %g", i, vals, k, err, w)
+				}
+				continue
+			}
+			if !close(got, w) {
+				t.Errorf("case %d %v: result %d = %g, want %g", i, vals, k, got, w)
+			}
+		}
+		if t.Failed() {
+			return
+		}
+	}
+}
+
+func close(got, want float64) bool {
+	const tiny = 0x1p-1022
+	if math.Abs(want) < tiny {
+		// A subnormal result keeps fewer bits.
+		return math.Abs(got-want) <= 4*0x1p-1074
+	}
+	return math.Abs(got-want) <= 1e-12*math.Abs(want)
+}
+
+// exactMoments is var_pop, stddev_pop, var_samp and stddev_samp of vals,
+// rounded once to a float64 (+Inf when past it).
+func exactMoments(vals []any) [4]float64 {
+	const prec = 4096
+	f := func(v any) *big.Float {
+		x := new(big.Float).SetPrec(prec)
+		switch v := v.(type) {
+		case int64:
+			x.SetInt64(v)
+		case float64:
+			x.SetFloat64(v)
+		}
+		return x
+	}
+	n := new(big.Float).SetPrec(prec).SetInt64(int64(len(vals)))
+	sum := new(big.Float).SetPrec(prec)
+	for _, v := range vals {
+		sum.Add(sum, f(v))
+	}
+	mean := new(big.Float).SetPrec(prec).Quo(sum, n)
+	m2 := new(big.Float).SetPrec(prec)
+	for _, v := range vals {
+		d := f(v)
+		d.Sub(d, mean)
+		m2.Add(m2, d.Mul(d, d))
+	}
+	var out [4]float64
+	for i, div := range []int64{int64(len(vals)), int64(len(vals)) - 1} {
+		v := new(big.Float).SetPrec(prec).Quo(m2, new(big.Float).SetInt64(div))
+		out[2*i], _ = v.Float64()
+		out[2*i+1], _ = new(big.Float).SetPrec(prec).Sqrt(v).Float64()
+	}
+	return out
+}
