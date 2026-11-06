@@ -1170,3 +1170,41 @@ func openAll(t *testing.T, db *sql.DB, n int) {
 		}
 	}
 }
+
+// TestBusyTimeoutSetByPrepare: SQLite sets busy_timeout when it prepares the
+// PRAGMA, so the write lock waits as long even when the statement never runs.
+func TestBusyTimeoutSetByPrepare(t *testing.T) {
+	for _, how := range []string{"refused query", "prepare only"} {
+		db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+		db.SetMaxOpenConns(2)
+		mExec(t, db, `CREATE TABLE t(x)`)
+		c, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if how == "refused query" {
+			if _, err := c.QueryContext(t.Context(), `PRAGMA busy_timeout = 0; SELECT 1`); err == nil {
+				t.Fatal("a query of two statements ran")
+			}
+		} else {
+			s, err := c.PrepareContext(t.Context(), `PRAGMA busy_timeout = 0`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Close()
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mExec(t, tx, `INSERT INTO t VALUES (1)`)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		_, err = c.ExecContext(ctx, `INSERT INTO t VALUES (2)`)
+		cancel()
+		if err == nil || errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("%s: %v, want busy at once", how, err)
+		}
+		tx.Rollback()
+		c.Close()
+	}
+}

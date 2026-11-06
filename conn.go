@@ -77,7 +77,7 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 	if c.c.Broken() {
 		return nil, "", driver.ErrBadConn
 	}
-	s, tail, err := c.c.Prepare(query)
+	s, tail, err := c.prepare(query)
 	if err != nil {
 		return nil, "", err
 	}
@@ -85,11 +85,8 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 		return nil, "", errors.New("sqlite: no statement in the query")
 	}
 	if strings.TrimSpace(tail) != "" {
-		next, _, err := c.c.Prepare(tail)
+		next, _, err := c.prepare(tail)
 		if next != nil {
-			if next.ChangesConn() {
-				c.readBusyTimeout()
-			}
 			next.Finalize()
 			err = errors.New("sqlite: a prepared statement or a query takes one statement: use Exec for several")
 		}
@@ -99,6 +96,17 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 		}
 	}
 	return s, query[:len(query)-len(tail)], nil
+}
+
+// prepare prepares the first statement of query. SQLite runs a PRAGMA that
+// sets busy_timeout as it prepares it, so the write lock reads it again then,
+// whether the statement runs or not.
+func (c *conn) prepare(query string) (*csqlite.Stmt, string, error) {
+	s, tail, err := c.c.Prepare(query)
+	if s != nil && s.ChangesConn() {
+		c.readBusyTimeout()
+	}
+	return s, tail, err
 }
 
 func newStmt(c *conn, s *csqlite.Stmt, sql string, once bool) *stmt {
@@ -252,7 +260,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	}
 	var res result
 	for {
-		s, tail, err := c.c.Prepare(query)
+		s, tail, err := c.prepare(query)
 		if err != nil {
 			return nil, err
 		}
