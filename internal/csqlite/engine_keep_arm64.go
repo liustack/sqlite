@@ -526,6 +526,7 @@ var goasmKeep = []any{
 	goSleep,
 	goStep,
 	goSync,
+	goTableModule,
 	goTruncate,
 	goUnlock,
 	goValue,
