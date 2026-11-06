@@ -92,3 +92,24 @@ func TestDescendingLimit(t *testing.T) {
 		gc(`(SELECT value FROM generate_series(10,1,-3) ORDER BY value LIMIT 2 OFFSET 1)`):      "4,7",
 	})
 }
+
+// TestRealEnds: a REAL compared with value at the ends of the 64-bit range.
+// float64(math.MaxInt64) is 2^63, one past the largest integer, and -2^63 is
+// the smallest integer itself. SQLite's own gives 1 and 2 to the first two.
+func TestRealEnds(t *testing.T) {
+	db := sqltest.Open(t, series.Option())
+	const top, bottom = `generate_series(9223372036854775806,9223372036854775807)`, `generate_series(-9223372036854775808,-9223372036854775807)`
+	n := func(from, where string) string { return `SELECT count(*) FROM ` + from + ` WHERE ` + where }
+	sqltest.Want(t, db, map[string]string{
+		n(top, `value = 9223372036854775808.0`):      "0",
+		n(top, `value >= 9223372036854775808.0`):     "0",
+		n(top, `value > 9223372036854775808.0`):      "0",
+		n(top, `value < 9223372036854775808.0`):      "2",
+		n(top, `value <= 9223372036854775808.0`):     "2",
+		n(bottom, `value > -9223372036854775808.0`):  "1",
+		n(bottom, `value >= -9223372036854775808.0`): "2",
+		n(bottom, `value <= -9223372036854775808.0`): "1",
+		n(bottom, `value < -9223372036854775808.0`):  "0",
+		n(bottom, `value = -9223372036854775808.0`):  "1",
+	})
+}

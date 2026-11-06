@@ -219,6 +219,11 @@ func (c *cursor) steps() uint64 {
 	return span64(c.term, c.base) / c.step
 }
 
+// two63 is 2^63, one past the largest int64. float64(math.MaxInt64) rounds
+// to it, so a REAL is compared with it and with -2^63, the smallest int64,
+// which a float64 holds exactly.
+const two63 = 9223372036854775808.0
+
 // realToInt64 is SQLite's conversion of a REAL to an integer.
 func realToInt64(r float64) int64 {
 	switch {
@@ -316,7 +321,7 @@ func (c *cursor) Filter(idxNum int, _ string, args []driver.Value) error {
 		if idxNum&planEQ != 0 {
 			if r, ok := args[0].(float64); ok {
 				args = args[1:]
-				if r != math.Ceil(r) || r < math.MinInt64 || r > math.MaxInt64 {
+				if r != math.Ceil(r) || r < -two63 || r >= two63 {
 					c.empty()
 					return nil
 				}
@@ -331,9 +336,9 @@ func (c *cursor) Filter(idxNum int, _ string, args []driver.Value) error {
 				if r, ok := args[0].(float64); ok {
 					args = args[1:]
 					switch {
-					case r <= math.MinInt64:
+					case r < -two63:
 						min = math.MinInt64
-					case r > math.MaxInt64:
+					case r >= two63:
 						c.empty()
 						return nil
 					default:
@@ -361,9 +366,9 @@ func (c *cursor) Filter(idxNum int, _ string, args []driver.Value) error {
 				if r, ok := args[0].(float64); ok {
 					args = args[1:]
 					switch {
-					case r >= math.MaxInt64:
+					case r >= two63:
 						max = math.MaxInt64
-					case r <= math.MinInt64:
+					case r < -two63:
 						c.empty()
 						return nil
 					default:
