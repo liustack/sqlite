@@ -8,6 +8,7 @@ package regexp_test
 import (
 	"database/sql"
 	"fmt"
+	goregexp "regexp"
 	"testing"
 
 	"github.com/liustack/sqlite"
@@ -71,4 +72,43 @@ func Example() {
 	}
 	fmt.Println(match, first, swapped)
 	// Output: true 66 Jane Doe
+}
+
+// TestReplaceTooLong: a result longer than SQLite takes fails before it is
+// built, however small the arguments: here 9 bytes would give 16.
+func TestReplaceTooLong(t *testing.T) {
+	regexp.SetMaxLength(t, 15)
+	db := sqltest.Open(t, regexp.Option())
+	sqltest.Want(t, db, map[string]string{
+		`SELECT regexp_replace('aaaa', 'a', 'bbb')`:              "bbbbbbbbbbbb",
+		`SELECT regexp_replace('aaaa', 'a', '$0$0')`:             "aaaaaaaa",
+		`SELECT regexp_replace('aaaaaaaaaaaaaaaaaaaa', 'a', '')`: "",
+	})
+	sqltest.Fails(t, db, map[string]string{
+		`SELECT regexp_replace('aaaa', 'a', 'bbbb')`:          "regexp_replace: the result is longer than 15 bytes",
+		`SELECT regexp_replace('aaaa', '(a)', '$1$1$1$1')`:    "regexp_replace: the result is longer than 15 bytes",
+		`SELECT regexp_replace('aaaaaaaaaaaaaaaa', 'x', 'y')`: "regexp_replace: the result is longer than 15 bytes",
+	})
+}
+
+// TestReplaceExact: the result regexp_replace builds itself, when it may be
+// too long, is ReplaceAllString's, empty matches and all.
+func TestReplaceExact(t *testing.T) {
+	for _, c := range []struct{ re, s, repl string }{
+		{`a*`, "baaacada", "<$0>"},
+		{`x*`, "abc", "-"},
+		{`\b`, "one two", "|"},
+		{`^|$`, "mid", "#"},
+		{`(a)|(b)`, "abcab", "[$1${2}]"},
+		{`(?P<w>\w+)`, "hi there", "${w}!$$"},
+		{``, "héllo", "."},
+		{`l+`, "hello world", "L"},
+	} {
+		re := goregexp.MustCompile(c.re)
+		want := re.ReplaceAllString(c.s, c.repl)
+		got, err := regexp.ReplaceExact(re, c.s, c.repl, 1<<20)
+		if err != nil || got != want {
+			t.Errorf("%q on %q with %q: %q, %v, want %q", c.re, c.s, c.repl, got, err, want)
+		}
+	}
 }
