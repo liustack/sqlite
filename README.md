@@ -40,20 +40,20 @@ Time per operation, lower is better, the median of 6 runs. The best of a row is 
 <!-- /bench:readme-linux-amd64 -->
 
 <!-- bench:readme-darwin-arm64 -->
-**darwin/arm64** (Apple M4, Go 1.27.2, commit `90e0e83`, other work ran on the machine: read differences under 30% as noise):
+**darwin/arm64** (Apple M4, Go 1.27.2, commit `92ec4bf`, other work ran on the machine: read differences under 30% as noise):
 
 | Workload | this driver | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| Insert one row | 6.32 µs | 6.21 µs | 7.96 µs | 7.00 µs |
-| Insert 1000 rows in a transaction | **456 µs** | 594 µs | 748 µs | 583 µs |
-| Read one row by key | **1.12 µs** | 1.96 µs | 2.86 µs | 2.07 µs |
-| Read 100k rows | **14.4 ms** | 31.6 ms | 30.1 ms | 20.7 ms |
-| Join and group | 1.56 ms | 1.19 ms | 2.65 ms | 1.90 ms |
-| Find a user with 400 comments | **236 µs** | 396 µs | 594 µs | 345 µs |
-| Read 100 rows of 200 KB text | 4.87 ms | 3.58 ms | 3.99 ms | 3.64 ms |
-| Read by key, 10 threads | 1.29 µs | 1.69 µs | 1.79 µs | 2.49 µs |
-| Insert, 8 goroutines at once | **3.30 µs** | 6.94 µs | 8.12 µs | 43.5 µs |
-| Insert, 64 goroutines at once | **1.37 µs** | 9.53 µs | 8.28 ms | 83.3 µs |
+| Insert one row | 6.28 µs | 5.93 µs | 7.40 µs | 6.92 µs |
+| Insert 1000 rows in a transaction | 479 µs | 556 µs | 739 µs | 570 µs |
+| Read one row by key | **1.15 µs** | 1.93 µs | 2.78 µs | 2.06 µs |
+| Read 100k rows | **14.2 ms** | 30.0 ms | 29.8 ms | 20.4 ms |
+| Join and group | 1.34 ms | **1.14 ms** | 2.62 ms | 1.85 ms |
+| Find a user with 400 comments | **226 µs** | 367 µs | 553 µs | 341 µs |
+| Read 100 rows of 200 KB text | 3.39 ms | 3.36 ms | 3.73 ms | 3.62 ms |
+| Read by key, 10 threads | **1.17 µs** | 1.49 µs | 1.74 µs | 2.37 µs |
+| Insert, 8 goroutines at once | **3.09 µs** | 6.86 µs | 8.15 µs | 36.8 µs |
+| Insert, 64 goroutines at once | **1.16 µs** | 10.0 µs | 5.65 ms | 81.1 µs |
 <!-- /bench:readme-darwin-arm64 -->
 
 Where another driver still wins: work that stays inside SQLite (the join), where this driver runs the same C but as Go assembly, and reading large text values. Why reads and many writers are faster, the versions of each driver, and how to run it all again are in [docs/benchmarks.md](docs/benchmarks.md).
