@@ -12,7 +12,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"slices"
 	"sync"
@@ -77,10 +76,12 @@ type request struct {
 	// statement itself.
 	handed bool
 	res    result
-	// inserted says the statement set last_insert_rowid: res.id is then the
-	// caller's new one.
-	inserted bool
-	err      error
+	// lastID is the caller's last_insert_rowid: what it was when the request
+	// was made, then what the statement left once it ran, as it would on
+	// the caller's connection. The connection running the batch starts the
+	// statement from it, so no value has to stand for "nothing inserted".
+	lastID int64
+	err    error
 }
 
 // maxBatch is the most statements one transaction of the queue takes.
@@ -300,7 +301,7 @@ func (l *writeLock) submit(ctx context.Context, c *conn, s *stmt, args []driver.
 		l.mu.Unlock()
 		return nil, errBusy
 	}
-	req := &request{ctx: ctx, key: c.key, sql: s.sql, args: args, done: make(chan struct{})}
+	req := &request{ctx: ctx, key: c.key, sql: s.sql, args: args, done: make(chan struct{}), lastID: c.c.LastInsertRowID()}
 	l.queue = append(l.queue, req)
 	l.mu.Unlock()
 	t := time.NewTimer(c.busyTimeout)
@@ -350,15 +351,12 @@ func (c *conn) answered(ctx context.Context, s *stmt, req *request) (*result, er
 		c.writing = true
 		c.endWrite()
 	}
+	c.c.SetLastInsertRowID(req.lastID)
 	if req.err != nil {
 		return nil, req.err
 	}
 	r := &req.res // req is done with: its result is the caller's
-	if req.inserted {
-		c.c.SetLastInsertRowID(r.id)
-	} else {
-		r.id = c.c.LastInsertRowID()
-	}
+	r.id = req.lastID
 	return r, nil
 }
 
@@ -488,8 +486,7 @@ func (c *conn) runOne(r *request) error {
 	if err := c.execCached("SAVEPOINT merge"); err != nil {
 		return c.abandon(err)
 	}
-	const unset = math.MinInt64 // a rowid no INSERT of the queue gives
-	c.c.SetLastInsertRowID(unset)
+	c.c.SetLastInsertRowID(r.lastID)
 	c.c.SetMerging(true)
 	res, err := s.run(r.ctx, r.args)
 	if c.c.SetMerging(false) {
@@ -507,6 +504,9 @@ func (c *conn) runOne(r *request) error {
 		}
 		return errNotHere
 	}
+	// SQLite keeps last_insert_rowid when it undoes a statement, so this is
+	// the caller's whatever becomes of the statement.
+	r.lastID = c.c.LastInsertRowID()
 	if c.c.AutoCommit() {
 		if err == nil {
 			err = errBusy // cannot happen: a statement that succeeds keeps the transaction
@@ -550,7 +550,6 @@ func (c *conn) runOne(r *request) error {
 		return err
 	}
 	r.res = *res
-	r.inserted = res.id != unset
 	return nil
 }
 

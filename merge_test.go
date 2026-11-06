@@ -13,6 +13,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -638,6 +639,37 @@ func TestMergeDeferForeignKeysSetting(t *testing.T) {
 		}
 		caller.Close()
 		leader.Close()
+	}
+}
+
+// TestMergeMinRowid: the smallest int64 is a rowid like any other, and a
+// merged INSERT of it gives it as LastInsertId and last_insert_rowid().
+func TestMergeMinRowid(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	db.SetMaxOpenConns(1 << 4)
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE t(id INTEGER PRIMARY KEY)`)
+	caller, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	var id int64
+	if err := behind(t, db, func() error {
+		r, err := caller.ExecContext(t.Context(), `INSERT INTO t VALUES (?)`, int64(math.MinInt64))
+		if err == nil {
+			id, err = r.LastInsertId()
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var last int64
+	if err := caller.QueryRowContext(t.Context(), `SELECT last_insert_rowid()`).Scan(&last); err != nil {
+		t.Fatal(err)
+	}
+	if id != math.MinInt64 || last != math.MinInt64 {
+		t.Fatalf("LastInsertId %d, last_insert_rowid() %d, want %d", id, last, int64(math.MinInt64))
 	}
 }
 
