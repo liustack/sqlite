@@ -152,6 +152,43 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			idx[col] = i
 		}
 	}
+	if !startSeen {
+		if valueLater {
+			return sqlite.ErrUnusablePlan
+		}
+		return errors.New(`first argument to "generate_series()" missing or unusable`)
+	}
+	if unusable&^idxNum != 0 {
+		// start, stop and step are inputs: a plan without one of them
+		// that the statement gives is no plan.
+		return sqlite.ErrUnusablePlan
+	}
+	// Filter gives the sequence up or down whatever the plan, so it gives
+	// the ORDER BY whose first term on something not fixed is value (or the
+	// rowid, which is value). start, stop and step given by an = are fixed.
+	// After value, which no two rows share, the other terms change nothing.
+	if len(info.OrderBy) > 0 {
+		for _, o := range info.OrderBy {
+			if o.Column == colValue || o.Column == colRowID {
+				if o.Desc {
+					idxNum |= planDesc
+				} else {
+					idxNum |= planAsc
+				}
+				info.OrderByConsumed = true
+				break
+			}
+			if o.Column < colStart || idxNum&(1<<(o.Column-colStart)) == 0 {
+				break
+			}
+		}
+		if !info.OrderByConsumed {
+			// SQLite sorts the rows: LIMIT and OFFSET apply after it, not
+			// to the sequence.
+			idxNum &^= planLimit | planOffset
+			idx[3], idx[4] = -1, -1
+		}
+	}
 	if idx[3] < 0 {
 		// OFFSET without LIMIT is not used.
 		idxNum &^= planOffset
@@ -164,17 +201,6 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			info.Usage[j] = sqlite.IndexUsage{ArgvIndex: n, Omit: true}
 		}
 	}
-	if !startSeen {
-		if valueLater {
-			return sqlite.ErrUnusablePlan
-		}
-		return errors.New(`first argument to "generate_series()" missing or unusable`)
-	}
-	if unusable&^idxNum != 0 {
-		// start, stop and step are inputs: a plan without one of them
-		// that the statement gives is no plan.
-		return sqlite.ErrUnusablePlan
-	}
 	switch {
 	case idxNum&(planStart|planStop) == planStart|planStop:
 		// Both ends: the plan to prefer.
@@ -183,14 +209,6 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			info.EstimatedCost = 1
 		}
 		info.EstimatedRows = 1000
-		if len(info.OrderBy) >= 1 && info.OrderBy[0].Column == colValue {
-			if info.OrderBy[0].Desc {
-				idxNum |= planDesc
-			} else {
-				idxNum |= planAsc
-			}
-			info.OrderByConsumed = true
-		}
 	case idxNum&(planStart|planLimit) == planStart|planLimit:
 		info.EstimatedRows = 2500
 	default:

@@ -93,6 +93,24 @@ func TestDescendingLimit(t *testing.T) {
 	})
 }
 
+// TestOrderAndLimit: LIMIT and OFFSET apply to the sequence only in the order
+// the statement asks for. Where the table gives that order it takes them,
+// otherwise SQLite sorts first and applies them itself. SQLite's own
+// generate_series (3.51.2) gives 3,2,1 to the first four.
+func TestOrderAndLimit(t *testing.T) {
+	db := sqltest.Open(t, series.Option())
+	gc := func(from string) string { return `SELECT group_concat(value) FROM ` + from }
+	sqltest.Want(t, db, map[string]string{
+		gc(`(SELECT value FROM generate_series(1,10) ORDER BY rowid DESC LIMIT 3)`):                        "10,9,8",
+		gc(`(SELECT value FROM generate_series(1,10) ORDER BY start, value DESC LIMIT 3)`):                 "10,9,8",
+		gc(`(SELECT value FROM generate_series WHERE value BETWEEN 1 AND 10 ORDER BY value DESC LIMIT 3)`): "10,9,8",
+		gc(`(SELECT value FROM generate_series(1) ORDER BY value DESC LIMIT 3)`):                           "4294967295,4294967294,4294967293",
+		gc(`(SELECT value FROM generate_series(1,10) ORDER BY -value LIMIT 3)`):                            "10,9,8",
+		gc(`(SELECT value FROM generate_series(1,10) ORDER BY step, value LIMIT 2 OFFSET 1)`):              "2,3",
+		gc(`(SELECT value FROM generate_series(1,10) WHERE value%2=0 LIMIT 2 OFFSET 1)`):                   "4,6",
+	})
+}
+
 // TestRealEnds: a REAL compared with value at the ends of the 64-bit range.
 // float64(math.MaxInt64) is 2^63, one past the largest integer, and -2^63 is
 // the smallest integer itself. SQLite's own gives 1 and 2 to the first two.
