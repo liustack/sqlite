@@ -477,8 +477,12 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     *flags |= isMain(db) && !trigger && !goWritesGoTable(w->db, a, db) ? GO_WRITES_MAIN : GO_PRIVATE;
     break;
   case SQLITE_READ:
-    /* A read of a common table expression or a subquery has no schema. */
-    if (db && (!isMain(db) || goReadsGoTable(w->db, a, db))) *flags |= GO_PRIVATE;
+    /* A read with no schema is of a table no column of which is read
+       (SELECT count(*) FROM t), written without its schema, or of a common
+       table expression or a view of that name. The name is looked up in
+       every schema then: one that is also a Go table's only costs a
+       merge. */
+    if (db ? !isMain(db) || goReadsGoTable(w->db, a, db) : goReadsGoTable(w->db, a, 0)) *flags |= GO_PRIVATE;
     break;
   case SQLITE_SELECT:
   case SQLITE_RECURSIVE:
