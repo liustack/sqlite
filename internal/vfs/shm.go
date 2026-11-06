@@ -37,7 +37,7 @@ type shmNode struct {
 	readOnly bool          // the -shm could only be opened for reading
 	unlocked bool          // read-only and no one had it open: the DMS lock is not held
 	lock     [ShmNLock]int // per slot: shared holders in the process, or -1 for exclusive
-	idle     uint16        // read slots the process keeps read locked with no holder
+	idle     uint16        // slots the process keeps locked with no holder: read slots kept for the next reader, and slots whose unlock failed
 	others   bool          // another process had the -shm open when last looked: no idle slots
 	regions  []uintptr     // address of each region mapped
 	maps     []mapping     // what to unmap
@@ -357,16 +357,22 @@ func (s *shm) unlock(offset, n int, mask uint16) int {
 	if mask == 0 {
 		return OK
 	}
-	// A slot whose unlock failed is still locked in the kernel, and stays
-	// held by s.
+	// s lets go of every slot of mask, as SQLite takes it to. A slot whose
+	// unlock failed is still locked in the kernel with no holder: the node
+	// keeps it as an idle slot, which the next holder of the process takes
+	// over and the timer tries to unlock again.
 	done, err := node.unlockSlots(mask)
 	for i := offset; i < offset+n; i++ {
-		if done&(1<<i) != 0 {
+		if mask&(1<<i) != 0 {
 			node.lock[i] = 0
 		}
 	}
-	s.shared &^= done
-	s.excl &^= done
+	s.shared &^= mask
+	s.excl &^= mask
+	if failed := mask &^ done; failed != 0 {
+		node.idle |= failed
+		node.armIdle()
+	}
 	if err != nil {
 		return lockError(err, IOErrShmLock)
 	}

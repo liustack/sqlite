@@ -546,7 +546,8 @@ func TestShmIdlePartialRelease(t *testing.T) {
 func TestShmUnlockPartial(t *testing.T) {
 	// a goes while holding slots 0 and 2 shared, and the unlock of slot 2
 	// fails. Slot 0 was unlocked in the kernel: the next holder must take
-	// it again there. Slot 2 is still locked and counted.
+	// it again there. Slot 2 is still locked in the kernel with no holder:
+	// the node keeps it, and the next connection takes it over.
 	a, b, name := twoFiles(t)
 	shmMapT(t, a, 0, true)
 	shmMapT(t, b, 0, true)
@@ -566,5 +567,9 @@ func TestShmUnlockPartial(t *testing.T) {
 	if got := heldBy(t, name, 0); got != unix.F_RDLCK {
 		t.Errorf("b holds slot 0, seen from outside = %d, want F_RDLCK", got)
 	}
-	lockT(t, "b excl 2", b.ShmLock(2, 1, ShmLock|ShmExclusive), Busy)
+	lockT(t, "b excl 2", b.ShmLock(2, 1, ShmLock|ShmExclusive), OK)
+	if got := heldBy(t, name, 2); got != unix.F_WRLCK {
+		t.Errorf("b holds slot 2, seen from outside = %d, want F_WRLCK", got)
+	}
+	lockT(t, "b unlock 2", b.ShmLock(2, 1, ShmUnlock|ShmExclusive), OK)
 }
