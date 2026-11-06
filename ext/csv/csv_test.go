@@ -198,3 +198,39 @@ func TestFile(t *testing.T) {
 		t.Errorf("%d rows, want %d", n, len(want)-1)
 	}
 }
+
+// TestLongField: a field longer than SQLite takes fails as it is read, before
+// it fills the memory: a count(*) reads every field without giving one to
+// SQLite. The first row of a table with no columns= fails the same way.
+func TestLongField(t *testing.T) {
+	csv.SetMaxLength(t, 10)
+	db := sqltest.Open(t, csv.Option())
+	create(t, db, "plain", "data='a,b\n0123456789,x\nlonger than ten,y\n', columns=2")
+	create(t, db, "quoted", "data='a,b\n\"0123456789\",x\n\"longer, than ten\",y\n', columns=2")
+	sqltest.Fails(t, db, map[string]string{
+		`SELECT count(*) FROM plain`:                                        `line 3: a field longer than 10 bytes`,
+		`SELECT count(*) FROM quoted`:                                       `line 3: a field longer than 10 bytes`,
+		`CREATE VIRTUAL TABLE temp.h USING csv(data='longer than ten,b')`:   `line 1: a field longer than 10 bytes`,
+		`CREATE VIRTUAL TABLE temp.h USING csv(data='a,b,c,d,e,f', header)`: `the header is longer than 10 bytes`,
+	})
+}
+
+// TestManyColumns: a first row of more fields than a table takes fails once
+// it has one too many, not after it was read whole.
+func TestManyColumns(t *testing.T) {
+	db := sqltest.Open(t, csv.Option())
+	row := strings.Repeat("a,", 2000) + "a"
+	sqltest.Fails(t, db, map[string]string{
+		`CREATE VIRTUAL TABLE temp.h USING csv(data='` + row + `')`:         `the first row has more than 2000 fields`,
+		`CREATE VIRTUAL TABLE temp.h USING csv(data='` + row + `', header)`: `the first row has more than 2000 fields`,
+	})
+}
+
+// TestLongestField: a field of maxLength bytes is read, quoted too, and with
+// CRLF after its closing quote.
+func TestLongestField(t *testing.T) {
+	csv.SetMaxLength(t, 10)
+	db := sqltest.Open(t, csv.Option())
+	create(t, db, "crlf", "data='\"0123456789\"\r\n0123456789\r\n', columns=1")
+	sqltest.Want(t, db, map[string]string{`SELECT group_concat(c0, '|') FROM crlf`: "0123456789|0123456789"})
+}

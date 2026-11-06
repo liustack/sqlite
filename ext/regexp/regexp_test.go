@@ -8,6 +8,8 @@ package regexp_test
 import (
 	"database/sql"
 	"fmt"
+	goregexp "regexp"
+	"strings"
 	"testing"
 
 	"github.com/liustack/sqlite"
@@ -71,4 +73,76 @@ func Example() {
 	}
 	fmt.Println(match, first, swapped)
 	// Output: true 66 Jane Doe
+}
+
+// TestReplaceTooLong: a result longer than SQLite takes fails before it is
+// built, however small the arguments: here 9 bytes would give 16.
+func TestReplaceTooLong(t *testing.T) {
+	regexp.SetMaxLength(t, 15)
+	db := sqltest.Open(t, regexp.Option())
+	sqltest.Want(t, db, map[string]string{
+		`SELECT regexp_replace('aaaa', 'a', 'bbb')`:              "bbbbbbbbbbbb",
+		`SELECT regexp_replace('aaaa', 'a', '$0$0')`:             "aaaaaaaa",
+		`SELECT regexp_replace('aaaaaaaaaaaaaaaaaaaa', 'a', '')`: "",
+	})
+	sqltest.Fails(t, db, map[string]string{
+		`SELECT regexp_replace('aaaa', 'a', 'bbbb')`:          "regexp_replace: the result may be longer than 15 bytes",
+		`SELECT regexp_replace('aaaa', '(a)', '$1$1$1$1')`:    "regexp_replace: the result may be longer than 15 bytes",
+		`SELECT regexp_replace('aaaaaaaaaaaaaaaa', 'x', 'y')`: "regexp_replace: the result may be longer than 15 bytes",
+	})
+}
+
+// TestFitsIsABound: fits never lets a result longer than the limit through,
+// and lets through one exactly as long when the template names no group
+// shorter than its match.
+func TestFitsIsABound(t *testing.T) {
+	for _, c := range []struct {
+		re, s, repl string
+		exact       bool
+	}{
+		{`a*`, "baaacada", "<$0>", true},
+		{`x*`, "abc", "-", true},
+		{`\b`, "one two", "|", true},
+		{`^|$`, "mid", "#", true},
+		{`(a)|(b)`, "abcab", "[$1${2}]", false},
+		{`(?P<w>\w+)`, "hi there", "${w}!$$", true},
+		{``, "héllo", ".", true},
+		{`l+`, "hello world", "L", true},
+		{`(?P<x>a)|(?P<x>b)`, "abba", "<${x}>", true},
+		{`(a)b`, "abab", "$1$1$1", false},
+		{`a`, "aaaa", "${missing}$9$$", true},
+		{`(a)`, "aaaa", "$1x${1}x", true},
+		{`(a)`, "aaaa", "${1", true},
+	} {
+		re := goregexp.MustCompile(c.re)
+		n := len(re.ReplaceAllString(c.s, c.repl))
+		if n > 0 && regexp.Fits(re, c.s, c.repl, n-1) {
+			t.Errorf("%q on %q with %q: %d bytes fit in %d", c.re, c.s, c.repl, n, n-1)
+		}
+		if c.exact && !regexp.Fits(re, c.s, c.repl, n) {
+			t.Errorf("%q on %q with %q: %d bytes do not fit in %d", c.re, c.s, c.repl, n, n)
+		}
+	}
+}
+
+// TestReplaceDuplicateName: a name two groups have is the one that took part
+// in the match, as in Go, also when the result may be near the limit.
+func TestReplaceDuplicateName(t *testing.T) {
+	regexp.SetMaxLength(t, 15)
+	db := sqltest.Open(t, regexp.Option())
+	sqltest.Want(t, db, map[string]string{
+		`SELECT regexp_replace('bzzzzzzzzz', '(?P<x>a)|(?P<x>b)', '${x}')`: "bzzzzzzzzz",
+	})
+}
+
+// TestReplaceManyGroups: a pattern of many groups on a long text, with a
+// template that names none of them, gives its result at the real limit.
+func TestReplaceManyGroups(t *testing.T) {
+	db := sqltest.Open(t, regexp.Option())
+	var got string
+	pattern := "a" + strings.Repeat("()", 256)
+	repl := strings.Repeat("${missing}", 100)
+	if err := db.QueryRow(`SELECT regexp_replace(?, ?, ?)`, strings.Repeat("a", 1<<12), pattern, repl).Scan(&got); err != nil || got != "" {
+		t.Fatalf("%q, %v", got, err)
+	}
 }

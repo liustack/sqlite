@@ -367,3 +367,36 @@ func TestShmSharedHandle(t *testing.T) {
 		t.Errorf("slot 4 after the readers left: can lock shared %v, exclusive %v", s, e)
 	}
 }
+
+// TestShmKeyFoldsASCII: the shared memory of two files Windows tells apart
+// is not one node. os_win folds ASCII letters only, and NTFS tells İ (U+0130)
+// from i, which strings.ToLower makes the same.
+func TestShmKeyFoldsASCII(t *testing.T) {
+	if shmKey(`C:\A\B.db-shm`) != shmKey(`c:\a\b.DB-SHM`) {
+		t.Error("ASCII letters of two cases give two keys")
+	}
+	if shmKey("\u0130.db-shm") == shmKey("i.db-shm") {
+		t.Error("İ and i give one key")
+	}
+	dir := t.TempDir()
+	nameA, nameB := filepath.Join(dir, "\u0130.db"), filepath.Join(dir, "i.db")
+	a, b := openT(t, nameA, mainDB), openT(t, nameB, mainDB)
+	infoA, err := os.Stat(nameA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	infoB, err := os.Stat(nameB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(infoA, infoB) {
+		t.Skip("this file system takes the two names for one file")
+	}
+	pA := shmMapT(t, a, 0, true)
+	region(pA)[100] = 0x6d
+	ShmBarrier()
+	pB := shmMapT(t, b, 0, true)
+	if a.shm.node == b.shm.node || region(pB)[100] == 0x6d {
+		t.Fatal("two databases share their wal-index")
+	}
+}

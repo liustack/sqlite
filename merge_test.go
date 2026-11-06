@@ -13,6 +13,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -347,6 +348,45 @@ func TestMissingArgument(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO a VALUES (?, ?)`, 1); err == nil {
 		t.Fatal("a statement ran with a parameter left unbound")
 	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (:x, :y)`, sql.Named("x", 1)); err == nil {
+		t.Fatal("a statement ran with a named parameter left unbound")
+	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (:x, :x)`, sql.Named("x", 1)); err != nil {
+		t.Fatalf("one name twice: %v", err)
+	}
+	// A number the SQL skips needs an argument, as it does with no names.
+	var a, b int
+	if err := db.QueryRow(`SELECT ?2, :x`, sql.Named("x", 9), 5).Scan(&a, &b); err == nil {
+		t.Fatal("a statement ran with a number it skips left without an argument")
+	}
+	if err := db.QueryRow(`SELECT ?2, :x`, 0, 5, sql.Named("x", 9)).Scan(&a, &b); err != nil || a != 5 || b != 9 {
+		t.Fatalf("(%d, %d), %v, want (5, 9)", a, b, err)
+	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (?, :y)`, sql.Named("y", 1)); err == nil {
+		t.Fatal("a statement ran with a ? left unbound")
+	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (:x, 1) RETURNING ?`, sql.Named("x", 1)); err == nil {
+		t.Fatal("a statement ran with a ? of RETURNING left unbound")
+	}
+	if _, err := db.Exec(`CREATE TABLE w(s TEXT); CREATE INDEX w_s ON w(s)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM w WHERE s LIKE ? AND :x`, sql.Named("x", 1)).Scan(&a); err == nil {
+		t.Fatal("a statement ran with a ? of LIKE left unbound")
+	}
+	// A prepared statement SQLite made again for the value bound last.
+	mExec(t, db, `INSERT INTO w VALUES ('abc'); CREATE TABLE log(x)`)
+	s, err := db.Prepare(`INSERT INTO log SELECT :x WHERE NOT EXISTS (SELECT 1 FROM w INDEXED BY w_s WHERE s GLOB ?)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Exec(sql.Named("x", 9), "a*"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(sql.Named("x", 9)); err == nil {
+		t.Fatal("a prepared statement ran with a ? of GLOB left unbound")
+	}
 }
 
 func TestMergeLastInsertRowid(t *testing.T) {
@@ -450,6 +490,227 @@ func TestMergeOrFailMatchesAlone(t *testing.T) {
 	}
 	if merged := mCount(t, db, `SELECT count(*) FROM t`); merged != alone {
 		t.Fatalf("OR FAIL keeps %d rows merged and %d alone", merged, alone)
+	}
+}
+
+// batchConn is a connection of its own on a new WAL database with foreign
+// keys on, for tests that hand runBatch the requests in a set order.
+func batchConn(t *testing.T, opts ...Option) *conn {
+	t.Helper()
+	cn, err := NewConnector("file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dc, err := cn.Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := dc.(*conn)
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+func batchReq(q string) *request {
+	return &request{ctx: context.Background(), sql: q, done: make(chan struct{})}
+}
+
+func batchCount(t *testing.T, c *conn, q string) int64 {
+	t.Helper()
+	s, _, err := c.c.Prepare(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Finalize()
+	if row, err := s.Step(); err != nil || !row {
+		t.Fatalf("%s: row %v, %v", q, row, err)
+	}
+	return s.ColumnInt64(0)
+}
+
+// TestMergeOrFailKeptOnReplay: the rows an OR FAIL statement keeps are
+// committed even when a later statement of the batch ends the transaction
+// and the batch runs again, and its caller hears of it only after the
+// commit.
+func TestMergeOrFailKeptOnReplay(t *testing.T) {
+	var first *request
+	early := false
+	c := batchConn(t, WithFunction("observe", 0, func([]driver.Value) (driver.Value, error) {
+		select {
+		case <-first.done:
+			early = true
+		default:
+		}
+		return int64(4), nil
+	}))
+	if err := c.c.Exec(`CREATE TABLE t(x UNIQUE); INSERT INTO t VALUES (3)`); err != nil {
+		t.Fatal(err)
+	}
+	first = batchReq(`INSERT OR FAIL INTO t VALUES (1), (2), (3)`)
+	next := batchReq(`INSERT INTO t VALUES (observe())`)
+	last := batchReq(`INSERT OR ROLLBACK INTO t VALUES (3)`)
+	if back := c.runBatch([]*request{first, next, last}); len(back) != 0 {
+		t.Fatalf("%d requests back", len(back))
+	}
+	if first.err == nil || last.err == nil || next.err != nil {
+		t.Fatalf("errors: %v, %v, %v", first.err, next.err, last.err)
+	}
+	if early {
+		t.Fatal("the OR FAIL caller was answered before the commit")
+	}
+	if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 4 {
+		t.Fatalf("%d rows, want 4: 3, then 1 and 2 kept by OR FAIL, then 4", n)
+	}
+}
+
+// TestMergeOrFailDeferredForeignKey: an OR FAIL statement that fails after
+// leaving a deferred foreign key unresolved is undone, as its own COMMIT
+// would fail, and the next statement neither fails for it nor resolves it.
+func TestMergeOrFailDeferredForeignKey(t *testing.T) {
+	const fail = `INSERT OR FAIL INTO t VALUES (1, 999), (3, NULL)`
+	alone := batchConn(t)
+	if err := alone.c.Exec(`CREATE TABLE p(id PRIMARY KEY); CREATE TABLE t(id UNIQUE, p REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED); INSERT INTO t VALUES (3, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := alone.c.Exec(fail); err == nil || !strings.Contains(err.Error(), "FOREIGN KEY") {
+		t.Fatalf("alone: %v, want a foreign key error", err)
+	}
+	for _, next := range []string{`INSERT INTO good VALUES (1)`, `INSERT INTO p VALUES (999)`} {
+		c := batchConn(t)
+		if err := c.c.Exec(`CREATE TABLE p(id PRIMARY KEY); CREATE TABLE t(id UNIQUE, p REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED); INSERT INTO t VALUES (3, NULL); CREATE TABLE good(x)`); err != nil {
+			t.Fatal(err)
+		}
+		a, b := batchReq(fail), batchReq(next)
+		c.runBatch([]*request{a, b})
+		if a.err == nil || !strings.Contains(a.err.Error(), "FOREIGN KEY") {
+			t.Errorf("%s: the OR FAIL statement got %v, want a foreign key error", next, a.err)
+		}
+		if b.err != nil {
+			t.Errorf("%s: %v", next, b.err)
+		}
+		if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 1 {
+			t.Errorf("%s: t has %d rows, want 1", next, n)
+		}
+	}
+}
+
+// TestRefusedQueryChangesConn: a query of two statements is refused, but
+// SQLite applied the PRAGMA of the second as it prepared it. The connection
+// changed itself and must not run the statements of others.
+func TestRefusedQueryChangesConn(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE p(id PRIMARY KEY); CREATE TABLE c(pid REFERENCES p(id))`)
+	leader, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leader.Close()
+	if r, err := leader.QueryContext(context.Background(), `SELECT 1; PRAGMA foreign_keys=OFF`); err == nil {
+		r.Close()
+		t.Fatal("a query of two statements was taken")
+	}
+	err = behind(t, leader, func() error { _, err := db.Exec(`INSERT INTO c VALUES (999)`); return err })
+	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY") {
+		t.Fatalf("an orphan insert got %v, want a foreign key error", err)
+	}
+}
+
+// TestMergeKeepsReadSnapshot: a connection with a query not done holds the
+// snapshot it read. Alone, its write fails (SQLITE_BUSY_SNAPSHOT) once
+// another connection committed. Merged, it must fail the same way, not run
+// on the newer snapshot of the connection that runs the batch.
+func TestMergeKeepsReadSnapshot(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE t(x); INSERT INTO t VALUES (1)`)
+	reader, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	rows, err := reader.QueryContext(context.Background(), `SELECT x FROM t`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("no row")
+	}
+	mExec(t, db, `INSERT INTO t VALUES (2)`)
+	const q = `INSERT INTO t SELECT max(x) + 1 FROM t`
+	if _, err := reader.ExecContext(context.Background(), q); err == nil {
+		t.Fatal("alone, the write on an old snapshot succeeded")
+	}
+	err = behind(t, db, func() error {
+		_, err := reader.ExecContext(context.Background(), q)
+		return err
+	})
+	if err == nil {
+		t.Fatal("merged, the write on an old snapshot succeeded")
+	}
+}
+
+// TestMergeDeferForeignKeysSetting: SQLite turns defer_foreign_keys off at
+// the end of each transaction, so two connections whose DSN sets it differ
+// once one of them had a transaction. A DELETE that a RESTRICT key refuses
+// at once on one passes on the other, so they must not merge.
+func TestMergeDeferForeignKeysSetting(t *testing.T) {
+	for i := range 6 {
+		merged := i%2 == 1
+		set := []string{"defer_foreign_keys(1)", "main.defer_foreign_keys(1)", "%22defer_foreign_keys%22=1"}[i/2]
+		db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma="+set)
+		mExec(t, db, schemaH)
+		mExec(t, db, `CREATE TABLE t(id PRIMARY KEY, p REFERENCES t(id) ON DELETE RESTRICT); INSERT INTO t VALUES (1, NULL), (2, 1)`)
+		leader, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		caller, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		del := func() error { _, err := caller.ExecContext(t.Context(), `DELETE FROM t`); return err }
+		if merged {
+			err = behind(t, leader, del)
+		} else {
+			err = del()
+		}
+		if err != nil {
+			t.Errorf("%s, merged %v: %v", set, merged, err)
+		}
+		caller.Close()
+		leader.Close()
+	}
+}
+
+// TestMergeMinRowid: the smallest int64 is a rowid like any other, and a
+// merged INSERT of it gives it as LastInsertId and last_insert_rowid().
+func TestMergeMinRowid(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	db.SetMaxOpenConns(1 << 4)
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE t(id INTEGER PRIMARY KEY)`)
+	caller, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	var id int64
+	if err := behind(t, db, func() error {
+		r, err := caller.ExecContext(t.Context(), `INSERT INTO t VALUES (?)`, int64(math.MinInt64))
+		if err == nil {
+			id, err = r.LastInsertId()
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var last int64
+	if err := caller.QueryRowContext(t.Context(), `SELECT last_insert_rowid()`).Scan(&last); err != nil {
+		t.Fatal(err)
+	}
+	if id != math.MinInt64 || last != math.MinInt64 {
+		t.Fatalf("LastInsertId %d, last_insert_rowid() %d, want %d", id, last, int64(math.MinInt64))
 	}
 }
 
@@ -942,5 +1203,47 @@ func openAll(t *testing.T, db *sql.DB, n int) {
 		if err := c.QueryRowContext(t.Context(), "SELECT count(*) FROM t").Scan(&x); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestBusyTimeoutSetByPrepare: SQLite sets busy_timeout when it prepares the
+// PRAGMA, so the write lock waits as long even when the statement never runs.
+func TestBusyTimeoutSetByPrepare(t *testing.T) {
+	for _, how := range []string{"refused query", "prepare only", "syntax error"} {
+		db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+		db.SetMaxOpenConns(2)
+		mExec(t, db, `CREATE TABLE t(x)`)
+		c, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if how == "refused query" {
+			if _, err := c.QueryContext(t.Context(), `PRAGMA busy_timeout = 0; SELECT 1`); err == nil {
+				t.Fatal("a query of two statements ran")
+			}
+		} else if how == "syntax error" {
+			if _, err := c.PrepareContext(t.Context(), `PRAGMA busy_timeout = 0 junk`); err == nil {
+				t.Fatal("a statement with a syntax error was prepared")
+			}
+		} else {
+			s, err := c.PrepareContext(t.Context(), `PRAGMA busy_timeout = 0`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Close()
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mExec(t, tx, `INSERT INTO t VALUES (1)`)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		_, err = c.ExecContext(ctx, `INSERT INTO t VALUES (2)`)
+		cancel()
+		if err == nil || errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("%s: %v, want busy at once", how, err)
+		}
+		tx.Rollback()
+		c.Close()
 	}
 }

@@ -185,8 +185,18 @@ func (c *Connector) setUp(conn *conn) error {
 	}
 	conn.busyTimeout = time.Duration(ms) * time.Millisecond
 	// A connection SQLite opened read-only, as when the file is, runs
-	// differently from the others of its key.
-	conn.private = cc.ReadOnly()
+	// differently from the others of its key. So does one the DSN gave
+	// defer_foreign_keys, which SQLite turns off at the end of each
+	// transaction: connections that had one and connections that had none
+	// differ.
+	conn.alone = cc.ReadOnly()
+	if len(c.pragmas) > 0 && !conn.alone {
+		dfk, err := pragmaInt(cc, "defer_foreign_keys")
+		if err != nil {
+			return err
+		}
+		conn.alone = dfk != 0
+	}
 	return nil
 }
 

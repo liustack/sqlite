@@ -22,6 +22,13 @@
 // own does. A TEXT or BLOB argument, or one compared with value in the WHERE
 // clause (value = '5', or a Go string bound to value = ?), is an error where
 // SQLite's would read the number at its start: write CAST(x AS INTEGER).
+//
+// Where SQLite's own gives wrong rows or fails, this one gives the right
+// rows: a LIMIT with an ORDER BY the sequence does not follow on its own
+// (ORDER BY rowid DESC LIMIT 3), a REAL compared with value at the ends of
+// the 64-bit range, a join that gives the start through value
+// (JOIN generate_series s ON s.value = t.x), and a LIMIT on a sequence that
+// counts down.
 package series
 
 import (
@@ -76,6 +83,9 @@ func (table) Schema() string {
 func (table) BestIndex(info *sqlite.IndexInfo) error {
 	idxNum := 0
 	startSeen := false
+	// valueLater says a constraint on value would give the start, but not
+	// in this plan: in a join, the other table has to come first.
+	valueLater := false
 	unusable := 0
 	// The constraints on start, stop, step, LIMIT, OFFSET, value= or >= or
 	// >, value<= or <.
@@ -95,6 +105,12 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			continue
 		}
 		if c.Column < colStart {
+			if (c.Column == colValue || c.Column == colRowID) && !c.Usable {
+				switch op {
+				case sqlite.IndexEQ, sqlite.IndexIs, sqlite.IndexGE, sqlite.IndexGT:
+					valueLater = true
+				}
+			}
 			if (c.Column == colValue || c.Column == colRowID) && c.Usable {
 				switch op {
 				case sqlite.IndexEQ, sqlite.IndexIs:
@@ -143,6 +159,43 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			idx[col] = i
 		}
 	}
+	if !startSeen {
+		if valueLater {
+			return sqlite.ErrUnusablePlan
+		}
+		return errors.New(`first argument to "generate_series()" missing or unusable`)
+	}
+	if unusable&^idxNum != 0 {
+		// start, stop and step are inputs: a plan without one of them
+		// that the statement gives is no plan.
+		return sqlite.ErrUnusablePlan
+	}
+	// Filter gives the sequence up or down whatever the plan, so it gives
+	// the ORDER BY whose first term on something not fixed is value (or the
+	// rowid, which is value). start, stop and step given by an = are fixed.
+	// After value, which no two rows share, the other terms change nothing.
+	if len(info.OrderBy) > 0 {
+		for _, o := range info.OrderBy {
+			if o.Column == colValue || o.Column == colRowID {
+				if o.Desc {
+					idxNum |= planDesc
+				} else {
+					idxNum |= planAsc
+				}
+				info.OrderByConsumed = true
+				break
+			}
+			if o.Column < colStart || idxNum&(1<<(o.Column-colStart)) == 0 {
+				break
+			}
+		}
+		if !info.OrderByConsumed {
+			// SQLite sorts the rows: LIMIT and OFFSET apply after it, not
+			// to the sequence.
+			idxNum &^= planLimit | planOffset
+			idx[3], idx[4] = -1, -1
+		}
+	}
 	if idx[3] < 0 {
 		// OFFSET without LIMIT is not used.
 		idxNum &^= planOffset
@@ -155,14 +208,6 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			info.Usage[j] = sqlite.IndexUsage{ArgvIndex: n, Omit: true}
 		}
 	}
-	if !startSeen {
-		return errors.New(`first argument to "generate_series()" missing or unusable`)
-	}
-	if unusable&^idxNum != 0 {
-		// start, stop and step are inputs: a plan without one of them
-		// that the statement gives is no plan.
-		return sqlite.ErrUnusablePlan
-	}
 	switch {
 	case idxNum&(planStart|planStop) == planStart|planStop:
 		// Both ends: the plan to prefer.
@@ -171,14 +216,6 @@ func (table) BestIndex(info *sqlite.IndexInfo) error {
 			info.EstimatedCost = 1
 		}
 		info.EstimatedRows = 1000
-		if len(info.OrderBy) >= 1 && info.OrderBy[0].Column == colValue {
-			if info.OrderBy[0].Desc {
-				idxNum |= planDesc
-			} else {
-				idxNum |= planAsc
-			}
-			info.OrderByConsumed = true
-		}
 	case idxNum&(planStart|planLimit) == planStart|planLimit:
 		info.EstimatedRows = 2500
 	default:
@@ -218,6 +255,11 @@ func (c *cursor) steps() uint64 {
 	}
 	return span64(c.term, c.base) / c.step
 }
+
+// two63 is 2^63, one past the largest int64. float64(math.MaxInt64) rounds
+// to it, so a REAL is compared with it and with -2^63, the smallest int64,
+// which a float64 holds exactly.
+const two63 = 9223372036854775808.0
 
 // realToInt64 is SQLite's conversion of a REAL to an integer.
 func realToInt64(r float64) int64 {
@@ -316,7 +358,7 @@ func (c *cursor) Filter(idxNum int, _ string, args []driver.Value) error {
 		if idxNum&planEQ != 0 {
 			if r, ok := args[0].(float64); ok {
 				args = args[1:]
-				if r != math.Ceil(r) || r < math.MinInt64 || r > math.MaxInt64 {
+				if r != math.Ceil(r) || r < -two63 || r >= two63 {
 					c.empty()
 					return nil
 				}
@@ -331,9 +373,9 @@ func (c *cursor) Filter(idxNum int, _ string, args []driver.Value) error {
 				if r, ok := args[0].(float64); ok {
 					args = args[1:]
 					switch {
-					case r <= math.MinInt64:
+					case r < -two63:
 						min = math.MinInt64
-					case r > math.MaxInt64:
+					case r >= two63:
 						c.empty()
 						return nil
 					default:
@@ -361,9 +403,9 @@ func (c *cursor) Filter(idxNum int, _ string, args []driver.Value) error {
 				if r, ok := args[0].(float64); ok {
 					args = args[1:]
 					switch {
-					case r >= math.MaxInt64:
+					case r >= two63:
 						max = math.MaxInt64
-					case r <= math.MinInt64:
+					case r < -two63:
 						c.empty()
 						return nil
 					default:

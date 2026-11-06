@@ -62,7 +62,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 - **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
 - **文件。** `engine/os.c` 就是 VFS（名字叫 `go`）。它的每个方法都调用 `internal/vfs`。
 - **本地时间。** `localtime` 和 `utc` 修饰符调用 `engine/os.c` 里的 `localtime_r`，它去问 Go：时区就是 `time.Local`（`TZ` 环境变量，或者 `/etc/localtime`）。镜像里没有时区文件时得到 UTC，除非程序 import 了 `time/tzdata`。
-- **虚拟表。** Go 写的模块（`WithModule`）在 `engine/os.c` 里是一个 `sqlite3_module`，它的方法带着表或游标的句柄调用 Go。用 `ModuleWritable` 创建的模块是另一个 `sqlite3_module`，带 `xUpdate` 和事务方法。写它的表的语句从不合并：它的 Go 代码可能在数据库之外留状态，批次重跑或换个连接执行都撤不回来。`goClassify` 查到这张表，就把语句标成单独执行。读 Go 表的语句照常合并，比如从它 `INSERT INTO t SELECT ... FROM`。SQLite 把刚建的表放进事务时不调 `xBegin`，所以可写模块的 `xCreate` 自己调一次：收到 `xSync`、`xCommit` 或 `xRollback` 的表都先收到过 `xBegin`。SQLite 每读一行都要问一次 `xEof`，所以 `engine/os.c` 直接用 Go 在 `Filter` 和 `Next` 之后设好的字段回答。
+- **虚拟表。** Go 写的模块（`WithModule`）在 `engine/os.c` 里是一个 `sqlite3_module`，它的方法带着表或游标的句柄调用 Go。用 `ModuleWritable` 创建的模块是另一个 `sqlite3_module`，带 `xUpdate` 和事务方法。写它的表的语句从不合并：它的 Go 代码可能在数据库之外留状态，批次重跑或换个连接执行都撤不回来。`goClassify` 查到这张表，就把语句标成单独执行。读 Go 表的语句也不合并，比如从它 `INSERT INTO t SELECT ... FROM`：每个连接有自己的表实例，给出的行可能和别的连接不同。SQLite 把刚建的表放进事务时不调 `xBegin`，所以可写模块的 `xCreate` 自己调一次：收到 `xSync`、`xCommit` 或 `xRollback` 的表都先收到过 `xBegin`。SQLite 每读一行都要问一次 `xEof`，所以 `engine/os.c` 直接用 Go 在 `Filter` 和 `Next` 之后设好的字段回答。
 - **Go 代码 panic。** 函数、聚合或虚拟表的方法 panic 时，和返回错误一样，让它所在的语句失败。排序规则没有办法报错，所以 panic 时 `engine/os.c` 调用 `sqlite3OomFault`，这是 SQLite 自己记录内存分配失败的函数：SQLite 以 `SQLITE_NOMEM` 中止语句，回滚这条语句或整个事务，走的是它对每次内存分配都测过的错误路径。宿主另外还读 SQLite 的两处内部实现（见下文），在和 `sqlite3.c` 一起编译的 `engine/os.c` 里：`db->nVTrans`，以及 `Parse` 指向它所属语句的链接。一条写语句正在执行时，如果别的语句出错把它的事务回滚了，它结束时报错，不报成功（用回滚钩子计数）。
 
 ## 每个文件一个写入者
@@ -75,7 +75,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 
 许多 goroutine 各自在 autocommit 模式下写一行，每个都要付一次提交的代价，而 SQLite 同一时刻只有一个写入者，它们还要互相等。驱动把许多调用者的 autocommit DML 收到一起，放进一个事务里执行，只提交一次。规则写在 [AGENTS.md](../AGENTS.md#hard-constraints)：只合并主数据库上的 autocommit DML，每条语句一个 SAVEPOINT，每个调用者拿到自己的结果，调用要等提交之后才返回。
 
-做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间，再 `COMMIT`，这时每个调用者才拿到结果。失败的语句保留 SQLite 替它保留的东西，和它单独执行时一样（什么都不留，或者 `OR FAIL` 时留下失败之前的行），它的调用者拿到错误。留下未解决的延迟外键的语句用 `ROLLBACK TO` 撤销，它的调用者拿到它自己 `COMMIT` 时会得到的错误。如果某个失败让整个事务结束，已经跑过的语句会在新事务里重跑一遍。FTS5 要到下一个 `SAVEPOINT` 或 `COMMIT` 才把 `INSERT` 的词写进索引，所以一旦有虚表加入事务（`db->nVTrans`），每条语句后面会在它自己的 `SAVEPOINT` 里再跑一对 `SAVEPOINT` 和 `RELEASE`：写索引失败（索引坏了、磁盘满了）就算这条语句的，和它单独执行时一样，不会落到下一条头上，这条语句也被撤销。语句在准备时由一个授权回调分类（`engine/os.c` 的 `goClassify`），它也会看到 SQLite 在这期间准备的其他语句：连接第一次用到 R*Tree 表时，R*Tree 会准备写它影子表的语句。它们做的事不算这条语句的：永远不会把它标成写 main 库。它们仍可以让语句不能合并，这只会慢一些。触发器的语句体也在自己的 `Parse` 里编译，它的 `pToplevel` 指向所属的语句，所以要算进来：一个 `Parse` 顶层那条语句有 `pOuterParse` 时，它才算嵌套。轮到之前 context 就已结束的调用者拿到 context 的错误，它的语句不会执行。一批跑完，锁交给下一个在等锁的连接，没有的话交给队列里第一条语句，它在自己的连接上执行：谁都不会在队列后面等太久。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
+做法（`writer.go`）：一条语句来拿文件的写锁，而别的连接正持有它，这条语句就加入这个文件的队列，不再干等。还锁的那个连接在自己身上跑这个队列，最多 256 条语句：`BEGIN IMMEDIATE`，然后每条语句夹在 `SAVEPOINT` 和 `RELEASE` 之间，再 `COMMIT`，这时每个调用者才拿到结果。失败的语句保留 SQLite 替它保留的东西，和它单独执行时一样（什么都不留，或者 `OR FAIL` 时留下失败之前的行），它的调用者在提交之后拿到错误。留下未解决的延迟外键的语句（失败的语句也算）用 `ROLLBACK TO` 撤销，它的调用者拿到它自己 `COMMIT` 时会得到的错误。如果某个失败让整个事务结束，已经跑过的语句（失败的也算）会在新事务里重跑一遍。FTS5 要到下一个 `SAVEPOINT` 或 `COMMIT` 才把 `INSERT` 的词写进索引，所以一旦有虚表加入事务（`db->nVTrans`），每条语句后面会在它自己的 `SAVEPOINT` 里再跑一对 `SAVEPOINT` 和 `RELEASE`：写索引失败（索引坏了、磁盘满了）就算这条语句的，和它单独执行时一样，不会落到下一条头上，这条语句也被撤销。语句在准备时由一个授权回调分类（`engine/os.c` 的 `goClassify`），它也会看到 SQLite 在这期间准备的其他语句：连接第一次用到 R*Tree 表时，R*Tree 会准备写它影子表的语句。它们做的事不算这条语句的：永远不会把它标成写 main 库。它们仍可以让语句不能合并，这只会慢一些。触发器的语句体也在自己的 `Parse` 里编译，它的 `pToplevel` 指向所属的语句，所以要算进来：一个 `Parse` 顶层那条语句有 `pOuterParse` 时，它才算嵌套。轮到之前 context 就已结束的调用者拿到 context 的错误，它的语句不会执行。一批跑完，锁交给下一个在等锁的连接，没有的话交给队列里第一条语句，它在自己的连接上执行：谁都不会在队列后面等太久。没有其他写入者时，语句直接执行，所以只有一个写入者时没有额外开销。
 
 ```mermaid
 sequenceDiagram
@@ -94,9 +94,9 @@ sequenceDiagram
     Note over A,C: 每个调用都在 COMMIT 之后才返回
 ```
 
-哪些语句可以加入：驱动在 C 里装了一个 authorizer（`engine/os.c` 里的 `goClassify`），语句在准备时它就能看到。只有同时满足这些条件，语句才能加入：它写的是主数据库的表，且不碰只属于自己这个连接的东西。具体是：不涉及其他 schema（temp、attached），不由触发器写入（那可能是临时触发器），不写可写 Go 模块的表，不用 `last_insert_rowid()`、`changes()` 或 `total_changes()`，也不是非 DML 的语句。只有 `Exec` 会合并。事务里的语句从不合并。表结构变了，准备好的语句可能不再能合并（加了触发器，或者表变成了 Go 表），SQLite 会在 `sqlite3_step` 里、语句做任何事之前重新准备它。在跑批次的连接上，如果新程序不能合并，authorizer 就拒绝它：语句什么都没做就失败，退回调用者自己的连接执行。被 SQLite 重新准备过的语句，下次要合并之前会重新分类。
+哪些语句可以加入：驱动在 C 里装了一个 authorizer（`engine/os.c` 里的 `goClassify`），语句在准备时它就能看到。只有同时满足这些条件，语句才能加入：它写的是主数据库的表，且不碰只属于自己这个连接的东西。具体是：不涉及其他 schema（temp、attached），不由触发器写入（那可能是临时触发器），不写可写 Go 模块的表，不读任何 Go 模块的表，不用 `last_insert_rowid()`、`changes()` 或 `total_changes()`，也不是非 DML 的语句。只有 `Exec` 会合并。事务里的语句从不合并。表结构变了，准备好的语句可能不再能合并（加了触发器，或者表变成了 Go 表），SQLite 会在 `sqlite3_step` 里、语句做任何事之前重新准备它。在跑批次的连接上，如果新程序不能合并，authorizer 就拒绝它：语句什么都没做就失败，退回调用者自己的连接执行。被 SQLite 重新准备过的语句，下次要合并之前会重新分类。
 
-哪些连接可以互相执行对方的语句：只有同一个 connector 的连接（同一个 DSN，所以 `_pragma` 设置相同），而且双方打开之后都没有改过自己。改自己指的是执行设置值的 PRAGMA、`ATTACH`、`DETACH`，或者建临时表、视图、索引、触发器，authorizer 在语句准备时就会标记这个连接。只读打开的连接，以及处在只读事务里的连接，也都不合并。从那以后这个连接只自己写，照旧拿文件的写锁。Go 写的函数、聚合函数、排序规则和虚拟表模块属于 connector：带自己选项创建的 connector（`NewConnector(dsn, opts...)`）有一个别的 connector 都不共用的 key，同一批 `Register` 之后创建的 connector 共用一个。所以执行合并语句的连接，一定有调用方连接上的那些函数。
+哪些连接可以互相执行对方的语句：只有同一个 connector 的连接（同一个 DSN，所以 `_pragma` 设置相同），而且双方打开之后都没有改过自己。改自己指的是执行设置值的 PRAGMA、`ATTACH`、`DETACH`，或者建临时表、视图、索引、触发器，authorizer 在语句准备时就会标记这个连接。只读打开的连接、DSN 打开了 `defer_foreign_keys` 的连接（SQLite 在每个事务结束时把它关掉，同一个 DSN 的连接因此会不一样），以及处在只读事务里的连接，也都不合并。还有查询没读完的连接也不合并：它还拿着读到的那个快照，别的连接没有。从那以后这个连接只自己写，照旧拿文件的写锁。Go 写的函数、聚合函数、排序规则和虚拟表模块属于 connector：带自己选项创建的 connector（`NewConnector(dsn, opts...)`）有一个别的 connector 都不共用的 key，同一批 `Register` 之后创建的 connector 共用一个。所以执行合并语句的连接，一定有调用方连接上的那些函数。
 
 和单独执行相比有一处不同：合并的语句是在别的连接上跑的，所以调用者连接上的 `changes()` 和 `total_changes()` 不算它，而是算在执行它的那个连接上。`LastInsertId` 和 `RowsAffected` 是对的，调用者连接上的 `last_insert_rowid()` 也是对的。
 

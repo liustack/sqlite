@@ -8,11 +8,13 @@
 package sqlite
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -246,8 +248,9 @@ type closed struct{ words }
 
 func (closed) Open() (VCursor, error) { return nil, errors.New("cannot open") }
 
-// An INSERT that reads a module merges with others: every connection of the
-// connector has the module.
+// An INSERT that reads a Go table never merges: each connection has its own
+// instance of the table, which may give other rows. The inserts still all
+// run, each on its own connection.
 func TestMergeWithModule(t *testing.T) {
 	p := mPath(t)
 	db := fOpen(t, "file:"+p, withUpto(nil))
@@ -297,8 +300,8 @@ func TestMergeWithModule(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	if c, m := wl.stats.commits.Load()-commits0, wl.stats.merged.Load()-merged0; c != 1 || m != n {
-		t.Errorf("%d batch commits of %d statements, want 1 of %d", c, m, n)
+	if c, m := wl.stats.commits.Load()-commits0, wl.stats.merged.Load()-merged0; c != 0 || m != 0 {
+		t.Errorf("%d batch commits of %d statements, want none", c, m)
 	}
 	if got := mCount(t, db, `SELECT count(*) FROM t`); got != n*(n+1)/2 {
 		t.Errorf("%d rows, want %d", got, n*(n+1)/2)
@@ -420,7 +423,8 @@ func TestMergeWithWritableModule(t *testing.T) {
 	if got := mCount(t, db, `SELECT count(*) FROM t`); got != n {
 		t.Errorf("%d rows in t", got)
 	}
-	// Reading a writable table still merges: INSERT ... SELECT from it.
+	// Reading a writable table does not merge either: INSERT ... SELECT
+	// from it.
 	merged0 = wl.stats.merged.Load()
 	tx, err = other.Begin()
 	if err != nil {
@@ -448,7 +452,7 @@ func TestMergeWithWritableModule(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if m := wl.stats.merged.Load() - merged0; m != n {
+	if m := wl.stats.merged.Load() - merged0; m != 0 {
 		t.Errorf("%d of %d INSERT ... SELECT from m merged", m, n)
 	}
 }
@@ -608,5 +612,93 @@ func TestMergeAfterTableBecomesWritable(t *testing.T) {
 	}
 	if len(s.rows) != n {
 		t.Errorf("%d rows in the Go table, want %d", len(s.rows), n)
+	}
+}
+
+// TestModuleReadUsesOwnInstance: a write that reads a Go table reads the
+// instance of its own connection, not the one of the connection that holds
+// the lock when it comes. Here each connection's instance gives a word of
+// its own.
+func TestModuleReadUsesOwnInstance(t *testing.T) {
+	var next atomic.Int64
+	db := fOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)", WithModule("localwords", func([]string) (VTable, error) {
+		return words{strconv.FormatInt(next.Add(1), 10)}, nil
+	}, EponymousOnly))
+	mExec(t, db, `CREATE TABLE h(x); CREATE TABLE t(x)`)
+	leader, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leader.Close()
+	caller, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	var theirs, mine string
+	if err := leader.QueryRowContext(t.Context(), `SELECT word FROM localwords`).Scan(&theirs); err != nil {
+		t.Fatal(err)
+	}
+	if err := caller.QueryRowContext(t.Context(), `SELECT word FROM localwords`).Scan(&mine); err != nil {
+		t.Fatal(err)
+	}
+	if err := behind(t, leader, func() error {
+		_, err := caller.ExecContext(t.Context(), `INSERT INTO t SELECT word FROM localwords`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := caller.QueryRowContext(t.Context(), `SELECT x FROM t`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != mine {
+		t.Fatalf("inserted %q, the caller's table gives %q and the leader's %q", got, mine, theirs)
+	}
+}
+
+// TestModuleCountUsesOwnInstance: a statement that reads no column of a Go
+// table (count(*), a constant, EXISTS) still reads the caller's instance.
+func TestModuleCountUsesOwnInstance(t *testing.T) {
+	for _, q := range []string{
+		`INSERT INTO t SELECT count(*) FROM localwords`,
+		`INSERT INTO t SELECT 1 FROM localwords`,
+		`INSERT INTO t SELECT 1 WHERE EXISTS (SELECT 1 FROM localwords)`,
+		`INSERT INTO t SELECT count(*) FROM (SELECT 1 FROM localwords)`,
+	} {
+		var next atomic.Int64
+		db := fOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)", WithModule("localwords", func([]string) (VTable, error) {
+			return make(words, next.Add(1)-1), nil
+		}, EponymousOnly))
+		mExec(t, db, `CREATE TABLE h(x); CREATE TABLE t(x)`)
+		leader, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		caller, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The leader's table is empty, the caller's has one row.
+		for _, c := range []*sql.Conn{leader, caller} {
+			var n int
+			if err := c.QueryRowContext(t.Context(), `SELECT count(*) FROM localwords`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := behind(t, leader, func() error {
+			_, err := caller.ExecContext(t.Context(), q)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var got int
+		if err := caller.QueryRowContext(t.Context(), `SELECT count(*) FROM t WHERE x > 0`).Scan(&got); err != nil {
+			t.Fatal(err)
+		} else if got != 1 {
+			t.Errorf("%s: %d rows from the caller's table, want 1", q, got)
+		}
+		caller.Close()
+		leader.Close()
 	}
 }

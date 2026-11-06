@@ -20,6 +20,9 @@
 // go, so write ${1}x, not $1x (a group named 1x). A group that is not there
 // gives the empty text.
 //
+// A result that may be longer than 1,000,000,000 bytes is an error, each
+// group the template names counted as long as its whole match.
+//
 // A NULL argument gives NULL. A REAL argument is an error: write
 // CAST(x AS TEXT). A pattern that does not compile is the error of the
 // statement.
@@ -27,7 +30,9 @@ package regexp
 
 import (
 	"database/sql/driver"
+	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/liustack/sqlite"
@@ -78,7 +83,48 @@ func replace(a []driver.Value) (driver.Value, error) {
 	if null || err != nil {
 		return nil, err
 	}
+	if !fits(re, s, repl, maxLength) {
+		return nil, fmt.Errorf("regexp_replace: the result may be longer than %d bytes", maxLength)
+	}
 	return re.ReplaceAllString(s, repl), nil
+}
+
+// maxLength is the most bytes regexp_replace gives, a variable for the
+// tests.
+var maxLength = arg.MaxLength
+
+// fits says re.ReplaceAllString(s, repl) is at most max bytes long, counting
+// each group the template names as long as its whole match: so it never says
+// yes to a result that is longer, and it says no to one that is not only
+// when the groups are shorter than their matches.
+func fits(re *regexp.Regexp, s, repl string, max int) bool {
+	// There are at most len(s)+1 matches, together at most len(s) bytes. The
+	// template gives each at most len(repl) bytes and the match once for each
+	// $. With SQLite's limit of 1e9 bytes on s and repl, no sum overflows.
+	n, m := len(s), len(repl)
+	if n+(n+1)*m+strings.Count(repl, "$")*n <= max {
+		return true
+	}
+	// What the template gives exactly, by Go's own rules: lit bytes of its
+	// own, and refs groups that each give a part of the match.
+	none := make([]int, 2*(re.NumSubexp()+1))
+	one := make([]int, len(none))
+	for i := range none {
+		none[i], one[i] = -1, i%2
+	}
+	lit := len(re.ExpandString(nil, repl, "", none))
+	refs := len(re.ExpandString(nil, repl, "x", one)) - lit
+	if n+(n+1)*lit+refs*n <= max {
+		return true
+	}
+	// Then the matches themselves, kept only as a count and a sum.
+	k, sum := 0, 0
+	re.ReplaceAllStringFunc(s, func(match string) string {
+		k++
+		sum += len(match)
+		return ""
+	})
+	return n-sum+k*lit+refs*sum <= max
 }
 
 // textAndPattern reads the text x and the pattern, arguments xi and pi of fn

@@ -31,10 +31,9 @@ type conn struct {
 	// key is the connector's key: group commit merges only between
 	// connections of one key (writer.go).
 	key string
-	// private says the connection changed itself after it opened (a PRAGMA
-	// that sets something, ATTACH, a temporary object) or opened read-only:
-	// it no longer runs as the others of its key, and never merges.
-	private bool
+	// alone says the connection never merges from the start: SQLite opened it
+	// read-only, or its DSN turns defer_foreign_keys on. See private.
+	alone bool
 	// readOnlyTx says a read-only transaction is open: it takes no write
 	// lock.
 	readOnlyTx bool
@@ -78,7 +77,7 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 	if c.c.Broken() {
 		return nil, "", driver.ErrBadConn
 	}
-	s, tail, err := c.c.Prepare(query)
+	s, tail, err := c.prepare(query)
 	if err != nil {
 		return nil, "", err
 	}
@@ -86,7 +85,7 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 		return nil, "", errors.New("sqlite: no statement in the query")
 	}
 	if strings.TrimSpace(tail) != "" {
-		next, _, err := c.c.Prepare(tail)
+		next, _, err := c.prepare(tail)
 		if next != nil {
 			next.Finalize()
 			err = errors.New("sqlite: a prepared statement or a query takes one statement: use Exec for several")
@@ -99,15 +98,27 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 	return s, query[:len(query)-len(tail)], nil
 }
 
-func newStmt(c *conn, s *csqlite.Stmt, sql string, once bool) *stmt {
-	st := &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), changesConn: s.ChangesConn(), once: once}
-	if st.changesConn {
-		// From here on the connection may run differently from the others
-		// of its key. Marked as the statement is prepared, before it runs.
-		c.private = true
+// prepare prepares the first statement of query. SQLite runs a PRAGMA that
+// sets busy_timeout as it prepares it, so the write lock reads it again then,
+// whether the statement runs, or even prepares without an error, or not.
+func (c *conn) prepare(query string) (*csqlite.Stmt, string, error) {
+	s, tail, err := c.c.Prepare(query)
+	if c.c.JustChanged() {
+		c.readBusyTimeout()
 	}
-	return st
+	return s, tail, err
 }
+
+func newStmt(c *conn, s *csqlite.Stmt, sql string, once bool) *stmt {
+	return &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), changesConn: s.ChangesConn(), once: once}
+}
+
+// private says the connection runs differently from the others of its key,
+// so it never merges: it opened read-only, or a statement that changes it (a
+// PRAGMA that sets something, ATTACH, a temporary object) was prepared on
+// it. That counts from the prepare, as SQLite applies some as it prepares
+// them, even for a statement the driver then refuses.
+func (c *conn) private() bool { return c.alone || c.c.ChangedItself() }
 
 func (c *conn) Close() error {
 	if c.closed {
@@ -249,7 +260,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	}
 	var res result
 	for {
-		s, tail, err := c.c.Prepare(query)
+		s, tail, err := c.prepare(query)
 		if err != nil {
 			return nil, err
 		}

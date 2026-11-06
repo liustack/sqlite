@@ -12,7 +12,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"slices"
 	"sync"
@@ -77,10 +76,12 @@ type request struct {
 	// statement itself.
 	handed bool
 	res    result
-	// inserted says the statement set last_insert_rowid: res.id is then the
-	// caller's new one.
-	inserted bool
-	err      error
+	// lastID is the caller's last_insert_rowid: what it was when the request
+	// was made, then what the statement left once it ran, as it would on
+	// the caller's connection. The connection running the batch starts the
+	// statement from it, so no value has to stand for "nothing inserted".
+	lastID int64
+	err    error
 }
 
 // maxBatch is the most statements one transaction of the queue takes.
@@ -300,7 +301,7 @@ func (l *writeLock) submit(ctx context.Context, c *conn, s *stmt, args []driver.
 		l.mu.Unlock()
 		return nil, errBusy
 	}
-	req := &request{ctx: ctx, key: c.key, sql: s.sql, args: args, done: make(chan struct{})}
+	req := &request{ctx: ctx, key: c.key, sql: s.sql, args: args, done: make(chan struct{}), lastID: c.c.LastInsertRowID()}
 	l.queue = append(l.queue, req)
 	l.mu.Unlock()
 	t := time.NewTimer(c.busyTimeout)
@@ -350,15 +351,12 @@ func (c *conn) answered(ctx context.Context, s *stmt, req *request) (*result, er
 		c.writing = true
 		c.endWrite()
 	}
+	c.c.SetLastInsertRowID(req.lastID)
 	if req.err != nil {
 		return nil, req.err
 	}
 	r := &req.res // req is done with: its result is the caller's
-	if req.inserted {
-		c.c.SetLastInsertRowID(r.id)
-	} else {
-		r.id = c.c.LastInsertRowID()
-	}
+	r.id = req.lastID
 	return r, nil
 }
 
@@ -366,7 +364,7 @@ func (c *conn) answered(ctx context.Context, s *stmt, req *request) (*result, er
 // runs them exactly as theirs would, since no connection of the key that
 // changed itself (conn.private) ever joins the queue.
 func (c *conn) canMerge() bool {
-	return !c.private && !c.closed && !c.bad && !c.readOnlyTx && !c.c.Broken() && c.c.AutoCommit()
+	return !c.private() && !c.closed && !c.bad && !c.readOnlyTx && !c.c.Broken() && c.c.AutoCommit() && !c.c.InTx()
 }
 
 // beginWrite takes the write lock before a statement that may write.
@@ -398,11 +396,11 @@ func (c *conn) endWrite() {
 // A request whose context is done before it runs is answered with its
 // error. A statement that fails keeps what SQLite kept of it, as its own
 // autocommit transaction would (nothing, or the rows before the failure for
-// ON CONFLICT FAIL), and its caller gets the error. One that leaves a
-// deferred foreign key unresolved is undone by its SAVEPOINT, as its own
-// COMMIT would fail. When a failure ends the whole transaction (an IO error,
-// an interrupt, ON CONFLICT ROLLBACK), the statements that had run are run
-// again in a new one.
+// ON CONFLICT FAIL), and its caller gets the error after the commit. One
+// that leaves a deferred foreign key unresolved is undone by its SAVEPOINT,
+// as its own COMMIT would fail. When a failure ends the whole transaction
+// (an IO error, an interrupt, ON CONFLICT ROLLBACK), the statements that
+// had run are run again in a new one, those that failed too.
 func (c *conn) runBatch(batch []*request) (back []*request) {
 	// The statements set c's last_insert_rowid, which is c's own.
 	own := c.c.LastInsertRowID()
@@ -425,7 +423,11 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 			answer(batch, err)
 			return back
 		}
-		ok := make([]*request, 0, len(batch))
+		// ran holds the statements that ran, those that failed too: one
+		// that failed may have kept rows (OR FAIL), which commit with the
+		// others, so it is answered after the commit and runs again with
+		// them.
+		ran := make([]*request, 0, len(batch))
 		lost := false
 		for i, r := range batch {
 			err := c.runOne(r)
@@ -433,31 +435,36 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 				back = append(back, r)
 				continue
 			}
-			if err == nil {
-				ok = append(ok, r)
+			r.err = err
+			if err == nil || !c.c.AutoCommit() {
+				ran = append(ran, r)
 				continue
 			}
-			r.err = err
+			// The statement ended the transaction, as it would have ended
+			// its own: run the others again.
 			close(r.done)
-			if c.c.AutoCommit() {
-				// The transaction is gone: run the others again.
-				batch = append(ok, batch[i+1:]...)
-				lost = true
-				break
-			}
+			batch = append(ran, batch[i+1:]...)
+			lost = true
+			break
 		}
 		if lost {
 			continue
 		}
 		start := time.Now()
 		if err := c.execCached("COMMIT"); err != nil {
-			answer(ok, c.abandon(err))
+			answer(ran, c.abandon(err))
 			return back
 		}
 		c.wl.stats.commits.Add(1)
 		c.wl.stats.commitTime.Add(int64(time.Since(start)))
-		c.wl.stats.merged.Add(int64(len(ok)))
-		answer(ok, nil)
+		var merged int64
+		for _, r := range ran {
+			if r.err == nil {
+				merged++
+			}
+		}
+		c.wl.stats.merged.Add(merged)
+		answer(ran, nil)
 		return back
 	}
 }
@@ -479,8 +486,7 @@ func (c *conn) runOne(r *request) error {
 	if err := c.execCached("SAVEPOINT merge"); err != nil {
 		return c.abandon(err)
 	}
-	const unset = math.MinInt64 // a rowid no INSERT of the queue gives
-	c.c.SetLastInsertRowID(unset)
+	c.c.SetLastInsertRowID(r.lastID)
 	c.c.SetMerging(true)
 	res, err := s.run(r.ctx, r.args)
 	if c.c.SetMerging(false) {
@@ -498,14 +504,20 @@ func (c *conn) runOne(r *request) error {
 		}
 		return errNotHere
 	}
+	// SQLite keeps last_insert_rowid when it undoes a statement, so this is
+	// the caller's whatever becomes of the statement.
+	r.lastID = c.c.LastInsertRowID()
 	if c.c.AutoCommit() {
 		if err == nil {
 			err = errBusy // cannot happen: a statement that succeeds keeps the transaction
 		}
 		return err
 	}
+	// A statement that failed may have kept rows too (OR FAIL). SQLite
+	// rolls a statement it undoes back to its count of deferred foreign
+	// keys, so a count left here is this statement's.
 	undo := false
-	if err == nil && c.c.DeferredFKs() {
+	if c.c.DeferredFKs() {
 		err, undo = errForeignKey, true
 	}
 	if c.c.VirtualTablesInTx() {
@@ -538,7 +550,6 @@ func (c *conn) runOne(r *request) error {
 		return err
 	}
 	r.res = *res
-	r.inserted = res.id != unset
 	return nil
 }
 

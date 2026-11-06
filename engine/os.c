@@ -301,17 +301,38 @@ static const sqlite3_module goWritableModule = {
     0,           0,               goVtabSavepoint, goVtabRelease,  goVtabRollbackTo,
 };
 
-/* goWritesGoTable says whether table of schema is a table of the writable
-   Go module on db. It reads SQLite's own structs (Table, Module), as this
-   file is compiled with sqlite3.c. */
-static int goWritesGoTable(sqlite3 *db, const char *table, const char *schema) {
+/* goTableModule is the module of table of schema on db, or NULL for a table
+   that is not virtual. A table used as an eponymous one (a table-valued
+   function) is in no schema and has the name of its module. It reads
+   SQLite's own structs (Table, Module), as this file is compiled with
+   sqlite3.c. */
+static const sqlite3_module *goTableModule(sqlite3 *db, const char *table, const char *schema) {
   Table *t;
   Module *m;
   if (!table) return 0;
   t = sqlite3FindTable(db, table, schema);
-  if (!t || !IsVirtual(t) || t->u.vtab.nArg < 1) return 0;
-  m = (Module *)sqlite3HashFind(&db->aModule, t->u.vtab.azArg[0]);
-  return m && m->pModule == &goWritableModule;
+  if (t) {
+    if (!IsVirtual(t) || t->u.vtab.nArg < 1) return 0;
+    m = (Module *)sqlite3HashFind(&db->aModule, t->u.vtab.azArg[0]);
+  } else {
+    m = (Module *)sqlite3HashFind(&db->aModule, table);
+  }
+  return m ? m->pModule : 0;
+}
+
+/* goWritesGoTable says whether table of schema is a table of the writable
+   Go module on db. */
+static int goWritesGoTable(sqlite3 *db, const char *table, const char *schema) {
+  return goTableModule(db, table, schema) == &goWritableModule;
+}
+
+/* goReadsGoTable says whether table of schema is a table of a Go module on
+   db. Each connection has its own instance of the table, which may give
+   other rows than another connection's, so a statement that reads one runs
+   on its own connection. */
+static int goReadsGoTable(sqlite3 *db, const char *table, const char *schema) {
+  const sqlite3_module *m = goTableModule(db, table, schema);
+  return m == &goModule || m == &goEponymousModule || m == &goWritableModule;
 }
 
 static void goModuleDestroy(void *h) { host_module_destroy((long)h); }
@@ -456,8 +477,12 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     *flags |= isMain(db) && !trigger && !goWritesGoTable(w->db, a, db) ? GO_WRITES_MAIN : GO_PRIVATE;
     break;
   case SQLITE_READ:
-    /* A read of a common table expression or a subquery has no schema. */
-    if (db && !isMain(db)) *flags |= GO_PRIVATE;
+    /* A read with no schema is of a table no column of which is read
+       (SELECT count(*) FROM t), written without its schema, or of a common
+       table expression or a view of that name. The name is looked up in
+       every schema then: one that is also a Go table's only costs a
+       merge. */
+    if (db ? !isMain(db) || goReadsGoTable(w->db, a, db) : goReadsGoTable(w->db, a, 0)) *flags |= GO_PRIVATE;
     break;
   case SQLITE_SELECT:
   case SQLITE_RECURSIVE:

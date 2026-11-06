@@ -136,7 +136,7 @@ func remote(path string) bool {
 // File opens a handle of its own for its slot locks.
 func (f *File) openShm() int {
 	path := f.path + "-shm"
-	key := strings.ToLower(path)
+	key := shmKey(path)
 
 	shmNodes.Lock()
 	node := shmNodes.m[key]
@@ -421,4 +421,18 @@ func (f *File) ShmUnmap(remove bool) int {
 		Delete(node.path, false)
 	}
 	return OK
+}
+
+// shmKey is the key of the shared memory node of path. Like os_win, which
+// compares the paths with sqlite3StrICmp, it folds ASCII letters only:
+// strings.ToLower folds more, and would make one node of two files Windows
+// tells apart, such as İ.db and i.db.
+func shmKey(path string) string {
+	b := []byte(path)
+	for i, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
 }

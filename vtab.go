@@ -23,7 +23,8 @@ import (
 // Each connection connects a table of its own, and uses it from one
 // goroutine at a time. Something the tables of several connections share is
 // used from several goroutines at once. Like a Func, a table must not use
-// the database.
+// the database. A statement that reads a table never merges with others in
+// group commit, so it always reads the table of its own connection.
 type VTable interface {
 	// Schema is the CREATE TABLE statement of its columns, such as
 	// "CREATE TABLE x(value, start HIDDEN)". The name of the table in it

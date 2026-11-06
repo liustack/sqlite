@@ -109,7 +109,9 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	if err := c.txEnded(); err != nil {
 		return nil, err
 	}
-	if c.wl != nil && !c.writing && !c.private && c.c.AutoCommit() && s.s.Mergeable() {
+	// A connection with a query not done keeps the snapshot it read, which the
+	// connection running a batch would not have.
+	if c.wl != nil && !c.writing && !c.private() && c.c.AutoCommit() && !c.c.InTx() && s.s.Mergeable() {
 		return c.wl.submit(ctx, c, s, args)
 	}
 	if err := c.beginWrite(ctx, s.readOnly); err != nil {
@@ -212,6 +214,16 @@ func (s *stmt) bind(args []driver.NamedValue) error {
 		// SQLite would read the parameters left over as NULL.
 		return fmt.Errorf("sqlite: %d arguments for %d parameters", len(args), s.nparams)
 	}
+	// bound marks what the arguments bind when some have names: SQLite would
+	// read a parameter left out as NULL.
+	var small [64]bool
+	var bound []bool
+	if named {
+		bound = small[:]
+		if s.nparams > len(small) {
+			bound = make([]bool, s.nparams)
+		}
+	}
 	for _, a := range args {
 		i := a.Ordinal
 		if a.Name != "" {
@@ -252,6 +264,29 @@ func (s *stmt) bind(args []driver.NamedValue) error {
 		if err != nil {
 			return err
 		}
+		if bound != nil {
+			bound[i-1] = true
+		}
+	}
+	if bound != nil {
+		return s.allBound(bound)
+	}
+	return nil
+}
+
+// allBound says each parameter has an argument, given what bound marks. One
+// name used twice in the SQL is one parameter. A number up to the largest
+// needs an argument even when the SQL skips it (1 in "SELECT ?2, :x"), as
+// it does with no names.
+func (s *stmt) allBound(bound []bool) error {
+	for i := range s.nparams {
+		if bound[i] {
+			continue
+		}
+		if n := s.s.ParamName(i + 1); n != "" {
+			return fmt.Errorf("sqlite: no argument for parameter %s", n)
+		}
+		return fmt.Errorf("sqlite: no argument for parameter %d", i+1)
 	}
 	return nil
 }

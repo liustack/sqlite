@@ -40,3 +40,8 @@ func Bytes(fn string, i int, v driver.Value) (b []byte, null bool, err error) {
 	s, null, err := Text(fn, i, v)
 	return []byte(s), null, err
 }
+
+// MaxLength is SQLITE_MAX_LENGTH, the most bytes SQLite takes in a string or
+// a blob. A function stops building a value longer than that and fails, as
+// SQLite's own would, rather than fill the memory first.
+const MaxLength = 1_000_000_000
