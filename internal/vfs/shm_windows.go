@@ -8,8 +8,10 @@
 package vfs
 
 import (
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -34,7 +36,9 @@ type shmNode struct {
 	readOnly bool // the -shm could only be opened for reading
 	unlocked bool // the DMS lock is not held yet
 	users    []*shm
-	regions  []uintptr // address of each region
+	left     []slotRange  // ranges whose unlock failed, on any handle of the node
+	leftN    atomic.Int32 // len(left), read without mu
+	regions  []uintptr    // address of each region
 	maps     []shmMapping
 	ov       windows.Overlapped
 }
@@ -62,6 +66,55 @@ type shm struct {
 	// unlocks only the exact range that was locked.
 	exclN [ShmNLock]uint8
 	ov    windows.Overlapped
+}
+
+// slotRange is a range of slots locked in one call on a handle. A range
+// whose unlock failed is still locked with no holder. It is unlocked again,
+// as it was locked since Windows unlocks only the exact range, before any
+// File of the process locks a slot, and the handle's close drops it at the
+// latest.
+type slotRange struct {
+	h         windows.Handle
+	offset, n int
+}
+
+// unlockFileEx is windows.UnlockFileEx, which tests make fail.
+var unlockFileEx = windows.UnlockFileEx
+
+// addLeft keeps a range whose unlock failed. node.mu is held.
+func (node *shmNode) addLeft(r slotRange) {
+	node.left = append(node.left, r)
+	node.leftN.Store(int32(len(node.left)))
+}
+
+// retryLeft unlocks again the ranges whose unlock failed, on whichever
+// handle, and keeps those that fail. It says whether none of those kept is
+// on h with a slot of mask: h would stack its lock on such a range. A range
+// on another handle needs no check, as the lock on h then fails or may be
+// shared. node.mu is held.
+func (node *shmNode) retryLeft(h windows.Handle, mask uint16) bool {
+	ok := true
+	kept := node.left[:0]
+	for _, r := range node.left {
+		ov := windows.Overlapped{Offset: uint32(shmBase + r.offset)}
+		if unlockFileEx(r.h, 0, uint32(r.n), 0, &ov) != nil {
+			kept = append(kept, r)
+			if r.h == h && uint16(1<<(r.offset+r.n)-1<<r.offset)&mask != 0 {
+				ok = false
+			}
+		}
+	}
+	clear(node.left[len(kept):])
+	node.left = kept
+	node.leftN.Store(int32(len(kept)))
+	return ok
+}
+
+// forgetLeft drops the ranges of h, which is about to be closed: the close
+// drops their locks, and the handle may be reused. node.mu is held.
+func (node *shmNode) forgetLeft(h windows.Handle) {
+	node.left = slices.DeleteFunc(node.left, func(r slotRange) bool { return r.h == h })
+	node.leftN.Store(int32(len(node.left)))
 }
 
 // allocationGranularity is what a view of a file must start on.
@@ -312,15 +365,25 @@ func (f *File) ShmLock(offset, n, flags int) int {
 			// Another File of the process still reads the slot.
 			h = windows.InvalidHandle
 		}
+		rc := OK
 		if h != windows.InvalidHandle {
 			s.ov = windows.Overlapped{Offset: uint32(shmBase + offset)}
-			if windows.UnlockFileEx(h, 0, uint32(n), 0, &s.ov) != nil {
-				return IOErrUnlock
+			if unlockFileEx(h, 0, uint32(n), 0, &s.ov) != nil {
+				// The File lets go of the slots all the same, as SQLite
+				// takes it to: the range is kept to unlock again.
+				if !node.shared {
+					node.mu.Lock()
+				}
+				node.addLeft(slotRange{h, offset, n})
+				if !node.shared {
+					node.mu.Unlock()
+				}
+				rc = IOErrUnlock
 			}
 		}
 		s.excl &^= mask
 		s.shared &^= mask
-		return OK
+		return rc
 	}
 	if node.shared {
 		for _, o := range node.users {
@@ -333,6 +396,18 @@ func (f *File) ShmLock(offset, n, flags int) int {
 		}
 	}
 	if h != windows.InvalidHandle {
+		if node.leftN.Load() > 0 {
+			if !node.shared {
+				node.mu.Lock()
+			}
+			ok := node.retryLeft(h, mask)
+			if !node.shared {
+				node.mu.Unlock()
+			}
+			if !ok {
+				return Busy
+			}
+		}
 		lf := uint32(windows.LOCKFILE_FAIL_IMMEDIATELY)
 		if excl {
 			lf |= windows.LOCKFILE_EXCLUSIVE_LOCK
@@ -385,12 +460,20 @@ func (f *File) ShmUnmap(remove bool) int {
 	}
 	f.shm = nil
 	if s.h != windows.InvalidHandle {
+		// What could not be unlocked goes when Windows gets to the close.
+		node.mu.Lock()
+		node.retryLeft(s.h, 0)
+		node.forgetLeft(s.h)
+		node.mu.Unlock()
 		windows.CloseHandle(s.h)
 		s.h = windows.InvalidHandle
 	}
 
 	shmNodes.Lock()
 	node.mu.Lock()
+	if len(node.left) > 0 {
+		node.retryLeft(node.h, 0)
+	}
 	for i, o := range node.users {
 		if o == s {
 			node.users = append(node.users[:i], node.users[i+1:]...)

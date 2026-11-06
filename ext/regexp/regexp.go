@@ -23,6 +23,14 @@
 // A result that may be longer than 1,000,000,000 bytes is an error, each
 // group the template names counted as long as its whole match.
 //
+// The memory a match takes grows with the size of the pattern times its
+// groups, and its time with the size of the pattern times the length of
+// the text. So a pattern is an error when it is longer than 50,000 bytes
+// (what SQLite takes for LIKE), when it has more than 100 groups, or when,
+// with each repeat written out (x{3} as xxx), it has more than 50,000
+// characters and operators, or more than 1,048,576 once multiplied by one
+// more than its groups.
+//
 // A NULL argument gives NULL. A REAL argument is an error: write
 // CAST(x AS TEXT). A pattern that does not compile is the error of the
 // statement.
@@ -32,6 +40,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"strings"
 	"sync"
 
@@ -151,6 +160,51 @@ var cache struct {
 
 const cacheSize = 256
 
+// The limits of a pattern. maxPattern is what SQLite takes for a LIKE
+// pattern, and is checked before the pattern is parsed. maxSize and
+// maxSizeGroups bound the program regexp compiles: a match keeps up to one
+// thread per instruction, each with the bounds of every group. At the
+// limits a match takes up to about 25 MiB.
+const (
+	maxPattern    = 50000
+	maxGroups     = 100
+	maxSize       = 50000
+	maxSizeGroups = 1 << 20
+)
+
+// size is how many instructions re compiles to at most, a repeat written
+// out, besides the two every program has. It is how regexp/syntax counts
+// for its own, larger, limit.
+func size(re *syntax.Regexp) int64 {
+	var n int64
+	switch re.Op {
+	case syntax.OpLiteral:
+		n = int64(len(re.Rune))
+	case syntax.OpCapture, syntax.OpStar:
+		n = 2 + size(re.Sub[0])
+	case syntax.OpPlus, syntax.OpQuest:
+		n = 1 + size(re.Sub[0])
+	case syntax.OpConcat, syntax.OpAlternate:
+		for _, sub := range re.Sub {
+			n += size(sub)
+		}
+		if re.Op == syntax.OpAlternate {
+			n += int64(len(re.Sub)) - 1
+		}
+	case syntax.OpRepeat:
+		sub := size(re.Sub[0])
+		switch {
+		case re.Max == -1 && re.Min == 0:
+			n = 2 + sub
+		case re.Max == -1:
+			n = 1 + int64(re.Min)*sub
+		default:
+			n = int64(re.Max)*sub + int64(re.Max-re.Min)
+		}
+	}
+	return max(1, n)
+}
+
 func compile(p string) (*regexp.Regexp, error) {
 	cache.Lock()
 	re, ok := cache.m[p]
@@ -158,7 +212,23 @@ func compile(p string) (*regexp.Regexp, error) {
 	if ok {
 		return re, nil
 	}
-	re, err := regexp.Compile(p)
+	if len(p) > maxPattern {
+		return nil, fmt.Errorf("regexp: the pattern is longer than %d bytes", maxPattern)
+	}
+	// The size is checked on the parsed pattern, before a repeat is
+	// written out by compiling it.
+	tree, err := syntax.Parse(p, syntax.Perl)
+	if err != nil {
+		return nil, err
+	}
+	groups := tree.MaxCap()
+	if groups > maxGroups {
+		return nil, fmt.Errorf("regexp: the pattern has more than %d groups", maxGroups)
+	}
+	if n := size(tree); n > maxSize || n*int64(groups+1) > maxSizeGroups {
+		return nil, fmt.Errorf("regexp: the pattern is too large with its repeats written out")
+	}
+	re, err = regexp.Compile(p)
 	if err != nil {
 		return nil, err
 	}
