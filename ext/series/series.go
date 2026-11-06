@@ -22,6 +22,13 @@
 // own does. A TEXT or BLOB argument, or one compared with value in the WHERE
 // clause (value = '5', or a Go string bound to value = ?), is an error where
 // SQLite's would read the number at its start: write CAST(x AS INTEGER).
+//
+// Where SQLite's own gives wrong rows or fails, this one gives the right
+// rows: a LIMIT with an ORDER BY the sequence does not follow on its own
+// (ORDER BY rowid DESC LIMIT 3), a REAL compared with value at the ends of
+// the 64-bit range, a join that gives the start through value
+// (JOIN generate_series s ON s.value = t.x), and a LIMIT on a sequence that
+// counts down.
 package series
 
 import (
