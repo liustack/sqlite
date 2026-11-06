@@ -622,8 +622,10 @@ func TestMergeKeepsReadSnapshot(t *testing.T) {
 // once one of them had a transaction. A DELETE that a RESTRICT key refuses
 // at once on one passes on the other, so they must not merge.
 func TestMergeDeferForeignKeysSetting(t *testing.T) {
-	for _, merged := range []bool{false, true} {
-		db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=defer_foreign_keys(1)")
+	for i := range 6 {
+		merged := i%2 == 1
+		set := []string{"defer_foreign_keys(1)", "main.defer_foreign_keys(1)", "%22defer_foreign_keys%22=1"}[i/2]
+		db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma="+set)
 		mExec(t, db, schemaH)
 		mExec(t, db, `CREATE TABLE t(id PRIMARY KEY, p REFERENCES t(id) ON DELETE RESTRICT); INSERT INTO t VALUES (1, NULL), (2, 1)`)
 		leader, err := db.Conn(t.Context())
@@ -641,7 +643,7 @@ func TestMergeDeferForeignKeysSetting(t *testing.T) {
 			err = del()
 		}
 		if err != nil {
-			t.Errorf("merged %v: %v", merged, err)
+			t.Errorf("%s, merged %v: %v", set, merged, err)
 		}
 		caller.Close()
 		leader.Close()
