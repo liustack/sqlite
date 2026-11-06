@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/superfly/ltx"
 
@@ -91,35 +92,8 @@ func (r *Replica) compact(ctx context.Context, from, to int) (bool, error) {
 	}
 
 	name := filepath.Join(dir, ltx.FormatFilename(first.MinTXID, last.MaxTXID))
-	out, err := os.Create(name)
-	if err != nil {
-		return false, err
-	}
-	defer out.Close()
-	w := bufio.NewWriterSize(out, 1<<20)
-	comp, err := ltx.NewCompactor(w, inputs)
-	if err != nil {
-		return false, err
-	}
-	if err := comp.Compact(ctx); err != nil {
-		return false, fmt.Errorf("replica: compacting TXIDs %s to %s into level %d: %w", first.MinTXID, last.MaxTXID, to, err)
-	}
-	if err := w.Flush(); err != nil {
-		return false, err
-	}
-	if err := out.Sync(); err != nil {
-		return false, err
-	}
-	if _, err := out.Seek(0, io.SeekStart); err != nil {
-		return false, err
-	}
-	h, tr, err := capture.Verify(out)
-	if err != nil {
-		return false, fmt.Errorf("replica: the file compacted into level %d: %w", to, err)
-	}
-	if h.MinTXID != first.MinTXID || h.MaxTXID != last.MaxTXID || h.PreApplyChecksum != first.PreApplyChecksum ||
-		tr.PostApplyChecksum != post || h.Timestamp != last.Timestamp {
-		return false, fmt.Errorf("replica: the file compacted into level %d does not match the files merged", to)
+	if err := merge(ctx, name, inputs, first, last, post); err != nil {
+		return false, fmt.Errorf("replica: compacting into level %d: %w", to, err)
 	}
 	if err := r.putFile(ctx, to, name); err != nil {
 		return false, err
@@ -180,4 +154,59 @@ func makeCompactDir(dir string) error {
 		return err
 	}
 	return os.Mkdir(dir, 0o700)
+}
+
+// merge merges the LTX files in inputs, in TXID order, into the file name,
+// and checks it against them: it must start where first does, end where
+// last does, with the checksum post and the time of last.
+func merge(ctx context.Context, name string, inputs []io.Reader, first, last ltx.Header, post ltx.Checksum) error {
+	inputs = slices.Clone(inputs)
+	for i, in := range inputs {
+		inputs[i] = ctxReader{ctx, in}
+	}
+	out, err := os.Create(name)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	w := bufio.NewWriterSize(out, 1<<20)
+	comp, err := ltx.NewCompactor(w, inputs)
+	if err != nil {
+		return err
+	}
+	if err := comp.Compact(ctx); err != nil {
+		return fmt.Errorf("merging TXIDs %s to %s: %w", first.MinTXID, last.MaxTXID, err)
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	if _, err := out.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	h, tr, err := capture.Verify(ctxReader{ctx, out})
+	if err != nil {
+		return fmt.Errorf("the file merged from TXIDs %s to %s: %w", first.MinTXID, last.MaxTXID, err)
+	}
+	if h.MinTXID != first.MinTXID || h.MaxTXID != last.MaxTXID || h.PreApplyChecksum != first.PreApplyChecksum ||
+		tr.PostApplyChecksum != post || h.Timestamp != last.Timestamp {
+		return fmt.Errorf("the file merged from TXIDs %s to %s does not match the files merged", first.MinTXID, last.MaxTXID)
+	}
+	return nil
+}
+
+// ctxReader is r, failing once ctx is done: ltx's Compactor does not look
+// at its context, and a merge of many large files would go on after it.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
