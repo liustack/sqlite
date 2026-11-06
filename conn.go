@@ -32,7 +32,7 @@ type conn struct {
 	// connections of one key (writer.go).
 	key string
 	// alone says the connection never merges from the start: SQLite opened it
-	// read-only. See private.
+	// read-only, or its DSN sets defer_foreign_keys. See private.
 	alone bool
 	// readOnlyTx says a read-only transaction is open: it takes no write
 	// lock.

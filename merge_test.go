@@ -610,6 +610,37 @@ func TestMergeKeepsReadSnapshot(t *testing.T) {
 	}
 }
 
+// TestMergeDeferForeignKeysSetting: SQLite turns defer_foreign_keys off at
+// the end of each transaction, so two connections whose DSN sets it differ
+// once one of them had a transaction. A DELETE that a RESTRICT key refuses
+// at once on one passes on the other, so they must not merge.
+func TestMergeDeferForeignKeysSetting(t *testing.T) {
+	for _, merged := range []bool{false, true} {
+		db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=defer_foreign_keys(1)")
+		mExec(t, db, schemaH)
+		mExec(t, db, `CREATE TABLE t(id PRIMARY KEY, p REFERENCES t(id) ON DELETE RESTRICT); INSERT INTO t VALUES (1, NULL), (2, 1)`)
+		leader, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		caller, err := db.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		del := func() error { _, err := caller.ExecContext(t.Context(), `DELETE FROM t`); return err }
+		if merged {
+			err = behind(t, leader, del)
+		} else {
+			err = del()
+		}
+		if err != nil {
+			t.Errorf("merged %v: %v", merged, err)
+		}
+		caller.Close()
+		leader.Close()
+	}
+}
+
 func TestReadOnlyTxHoldsNoLock(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)")

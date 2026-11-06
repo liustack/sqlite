@@ -71,8 +71,13 @@ func (d *Driver) OpenConnector(dsn string) (driver.Connector, error) {
 type Connector struct {
 	name    string // what SQLite opens
 	pragmas []string
-	begin   string
-	opts    options // what Register and NewConnector gave
+	// resets says a PRAGMA of the DSN sets what SQLite sets back on its own
+	// at the end of each transaction (defer_foreign_keys): connections that
+	// had a transaction and connections that had none differ, so none of
+	// them merges.
+	resets bool
+	begin  string
+	opts   options // what Register and NewConnector gave
 	// key is the same for connectors that open a file the same way: group
 	// commit merges statements only between connections of one key.
 	key string
@@ -94,6 +99,11 @@ func NewConnector(dsn string, opts ...Option) (*Connector, error) {
 	}
 	for _, p := range q["_pragma"] {
 		c.pragmas = append(c.pragmas, "PRAGMA "+p)
+		name, _, _ := strings.Cut(p, "(")
+		name, _, _ = strings.Cut(name, "=")
+		if strings.EqualFold(strings.TrimSpace(name), "defer_foreign_keys") {
+			c.resets = true
+		}
 	}
 	switch l := q.Get("_txlock"); l {
 	case "", "deferred":
@@ -185,8 +195,9 @@ func (c *Connector) setUp(conn *conn) error {
 	}
 	conn.busyTimeout = time.Duration(ms) * time.Millisecond
 	// A connection SQLite opened read-only, as when the file is, runs
-	// differently from the others of its key.
-	conn.alone = cc.ReadOnly()
+	// differently from the others of its key, and so do all when the DSN sets
+	// defer_foreign_keys.
+	conn.alone = cc.ReadOnly() || c.resets
 	return nil
 }
 
