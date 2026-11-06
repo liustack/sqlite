@@ -6,9 +6,11 @@
 package stats_test
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand/v2"
+	"strings"
 	"testing"
 
 	"github.com/liustack/sqlite/ext/internal/sqltest"
@@ -260,4 +262,76 @@ func exactMoments(vals []any) [4]float64 {
 		out[2*i+1], _ = new(big.Float).SetPrec(prec).Sqrt(v).Float64()
 	}
 	return out
+}
+
+// TestNeighbors: values a few steps of a float64 apart keep the exact
+// differences between them, wherever they are, together with integers when
+// they are near.
+func TestNeighbors(t *testing.T) {
+	db := sqltest.Open(t, stats.Option())
+	check := func(name string, vals []any) {
+		t.Helper()
+		q := `FROM (VALUES (?)` + strings.Repeat(`, (?)`, len(vals)-1) + `)`
+		for k, fn := range []string{"var_pop", "stddev_pop", "var_samp", "stddev_samp"} {
+			w := exactMoments(vals)[k]
+			var got float64
+			err := db.QueryRow(`SELECT `+fn+`(column1) `+q, vals...).Scan(&got)
+			switch {
+			case math.IsInf(w, 0):
+				if err == nil {
+					t.Errorf("%s %v: %s = %g, want an overflow", name, vals, fn, got)
+				}
+			case err != nil:
+				t.Errorf("%s %v: %s: %v, want %g", name, vals, fn, err, w)
+			case !close(got, w):
+				t.Errorf("%s %v: %s = %g, want %g", name, vals, fn, got, w)
+			}
+		}
+	}
+	for _, vals := range [][]any{
+		{0x1p64, 0x1p64 - 2048},
+		{0x1p64 - 2048, 0x1p64},
+		{-0x1p116 - 2*0x1p64, -0x1p116 - 3*0x1p64},
+		{-0x1p116 - 3*0x1p64, -0x1p116 - 2*0x1p64},
+		// The scale changes with a sum of squares already there.
+		{0.0, 1.0, 0x1p449, -0x1p449, 0x1p450},
+		{0.0, 0x1p-600, 0x1p-151, -0x1p-151, 0x1p-150},
+	} {
+		check("case", vals)
+	}
+	r := rand.New(rand.NewPCG(7, 8))
+	for i := range 20000 {
+		var x float64
+		switch r.IntN(4) {
+		case 0:
+			x = math.Ldexp(1, r.IntN(2098)-1074)
+		case 1:
+			x = math.Ldexp(1, 52+r.IntN(80))
+		case 2:
+			x = math.Ldexp(1+r.Float64(), r.IntN(2046)-1022)
+		default:
+			x = float64(r.Int64())
+		}
+		if r.IntN(2) == 0 {
+			x = -x
+		}
+		vals := make([]any, 2+r.IntN(4))
+		for j := range vals {
+			y := x
+			for range r.IntN(4) {
+				y = math.Nextafter(y, math.Inf(1-2*r.IntN(2)))
+			}
+			if math.IsInf(y, 0) {
+				y = x
+			}
+			vals[j] = y
+			if a := math.Abs(y); a < 0x1p63 && y == math.Trunc(y) && r.IntN(3) == 0 {
+				vals[j] = int64(y) + r.Int64N(5) - 2
+			}
+		}
+		check(fmt.Sprint("neighbors ", i), vals)
+		if t.Failed() {
+			return
+		}
+	}
 }

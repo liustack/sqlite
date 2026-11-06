@@ -45,20 +45,19 @@ func Option() sqlite.Option {
 
 // moments keeps the count, mean and sum of squared differences of the
 // values (Welford's method, which does not lose digits as a sum of squares
-// does). It takes each value less a base, the first value (so that large
-// values with a small spread keep their digits), times 2^-k (so that their
-// squares neither overflow nor underflow).
+// does). It takes each value less the first (so that large values with a
+// small spread keep their digits), times 2^-k (so that their squares
+// neither overflow nor underflow).
 type moments struct {
 	name         string
 	sample, root bool
 	n            int64
-	mean, m2     float64 // of the values less the base, times 2^-k and 2^-2k
-	// The base is baseI + baseF. baseI is an int64 that is also a float64,
-	// so that an integer value less baseI is exact, even past 2^53, and a
-	// float64 value less it is too when near.
-	baseI int64
-	baseF float64
-	// k is set by the first value that differs from the base, and only
+	mean, m2     float64 // of the values less the first, times 2^-k and 2^-2k
+	// The first value, an INTEGER in baseI or a REAL in baseF.
+	intBase bool
+	baseI   int64
+	baseF   float64
+	// k is set by the first value that differs from the first, and only
 	// grows: a value that would pass big times 2^k raises it.
 	k     int
 	kSet  bool
@@ -80,7 +79,13 @@ func (m *moments) Step(a []driver.Value) error {
 	}
 	x := a[0]
 	if m.n == 0 {
-		m.setBase(x)
+		m.scale = 1
+		switch v := x.(type) {
+		case int64:
+			m.intBase, m.baseI = true, v
+		case float64:
+			m.baseF = v
+		}
 	}
 	y := m.diff(x, m.scale)
 	if (!m.kSet && y != 0) || math.Abs(y) >= big || math.IsInf(y, 0) {
@@ -96,49 +101,57 @@ func (m *moments) Step(a []driver.Value) error {
 	return nil
 }
 
-// setBase makes x the base, as an int64 that is a float64 and the rest.
-func (m *moments) setBase(x driver.Value) {
-	m.scale = 1
-	switch v := x.(type) {
-	case int64:
-		m.baseI = v
-		if v > 1<<53 || v < -(1<<53) {
-			m.baseI = v &^ 1023
-		}
-	case float64:
-		switch {
-		case math.IsInf(v, 0):
-			m.baseF = v
-		case v >= 0x1p63:
-			m.baseI = math.MaxInt64 &^ 1023
-		case v < -0x1p63:
-			m.baseI = math.MinInt64
-		default:
-			m.baseI = int64(math.Trunc(v))
-		}
-		if !math.IsInf(v, 0) {
-			m.baseF = v - float64(m.baseI)
-		}
-	}
-}
-
-// diff is x less the base, times scale, each part scaled before it is
-// added so that none overflows.
+// diff is x less the first value, times scale (a power of two).
 func (m *moments) diff(x driver.Value, scale float64) float64 {
 	switch v := x.(type) {
 	case int64:
-		// v - baseI is exact unless it overflows an int64.
-		if d := v - m.baseI; (v >= m.baseI) == (d >= 0) {
-			return float64(d)*scale - m.baseF*scale
+		if m.intBase {
+			return subInts(v, m.baseI) * scale
 		}
-		return float64(v)*scale - float64(m.baseI)*scale - m.baseF*scale
+		return subIntFloat(v, m.baseF) * scale
 	default:
 		f := x.(float64)
-		return f*scale - float64(m.baseI)*scale - m.baseF*scale
+		if m.intBase {
+			return -subIntFloat(m.baseI, f) * scale
+		}
+		// Rounded once, and exact when they are near.
+		if d := f - m.baseF; !math.IsInf(d, 0) {
+			return d * scale
+		}
+		return f*scale - m.baseF*scale
 	}
 }
 
-// exponent is the k that brings x less the base near 1, within ±maxK.
+// subInts is a - b, exact unless far apart.
+func subInts(a, b int64) float64 {
+	if d := a - b; (a >= b) == (d >= 0) {
+		return float64(d)
+	}
+	return float64(a) - float64(b)
+}
+
+// subIntFloat is i - f, rounded once when they are near: f is taken as an
+// int64 c and the rest, f - c, which is exact.
+func subIntFloat(i int64, f float64) float64 {
+	var c int64
+	switch {
+	case math.Abs(f) < 0x1p63:
+		c = int64(f)
+	case f >= 0x1p63 && f < 0x1p64:
+		// f is 2^63 plus a multiple of 2048, so f - c is an odd multiple of 1024 below 2^63.
+		c = math.MaxInt64 &^ 1023
+	case f <= -0x1p63 && f > -0x1p64:
+		c = math.MinInt64
+	default:
+		// Far from every int64, or infinite.
+		return float64(i) - f
+	}
+	if d := i - c; (i >= c) == (d >= 0) {
+		return float64(d) - (f - float64(c))
+	}
+	return float64(i) - f
+}
+
 func (m *moments) exponent(x driver.Value) int {
 	var e int
 	if y := m.diff(x, 1); !math.IsInf(y, 0) {
