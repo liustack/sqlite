@@ -398,11 +398,11 @@ func (c *conn) endWrite() {
 // A request whose context is done before it runs is answered with its
 // error. A statement that fails keeps what SQLite kept of it, as its own
 // autocommit transaction would (nothing, or the rows before the failure for
-// ON CONFLICT FAIL), and its caller gets the error. One that leaves a
-// deferred foreign key unresolved is undone by its SAVEPOINT, as its own
-// COMMIT would fail. When a failure ends the whole transaction (an IO error,
-// an interrupt, ON CONFLICT ROLLBACK), the statements that had run are run
-// again in a new one.
+// ON CONFLICT FAIL), and its caller gets the error after the commit. One
+// that leaves a deferred foreign key unresolved is undone by its SAVEPOINT,
+// as its own COMMIT would fail. When a failure ends the whole transaction
+// (an IO error, an interrupt, ON CONFLICT ROLLBACK), the statements that
+// had run are run again in a new one, those that failed too.
 func (c *conn) runBatch(batch []*request) (back []*request) {
 	// The statements set c's last_insert_rowid, which is c's own.
 	own := c.c.LastInsertRowID()
@@ -425,7 +425,11 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 			answer(batch, err)
 			return back
 		}
-		ok := make([]*request, 0, len(batch))
+		// ran holds the statements that ran, those that failed too: one
+		// that failed may have kept rows (OR FAIL), which commit with the
+		// others, so it is answered after the commit and runs again with
+		// them.
+		ran := make([]*request, 0, len(batch))
 		lost := false
 		for i, r := range batch {
 			err := c.runOne(r)
@@ -433,31 +437,36 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 				back = append(back, r)
 				continue
 			}
-			if err == nil {
-				ok = append(ok, r)
+			r.err = err
+			if err == nil || !c.c.AutoCommit() {
+				ran = append(ran, r)
 				continue
 			}
-			r.err = err
+			// The statement ended the transaction, as it would have ended
+			// its own: run the others again.
 			close(r.done)
-			if c.c.AutoCommit() {
-				// The transaction is gone: run the others again.
-				batch = append(ok, batch[i+1:]...)
-				lost = true
-				break
-			}
+			batch = append(ran, batch[i+1:]...)
+			lost = true
+			break
 		}
 		if lost {
 			continue
 		}
 		start := time.Now()
 		if err := c.execCached("COMMIT"); err != nil {
-			answer(ok, c.abandon(err))
+			answer(ran, c.abandon(err))
 			return back
 		}
 		c.wl.stats.commits.Add(1)
 		c.wl.stats.commitTime.Add(int64(time.Since(start)))
-		c.wl.stats.merged.Add(int64(len(ok)))
-		answer(ok, nil)
+		var merged int64
+		for _, r := range ran {
+			if r.err == nil {
+				merged++
+			}
+		}
+		c.wl.stats.merged.Add(merged)
+		answer(ran, nil)
 		return back
 	}
 }
@@ -504,8 +513,11 @@ func (c *conn) runOne(r *request) error {
 		}
 		return err
 	}
+	// A statement that failed may have kept rows too (OR FAIL). SQLite
+	// rolls a statement it undoes back to its count of deferred foreign
+	// keys, so a count left here is this statement's.
 	undo := false
-	if err == nil && c.c.DeferredFKs() {
+	if c.c.DeferredFKs() {
 		err, undo = errForeignKey, true
 	}
 	if c.c.VirtualTablesInTx() {

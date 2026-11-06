@@ -453,6 +453,106 @@ func TestMergeOrFailMatchesAlone(t *testing.T) {
 	}
 }
 
+// batchConn is a connection of its own on a new WAL database with foreign
+// keys on, for tests that hand runBatch the requests in a set order.
+func batchConn(t *testing.T, opts ...Option) *conn {
+	t.Helper()
+	cn, err := NewConnector("file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dc, err := cn.Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := dc.(*conn)
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+func batchReq(q string) *request {
+	return &request{ctx: context.Background(), sql: q, done: make(chan struct{})}
+}
+
+func batchCount(t *testing.T, c *conn, q string) int64 {
+	t.Helper()
+	s, _, err := c.c.Prepare(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Finalize()
+	if row, err := s.Step(); err != nil || !row {
+		t.Fatalf("%s: row %v, %v", q, row, err)
+	}
+	return s.ColumnInt64(0)
+}
+
+// TestMergeOrFailKeptOnReplay: the rows an OR FAIL statement keeps are
+// committed even when a later statement of the batch ends the transaction
+// and the batch runs again, and its caller hears of it only after the
+// commit.
+func TestMergeOrFailKeptOnReplay(t *testing.T) {
+	var first *request
+	early := false
+	c := batchConn(t, WithFunction("observe", 0, func([]driver.Value) (driver.Value, error) {
+		select {
+		case <-first.done:
+			early = true
+		default:
+		}
+		return int64(4), nil
+	}))
+	if err := c.c.Exec(`CREATE TABLE t(x UNIQUE); INSERT INTO t VALUES (3)`); err != nil {
+		t.Fatal(err)
+	}
+	first = batchReq(`INSERT OR FAIL INTO t VALUES (1), (2), (3)`)
+	next := batchReq(`INSERT INTO t VALUES (observe())`)
+	last := batchReq(`INSERT OR ROLLBACK INTO t VALUES (3)`)
+	if back := c.runBatch([]*request{first, next, last}); len(back) != 0 {
+		t.Fatalf("%d requests back", len(back))
+	}
+	if first.err == nil || last.err == nil || next.err != nil {
+		t.Fatalf("errors: %v, %v, %v", first.err, next.err, last.err)
+	}
+	if early {
+		t.Fatal("the OR FAIL caller was answered before the commit")
+	}
+	if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 4 {
+		t.Fatalf("%d rows, want 4: 3, then 1 and 2 kept by OR FAIL, then 4", n)
+	}
+}
+
+// TestMergeOrFailDeferredForeignKey: an OR FAIL statement that fails after
+// leaving a deferred foreign key unresolved is undone, as its own COMMIT
+// would fail, and the next statement neither fails for it nor resolves it.
+func TestMergeOrFailDeferredForeignKey(t *testing.T) {
+	const fail = `INSERT OR FAIL INTO t VALUES (1, 999), (3, NULL)`
+	alone := batchConn(t)
+	if err := alone.c.Exec(`CREATE TABLE p(id PRIMARY KEY); CREATE TABLE t(id UNIQUE, p REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED); INSERT INTO t VALUES (3, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := alone.c.Exec(fail); err == nil || !strings.Contains(err.Error(), "FOREIGN KEY") {
+		t.Fatalf("alone: %v, want a foreign key error", err)
+	}
+	for _, next := range []string{`INSERT INTO good VALUES (1)`, `INSERT INTO p VALUES (999)`} {
+		c := batchConn(t)
+		if err := c.c.Exec(`CREATE TABLE p(id PRIMARY KEY); CREATE TABLE t(id UNIQUE, p REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED); INSERT INTO t VALUES (3, NULL); CREATE TABLE good(x)`); err != nil {
+			t.Fatal(err)
+		}
+		a, b := batchReq(fail), batchReq(next)
+		c.runBatch([]*request{a, b})
+		if a.err == nil || !strings.Contains(a.err.Error(), "FOREIGN KEY") {
+			t.Errorf("%s: the OR FAIL statement got %v, want a foreign key error", next, a.err)
+		}
+		if b.err != nil {
+			t.Errorf("%s: %v", next, b.err)
+		}
+		if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 1 {
+			t.Errorf("%s: t has %d rows, want 1", next, n)
+		}
+	}
+}
+
 func TestReadOnlyTxHoldsNoLock(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)")
