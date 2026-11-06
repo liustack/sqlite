@@ -83,3 +83,77 @@ func TestShmSharedUnlockFailure(t *testing.T) {
 		t.Fatalf("slot 0 at the end: can lock shared %v, exclusive %v, want both", s, e)
 	}
 }
+
+// A File whose unlock failed then sits idle: another File of the process
+// that wants the slot unlocks the range again for it, and is not told busy
+// until the first File locks again.
+func TestShmUnlockFailureOtherFile(t *testing.T) {
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	lockT(t, "a excl 0", a.ShmLock(0, 1, ShmLock|ShmExclusive), OK)
+	failUnlock(t, 0, once())
+	lockT(t, "a unlock 0", a.ShmLock(0, 1, ShmUnlock|ShmExclusive), IOErrUnlock)
+	lockT(t, "b excl 0", b.ShmLock(0, 1, ShmLock|ShmExclusive), OK)
+	lockT(t, "b unlock 0", b.ShmLock(0, 1, ShmUnlock|ShmExclusive), OK)
+	if s, e := held(t, name+"-shm", shmBase, 1); !s || !e {
+		t.Fatalf("slot 0 at the end: can lock shared %v, exclusive %v, want both", s, e)
+	}
+}
+
+// A range of several slots is unlocked again as it was locked, before a
+// lock of one of its slots.
+func TestShmUnlockFailureRange(t *testing.T) {
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	lockT(t, "a excl 3-7", a.ShmLock(3, 5, ShmLock|ShmExclusive), OK)
+	failUnlock(t, 3, once())
+	lockT(t, "a unlock 3-7", a.ShmLock(3, 5, ShmUnlock|ShmExclusive), IOErrUnlock)
+	lockT(t, "a shared 5", a.ShmLock(5, 1, ShmLock|ShmShared), OK)
+	lockT(t, "b shared 5", b.ShmLock(5, 1, ShmLock|ShmShared), OK)
+	lockT(t, "b excl 3", b.ShmLock(3, 1, ShmLock|ShmExclusive), OK)
+	lockT(t, "b unlock 3", b.ShmLock(3, 1, ShmUnlock|ShmExclusive), OK)
+	lockT(t, "a unlock 5", a.ShmLock(5, 1, ShmUnlock|ShmShared), OK)
+	lockT(t, "b unlock 5", b.ShmLock(5, 1, ShmUnlock|ShmShared), OK)
+	if s, e := held(t, name+"-shm", shmBase+3, 5); !s || !e {
+		t.Fatalf("slots 3-7 at the end: can lock shared %v, exclusive %v, want both", s, e)
+	}
+}
+
+// A shared lock whose unlock failed would stack under the next one on the
+// same handle: it is unlocked first, so that one unlock frees the slot.
+func TestShmSharedUnlockFailureRetried(t *testing.T) {
+	a, _, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false) })
+	lockT(t, "a shared 3", a.ShmLock(3, 1, ShmLock|ShmShared), OK)
+	failUnlock(t, 3, once())
+	lockT(t, "a unlock 3", a.ShmLock(3, 1, ShmUnlock|ShmShared), IOErrUnlock)
+	lockT(t, "a shared 3 again", a.ShmLock(3, 1, ShmLock|ShmShared), OK)
+	lockT(t, "a unlock 3", a.ShmLock(3, 1, ShmUnlock|ShmShared), OK)
+	if s, e := held(t, name+"-shm", shmBase+3, 1); !s || !e {
+		t.Fatalf("slot 3 at the end: can lock shared %v, exclusive %v, want both", s, e)
+	}
+}
+
+// A File that closes while its unlock still fails leaves nothing behind: its
+// handle's close drops the lock, and no one unlocks on that handle later.
+func TestShmUnmapForgetsLeft(t *testing.T) {
+	a, b, _ := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { b.ShmUnmap(false) })
+	lockT(t, "a excl 0", a.ShmLock(0, 1, ShmLock|ShmExclusive), OK)
+	failUnlock(t, 0, func() bool { return true })
+	lockT(t, "a close", a.ShmUnmap(false), OK)
+	node := b.shm.node
+	node.mu.Lock()
+	n := len(node.left)
+	node.mu.Unlock()
+	if n != 0 || node.leftN.Load() != 0 {
+		t.Fatalf("ranges kept after the close: %d (count %d), want none", n, node.leftN.Load())
+	}
+}
