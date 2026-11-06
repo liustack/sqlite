@@ -108,6 +108,9 @@ type Conn struct {
 	// a PRAGMA that sets a flag, so this holds whatever became of the
 	// statement.
 	changed bool
+	// justChanged says the last Prepare was of such a statement, whether it
+	// failed or not.
+	justChanged bool
 }
 
 // args builds the strings and out-parameters of one call on the shadow
@@ -310,6 +313,7 @@ func (c *Conn) execResult(r int32) error {
 // Prepare compiles the first statement of sql. tail is the rest of sql. A
 // nil statement with no error is sql with no statement in it.
 func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
+	c.justChanged = false
 	if err := c.brokenErr(); err != nil {
 		return nil, "", err
 	}
@@ -331,7 +335,8 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	*w = 0
 	r := int32(sqlite3_prepare_v2(a.top, c.db, z, uintptr(len(sql)), pStmt, pTail))
 	kind := *w
-	if kind&changesConn != 0 {
+	c.justChanged = kind&changesConn != 0
+	if c.justChanged {
 		c.changed = true
 	}
 	if err := c.guardErr(r); err != nil {
@@ -467,6 +472,11 @@ func (s *Stmt) ChangesConn() bool { return s.kind&changesConn != 0 }
 // ChangedItself says a statement that changes the connection was prepared on
 // it, run or not.
 func (c *Conn) ChangedItself() bool { return c.changed }
+
+// JustChanged says the last Prepare was of a statement that changes the
+// connection, even one that failed after SQLite applied it (PRAGMA
+// busy_timeout = 0 junk).
+func (c *Conn) JustChanged() bool { return c.justChanged }
 
 // Reprepares is how many times SQLite prepared the statement again, after a
 // change of the schema.

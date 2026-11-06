@@ -1192,7 +1192,7 @@ func openAll(t *testing.T, db *sql.DB, n int) {
 // TestBusyTimeoutSetByPrepare: SQLite sets busy_timeout when it prepares the
 // PRAGMA, so the write lock waits as long even when the statement never runs.
 func TestBusyTimeoutSetByPrepare(t *testing.T) {
-	for _, how := range []string{"refused query", "prepare only"} {
+	for _, how := range []string{"refused query", "prepare only", "syntax error"} {
 		db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
 		db.SetMaxOpenConns(2)
 		mExec(t, db, `CREATE TABLE t(x)`)
@@ -1203,6 +1203,10 @@ func TestBusyTimeoutSetByPrepare(t *testing.T) {
 		if how == "refused query" {
 			if _, err := c.QueryContext(t.Context(), `PRAGMA busy_timeout = 0; SELECT 1`); err == nil {
 				t.Fatal("a query of two statements ran")
+			}
+		} else if how == "syntax error" {
+			if _, err := c.PrepareContext(t.Context(), `PRAGMA busy_timeout = 0 junk`); err == nil {
+				t.Fatal("a statement with a syntax error was prepared")
 			}
 		} else {
 			s, err := c.PrepareContext(t.Context(), `PRAGMA busy_timeout = 0`)

@@ -100,10 +100,10 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 
 // prepare prepares the first statement of query. SQLite runs a PRAGMA that
 // sets busy_timeout as it prepares it, so the write lock reads it again then,
-// whether the statement runs or not.
+// whether the statement runs, or even prepares without an error, or not.
 func (c *conn) prepare(query string) (*csqlite.Stmt, string, error) {
 	s, tail, err := c.c.Prepare(query)
-	if s != nil && s.ChangesConn() {
+	if c.c.JustChanged() {
 		c.readBusyTimeout()
 	}
 	return s, tail, err
