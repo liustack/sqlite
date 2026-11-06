@@ -14,6 +14,5 @@ func SetMaxLength(t testing.TB, n int) {
 	t.Cleanup(func() { maxLength = old })
 }
 
-// ReplaceExact is replaceExact, which regexp_replace takes when the result
-// may be too long.
-var ReplaceExact = replaceExact
+// Fits is fits, which says whether regexp_replace may give a result.
+var Fits = fits
