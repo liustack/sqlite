@@ -214,6 +214,11 @@ func (s *stmt) bind(args []driver.NamedValue) error {
 		// SQLite would read the parameters left over as NULL.
 		return fmt.Errorf("sqlite: %d arguments for %d parameters", len(args), s.nparams)
 	}
+	if named {
+		if err := s.allBound(args); err != nil {
+			return err
+		}
+	}
 	for _, a := range args {
 		i := a.Ordinal
 		if a.Name != "" {
@@ -259,6 +264,35 @@ func (s *stmt) bind(args []driver.NamedValue) error {
 }
 
 // paramIndex finds the parameter of a name given without its prefix.
+// allBound says every parameter of the statement has an argument among
+// args, some of which have names: SQLite would read one left out as NULL.
+// One name used twice in the SQL is one parameter.
+func (s *stmt) allBound(args []driver.NamedValue) error {
+	var small [64]bool
+	bound := small[:]
+	if s.nparams > len(small) {
+		bound = make([]bool, s.nparams)
+	}
+	for _, a := range args {
+		i := a.Ordinal
+		if a.Name != "" {
+			i = s.paramIndex(a.Name)
+		}
+		if i >= 1 && i <= s.nparams {
+			bound[i-1] = true
+		}
+	}
+	for i := range s.nparams {
+		if !bound[i] {
+			if n := s.s.ParamName(i + 1); n != "" {
+				return fmt.Errorf("sqlite: no argument for parameter %s", n)
+			}
+			return fmt.Errorf("sqlite: no argument for parameter %d", i+1)
+		}
+	}
+	return nil
+}
+
 func (s *stmt) paramIndex(name string) int {
 	for i := 1; i <= s.nparams; i++ {
 		n := s.s.ParamName(i)

@@ -348,6 +348,12 @@ func TestMissingArgument(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO a VALUES (?, ?)`, 1); err == nil {
 		t.Fatal("a statement ran with a parameter left unbound")
 	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (:x, :y)`, sql.Named("x", 1)); err == nil {
+		t.Fatal("a statement ran with a named parameter left unbound")
+	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (:x, :x)`, sql.Named("x", 1)); err != nil {
+		t.Fatalf("one name twice: %v", err)
+	}
 }
 
 func TestMergeLastInsertRowid(t *testing.T) {
