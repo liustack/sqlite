@@ -553,6 +553,28 @@ func TestMergeOrFailDeferredForeignKey(t *testing.T) {
 	}
 }
 
+// TestRefusedQueryChangesConn: a query of two statements is refused, but
+// SQLite applied the PRAGMA of the second as it prepared it. The connection
+// changed itself and must not run the statements of others.
+func TestRefusedQueryChangesConn(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE p(id PRIMARY KEY); CREATE TABLE c(pid REFERENCES p(id))`)
+	leader, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leader.Close()
+	if r, err := leader.QueryContext(context.Background(), `SELECT 1; PRAGMA foreign_keys=OFF`); err == nil {
+		r.Close()
+		t.Fatal("a query of two statements was taken")
+	}
+	err = behind(t, leader, func() error { _, err := db.Exec(`INSERT INTO c VALUES (999)`); return err })
+	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY") {
+		t.Fatalf("an orphan insert got %v, want a foreign key error", err)
+	}
+}
+
 func TestReadOnlyTxHoldsNoLock(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)")

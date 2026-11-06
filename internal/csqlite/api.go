@@ -103,6 +103,11 @@ type Conn struct {
 	st *stack
 	sp uintptr
 	db uintptr
+	// changed says a statement prepared on the connection changes it
+	// (ChangesConn). SQLite applies some of them as it prepares them, such as
+	// a PRAGMA that sets a flag, so this holds whatever became of the
+	// statement.
+	changed bool
 }
 
 // args builds the strings and out-parameters of one call on the shadow
@@ -326,6 +331,9 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	*w = 0
 	r := int32(sqlite3_prepare_v2(a.top, c.db, z, uintptr(len(sql)), pStmt, pTail))
 	kind := *w
+	if kind&changesConn != 0 {
+		c.changed = true
+	}
 	if err := c.guardErr(r); err != nil {
 		return nil, "", err
 	}
@@ -451,6 +459,10 @@ func (s *Stmt) classify() int32 {
 // that sets something, ATTACH, DETACH, or a temporary table, index, view or
 // trigger.
 func (s *Stmt) ChangesConn() bool { return s.kind&changesConn != 0 }
+
+// ChangedItself says a statement that changes the connection was prepared on
+// it, run or not.
+func (c *Conn) ChangedItself() bool { return c.changed }
 
 // Reprepares is how many times SQLite prepared the statement again, after a
 // change of the schema.

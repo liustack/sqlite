@@ -186,7 +186,7 @@ func (c *Connector) setUp(conn *conn) error {
 	conn.busyTimeout = time.Duration(ms) * time.Millisecond
 	// A connection SQLite opened read-only, as when the file is, runs
 	// differently from the others of its key.
-	conn.private = cc.ReadOnly()
+	conn.alone = cc.ReadOnly()
 	return nil
 }
 
