@@ -366,7 +366,7 @@ func (c *conn) answered(ctx context.Context, s *stmt, req *request) (*result, er
 // runs them exactly as theirs would, since no connection of the key that
 // changed itself (conn.private) ever joins the queue.
 func (c *conn) canMerge() bool {
-	return !c.private() && !c.closed && !c.bad && !c.readOnlyTx && !c.c.Broken() && c.c.AutoCommit()
+	return !c.private() && !c.closed && !c.bad && !c.readOnlyTx && !c.c.Broken() && c.c.AutoCommit() && !c.c.InTx()
 }
 
 // beginWrite takes the write lock before a statement that may write.

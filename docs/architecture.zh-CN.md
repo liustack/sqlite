@@ -96,7 +96,7 @@ sequenceDiagram
 
 哪些语句可以加入：驱动在 C 里装了一个 authorizer（`engine/os.c` 里的 `goClassify`），语句在准备时它就能看到。只有同时满足这些条件，语句才能加入：它写的是主数据库的表，且不碰只属于自己这个连接的东西。具体是：不涉及其他 schema（temp、attached），不由触发器写入（那可能是临时触发器），不写可写 Go 模块的表，不用 `last_insert_rowid()`、`changes()` 或 `total_changes()`，也不是非 DML 的语句。只有 `Exec` 会合并。事务里的语句从不合并。表结构变了，准备好的语句可能不再能合并（加了触发器，或者表变成了 Go 表），SQLite 会在 `sqlite3_step` 里、语句做任何事之前重新准备它。在跑批次的连接上，如果新程序不能合并，authorizer 就拒绝它：语句什么都没做就失败，退回调用者自己的连接执行。被 SQLite 重新准备过的语句，下次要合并之前会重新分类。
 
-哪些连接可以互相执行对方的语句：只有同一个 connector 的连接（同一个 DSN，所以 `_pragma` 设置相同），而且双方打开之后都没有改过自己。改自己指的是执行设置值的 PRAGMA、`ATTACH`、`DETACH`，或者建临时表、视图、索引、触发器，authorizer 在语句准备时就会标记这个连接。只读打开的连接，以及处在只读事务里的连接，也都不合并。从那以后这个连接只自己写，照旧拿文件的写锁。Go 写的函数、聚合函数、排序规则和虚拟表模块属于 connector：带自己选项创建的 connector（`NewConnector(dsn, opts...)`）有一个别的 connector 都不共用的 key，同一批 `Register` 之后创建的 connector 共用一个。所以执行合并语句的连接，一定有调用方连接上的那些函数。
+哪些连接可以互相执行对方的语句：只有同一个 connector 的连接（同一个 DSN，所以 `_pragma` 设置相同），而且双方打开之后都没有改过自己。改自己指的是执行设置值的 PRAGMA、`ATTACH`、`DETACH`，或者建临时表、视图、索引、触发器，authorizer 在语句准备时就会标记这个连接。只读打开的连接，以及处在只读事务里的连接，也都不合并。还有查询没读完的连接也不合并：它还拿着读到的那个快照，别的连接没有。从那以后这个连接只自己写，照旧拿文件的写锁。Go 写的函数、聚合函数、排序规则和虚拟表模块属于 connector：带自己选项创建的 connector（`NewConnector(dsn, opts...)`）有一个别的 connector 都不共用的 key，同一批 `Register` 之后创建的 connector 共用一个。所以执行合并语句的连接，一定有调用方连接上的那些函数。
 
 和单独执行相比有一处不同：合并的语句是在别的连接上跑的，所以调用者连接上的 `changes()` 和 `total_changes()` 不算它，而是算在执行它的那个连接上。`LastInsertId` 和 `RowsAffected` 是对的，调用者连接上的 `last_insert_rowid()` 也是对的。
 

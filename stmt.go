@@ -109,7 +109,9 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	if err := c.txEnded(); err != nil {
 		return nil, err
 	}
-	if c.wl != nil && !c.writing && !c.private() && c.c.AutoCommit() && s.s.Mergeable() {
+	// A connection with a query not done keeps the snapshot it read, which the
+	// connection running a batch would not have.
+	if c.wl != nil && !c.writing && !c.private() && c.c.AutoCommit() && !c.c.InTx() && s.s.Mergeable() {
 		return c.wl.submit(ctx, c, s, args)
 	}
 	if err := c.beginWrite(ctx, s.readOnly); err != nil {

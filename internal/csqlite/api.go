@@ -392,6 +392,10 @@ func (c *Conn) ReadOnly() bool {
 // AutoCommit says whether no transaction is open.
 func (c *Conn) AutoCommit() bool { return int32(sqlite3_get_autocommit(c.sp, c.db)) != 0 }
 
+// InTx says SQLite has a transaction open on the connection, a read one
+// too: in autocommit, a query not done holds one, with the snapshot it read.
+func (c *Conn) InTx() bool { return int32(sqlite3_txn_state(c.sp, c.db, 0)) != 0 }
+
 // BusyTimeout sets how long a statement waits for a lock.
 func (c *Conn) BusyTimeout(ms int) error {
 	if err := c.brokenErr(); err != nil {

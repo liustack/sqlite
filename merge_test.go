@@ -575,6 +575,41 @@ func TestRefusedQueryChangesConn(t *testing.T) {
 	}
 }
 
+// TestMergeKeepsReadSnapshot: a connection with a query not done holds the
+// snapshot it read. Alone, its write fails (SQLITE_BUSY_SNAPSHOT) once
+// another connection committed. Merged, it must fail the same way, not run
+// on the newer snapshot of the connection that runs the batch.
+func TestMergeKeepsReadSnapshot(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE t(x); INSERT INTO t VALUES (1)`)
+	reader, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	rows, err := reader.QueryContext(context.Background(), `SELECT x FROM t`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("no row")
+	}
+	mExec(t, db, `INSERT INTO t VALUES (2)`)
+	const q = `INSERT INTO t SELECT max(x) + 1 FROM t`
+	if _, err := reader.ExecContext(context.Background(), q); err == nil {
+		t.Fatal("alone, the write on an old snapshot succeeded")
+	}
+	err = behind(t, db, func() error {
+		_, err := reader.ExecContext(context.Background(), q)
+		return err
+	})
+	if err == nil {
+		t.Fatal("merged, the write on an old snapshot succeeded")
+	}
+}
+
 func TestReadOnlyTxHoldsNoLock(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)")
