@@ -49,6 +49,7 @@ import (
 	"strings"
 
 	"github.com/liustack/sqlite"
+	"github.com/liustack/sqlite/ext/internal/arg"
 )
 
 // Option adds the csv module to a connector.
@@ -58,6 +59,11 @@ func Option() sqlite.Option {
 
 // maxColumns is SQLITE_MAX_COLUMN, the most columns a table may have.
 const maxColumns = 2000
+
+// maxLength is the most bytes of a field, and of the header SQLite is
+// given: SQLite takes no longer string, so a field fails as it gets longer,
+// before it fills the memory. A variable for the tests.
+var maxLength = arg.MaxLength
 
 type table struct {
 	filename string // or
@@ -143,6 +149,9 @@ func (r *reader) field() (f []byte, ok bool, err error) {
 				}
 			}
 			r.buf = append(r.buf, byte(c))
+			if len(r.buf) > maxLength+2 { // the closing quote and a CR may follow
+				return nil, false, r.tooLong()
+			}
 			ppc, pc = pc, c
 		}
 	} else {
@@ -159,6 +168,9 @@ func (r *reader) field() (f []byte, ok bool, err error) {
 		}
 		for c != eof && c != ',' && c != '\n' {
 			r.buf = append(r.buf, byte(c))
+			if len(r.buf) > maxLength+1 { // a CR may follow, which a LF after it drops
+				return nil, false, r.tooLong()
+			}
 			c = r.getc()
 		}
 		if c == '\n' {
@@ -169,8 +181,32 @@ func (r *reader) field() (f []byte, ok bool, err error) {
 		}
 		r.term = c
 	}
+	if len(r.buf) > maxLength {
+		return nil, false, r.tooLong()
+	}
 	r.notFirst = true
 	return r.buf, true, r.err
+}
+
+// errManyColumns is the error of a first row of more fields than a table
+// takes columns.
+var errManyColumns = fmt.Errorf("csv: the first row has more than %d fields", maxColumns)
+
+// countColumns counts the fields of the first row in n, and stops it once it
+// has more than a table takes.
+func countColumns(n *int) func([]byte) error {
+	return func([]byte) error {
+		if *n == maxColumns {
+			return errManyColumns
+		}
+		*n++
+		return nil
+	}
+}
+
+// tooLong is the error of a field longer than maxLength.
+func (r *reader) tooLong() error {
+	return fmt.Errorf("csv: line %d: a field longer than %d bytes", r.line, maxLength)
 }
 
 // row reads the fields of a row, as many as fit in vals, and says which it
@@ -257,18 +293,19 @@ func connect(args []string) (sqlite.VTable, error) {
 		r = newReader(in, 1, true)
 	}
 	// readFirst reads the first row, and calls each with its fields, nil
-	// for a field the input ends before.
-	readFirst := func(each func(f []byte)) error {
+	// for a field the input ends before. An error of each stops it.
+	readFirst := func(each func(f []byte) error) error {
 		for {
 			f, ok, err := r.field()
 			if err != nil {
 				return err
 			}
 			if each != nil {
-				if ok {
-					each(f)
-				} else {
-					each(nil)
+				if !ok {
+					f = nil
+				}
+				if err := each(f); err != nil {
+					return err
 				}
 			}
 			if r.term != ',' {
@@ -282,11 +319,8 @@ func connect(args []string) (sqlite.VTable, error) {
 		sep := ""
 		if nCol < 0 && header < 1 {
 			nCol = 0
-			if err := readFirst(func([]byte) { nCol++ }); err != nil {
+			if err := readFirst(countColumns(&nCol)); err != nil {
 				return nil, err
-			}
-			if nCol > maxColumns {
-				return nil, fmt.Errorf("csv: the first row has %d fields, more than %d columns", nCol, maxColumns)
 			}
 		}
 		if nCol > 0 && header < 1 {
@@ -296,7 +330,10 @@ func connect(args []string) (sqlite.VTable, error) {
 			}
 		} else {
 			i := 0
-			err := readFirst(func(f []byte) {
+			err := readFirst(func(f []byte) error {
+				if nCol < 0 && i == maxColumns {
+					return errManyColumns
+				}
 				if nCol > 0 && i < nCol || nCol < 0 {
 					name := "(NULL)" // csv.c's %w of no field
 					if f != nil {
@@ -305,15 +342,16 @@ func connect(args []string) (sqlite.VTable, error) {
 					fmt.Fprintf(&b, `%s"%s" TEXT`, sep, strings.ReplaceAll(name, `"`, `""`))
 					sep = ","
 					i++
+					if b.Len() > maxLength {
+						return fmt.Errorf("csv: the header is longer than %d bytes", maxLength)
+					}
 				}
+				return nil
 			})
 			if err != nil {
 				return nil, err
 			}
 			if nCol < 0 {
-				if i > maxColumns {
-					return nil, fmt.Errorf("csv: the header has %d fields, more than %d columns", i, maxColumns)
-				}
 				nCol = i
 			} else {
 				for i < nCol {
@@ -329,11 +367,8 @@ func connect(args []string) (sqlite.VTable, error) {
 		t.schema = *schema
 		if nCol < 0 {
 			nCol = 0
-			if err := readFirst(func([]byte) { nCol++ }); err != nil {
+			if err := readFirst(countColumns(&nCol)); err != nil {
 				return nil, err
-			}
-			if nCol > maxColumns {
-				return nil, fmt.Errorf("csv: the first row has %d fields, more than %d columns", nCol, maxColumns)
 			}
 		} else if header == 1 {
 			// csv.c reads nothing here and so gives the header as a row.
