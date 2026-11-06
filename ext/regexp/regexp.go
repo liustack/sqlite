@@ -173,7 +173,8 @@ const (
 )
 
 // size is how many instructions re compiles to at most, a repeat written
-// out. It is how regexp/syntax counts for its own, larger, limit.
+// out, besides the two every program has. It is how regexp/syntax counts
+// for its own, larger, limit.
 func size(re *syntax.Regexp) int64 {
 	var n int64
 	switch re.Op {
