@@ -162,3 +162,67 @@ func TestShmUnmapReadLockSplit(t *testing.T) {
 	lockT(t, "b checkpoint slot", b.ShmLock(4, 1, ShmLock|ShmExclusive), OK)
 	lockT(t, "b unlock", b.ShmLock(4, 1, ShmUnlock|ShmExclusive), OK)
 }
+
+// The unlock of an exclusive read slot fails, and a reader of the process
+// takes it over: the kernel lock goes down to a read lock, so that other
+// processes can read.
+func TestShmIdleWriteLockTakenShared(t *testing.T) {
+	idleDelay(t, time.Hour)
+	a, b, name := twoFiles(t)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	lockT(t, "a exclusive", a.ShmLock(3, 1, ShmLock|ShmExclusive), OK)
+	_, stop := failUnlockOnce(t, shmBase+3)
+	a.ShmLock(3, 1, ShmUnlock|ShmExclusive)
+	stop()
+	if got := heldBy(t, name, 3); got != unix.F_WRLCK {
+		t.Fatalf("slot 3 after the failed unlock = %d, want F_WRLCK", got)
+	}
+	lockT(t, "b shared", b.ShmLock(3, 1, ShmLock|ShmShared), OK)
+	if got := heldBy(t, name, 3); got != unix.F_RDLCK {
+		t.Fatalf("slot 3 with b reading = %d, want F_RDLCK", got)
+	}
+	lockT(t, "b unlock", b.ShmLock(3, 1, ShmUnlock|ShmShared), OK)
+	b.shm.node.releaseIdle()
+	if got := heldBy(t, name, 3); got != unix.F_UNLCK {
+		t.Fatalf("slot 3 after b let go = %d, want F_UNLCK", got)
+	}
+}
+
+// The same, and the read lock that would replace the write lock fails: the
+// reader gets an error, and the node keeps the slot and unlocks it later.
+func TestShmIdleWriteLockDowngradeFails(t *testing.T) {
+	idleDelay(t, time.Hour)
+	a, b, name := twoFiles(t)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	lockT(t, "a exclusive", a.ShmLock(3, 1, ShmLock|ShmExclusive), OK)
+	_, stop := failUnlockOnce(t, shmBase+3)
+	a.ShmLock(3, 1, ShmUnlock|ShmExclusive)
+	stop()
+	stop = failFcntl(t, func(typ int16, s, l int64) error {
+		if typ == unix.F_RDLCK && s == shmBase+3 {
+			return unix.ENOLCK
+		}
+		return nil
+	})
+	if rc := b.ShmLock(3, 1, ShmLock|ShmShared); rc == OK {
+		t.Fatal("b shared while the read lock fails = OK, want an error")
+	}
+	stop()
+	if b.shm.shared != 0 {
+		t.Fatalf("b holds %#x after the error, want nothing", b.shm.shared)
+	}
+	node := b.shm.node
+	if node.idle&(1<<3) == 0 || node.lock[3] != 0 {
+		t.Fatalf("node idle %#x lock[3] %d, want slot 3 idle with no holder", node.idle, node.lock[3])
+	}
+	node.releaseIdle()
+	if got := heldBy(t, name, 3); got != unix.F_UNLCK {
+		t.Fatalf("slot 3 after the retry = %d, want F_UNLCK", got)
+	}
+	lockT(t, "b shared", b.ShmLock(3, 1, ShmLock|ShmShared), OK)
+	lockT(t, "b unlock", b.ShmLock(3, 1, ShmUnlock|ShmShared), OK)
+}

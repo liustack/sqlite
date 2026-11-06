@@ -38,6 +38,7 @@ type shmNode struct {
 	unlocked bool          // read-only and no one had it open: the DMS lock is not held
 	lock     [ShmNLock]int // per slot: shared holders in the process, or -1 for exclusive
 	idle     uint16        // slots the process keeps locked with no holder: read slots kept for the next reader, and slots whose unlock failed
+	idleExcl uint16        // idle slots locked for writing in the kernel: their exclusive unlock failed
 	others   bool          // another process had the -shm open when last looked: no idle slots
 	regions  []uintptr     // address of each region mapped
 	maps     []mapping     // what to unmap
@@ -282,6 +283,16 @@ func (f *File) ShmLock(offset, n, flags int) int {
 		case node.lock[offset] < 0:
 			// Another connection of the process holds it exclusive.
 			rc = Busy
+		case node.lock[offset] == 0 && node.idleExcl&mask != 0:
+			// Its exclusive unlock failed. The write lock becomes a read
+			// lock, so that other processes can read, or the slot stays
+			// idle for the timer.
+			if err := setLock(node.fd, &node.fl, unix.F_RDLCK, int64(shmBase+offset), 1); err != nil {
+				rc = lockError(err, IOErrShmLock)
+			} else {
+				node.idle &^= mask
+				node.idleExcl &^= mask
+			}
 		case node.lock[offset] == 0 && node.idle&mask != 0:
 			// The process still holds it from its last reader.
 			node.idle &^= mask
@@ -312,8 +323,9 @@ func (f *File) ShmLock(offset, n, flags int) int {
 			for i := offset; i < offset+n; i++ {
 				node.lock[i] = -1
 			}
-			// An idle read lock of the process became this write lock.
+			// An idle lock of the process became this write lock.
 			node.idle &^= mask
+			node.idleExcl &^= mask
 			s.excl |= mask
 		}
 	}
@@ -367,12 +379,13 @@ func (s *shm) unlock(offset, n int, mask uint16) int {
 			node.lock[i] = 0
 		}
 	}
-	s.shared &^= mask
-	s.excl &^= mask
 	if failed := mask &^ done; failed != 0 {
 		node.idle |= failed
+		node.idleExcl |= failed & s.excl
 		node.armIdle()
 	}
+	s.shared &^= mask
+	s.excl &^= mask
 	if err != nil {
 		return lockError(err, IOErrShmLock)
 	}
@@ -473,6 +486,7 @@ func (node *shmNode) releaseIdle() {
 	// its mark, and the next tick tries again.
 	done, _ := node.unlockSlots(node.idle)
 	node.idle &^= done
+	node.idleExcl &^= done
 	if node.idle != 0 {
 		node.armIdle()
 	}
