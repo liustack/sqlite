@@ -301,6 +301,11 @@ func (r *Replica) Sync(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer context.AfterFunc(r.stop, cancel)()
+	return r.sync(ctx)
+}
+
+// sync is Sync, also once Close started.
+func (r *Replica) sync(ctx context.Context) error {
 	err := r.c.Sync(ctx)
 	if errors.Is(err, ErrStagingFull) {
 		if err := r.upload(ctx); err != nil {
@@ -316,10 +321,21 @@ func (r *Replica) Sync(ctx context.Context) error {
 
 // Close ends the Syncs under way, stages what is left, checkpoints, and
 // uploads what is staged, trying for 10 seconds. What it could not upload
-// stays staged, for the next New. Sync fails after Close.
+// stays staged, for the next New. When staging stopped at StagingLimit, it
+// first uploads what was staged, so that staging goes on with a full copy.
+// If that fails, what was committed since is not staged, Close gives an
+// error under ErrStagingFull, and the next New stages a full copy. Sync
+// fails after Close.
 func (r *Replica) Close() error {
 	r.cancel()
 	<-r.done
+	ctx, cancel := context.WithTimeout(context.Background(), closeUpload)
+	defer cancel()
+	// As a Sync: staging stopped at StagingLimit goes on only once what is
+	// staged is uploaded, and the capturer stages nothing as it closes
+	// then. The errors that matter come again below: the one of the
+	// capturer, when staging is still stopped, and the one of the upload.
+	r.sync(ctx)
 	err := r.c.Close()
 	// The Syncs let go of busy soon, their requests ended. Another process
 	// may stage the database once this one uploads no more.
@@ -330,8 +346,6 @@ func (r *Replica) Close() error {
 	}
 	r.closed = true
 	defer r.c.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), closeUpload)
-	defer cancel()
 	return errors.Join(err, r.uploadHeld(ctx))
 }
 

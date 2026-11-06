@@ -770,8 +770,16 @@ func TestRecheckLostAnswer(t *testing.T) {
 func TestCloseHoldsStaging(t *testing.T) {
 	base := testConfig(t)
 	cfg, cnt := countingStore(t, base)
+	cfg.manual = true // the PUTs watched are the ones of Close
+	// Close uploads what is staged before it closes the capturer: that
+	// upload fails, and the PUTs watched come after the capturer closed.
+	p := &failOnce{CredentialsProvider: cfg.Credentials}
+	cfg.Credentials = p
 	name := filepath.Join(t.TempDir(), "x.db")
 	r := newReplica(t, name, cfg)
+	if err := r.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	db := openDB(t, name)
 	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
 	db.Close()
@@ -791,10 +799,14 @@ func TestCloseHoldsStaging(t *testing.T) {
 		}
 	}
 	cnt.put.Store(&put)
+	p.fail.Store(true)
 	if err := r.Close(); err != nil {
 		t.Fatal(err)
 	}
 	cnt.put.Store(nil)
+	if p.fail.Load() {
+		t.Fatal("Close asked for no credentials")
+	}
 	if !tried {
 		t.Fatal("Close uploaded nothing")
 	}

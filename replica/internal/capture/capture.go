@@ -412,10 +412,11 @@ func (c *Capturer) bind(ctx context.Context) (context.Context, context.CancelFun
 	}
 }
 
-// Close stages what is left, checkpoints and stops. When a write
-// transaction keeps the driver's write lock longer than closeWait, the WAL is
-// left as it is, staged, for the next Open. Connections the driver opens to
-// the database after Close are as before replication.
+// Close stages what is left, checkpoints and stops. With staging stopped at
+// the limit, it stages nothing and gives an error under ErrStagingFull. When
+// a write transaction keeps the driver's write lock longer than closeWait,
+// the WAL is left as it is, staged, for the next Open. Connections the
+// driver opens to the database after Close are as before replication.
 func (c *Capturer) Close() error {
 	c.cancel()
 	<-c.done
@@ -449,6 +450,11 @@ func (c *Capturer) close() ([]error, error) {
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		err = nil
+	}
+	// What was committed since staging stopped is in the database only:
+	// the next Open stages it as a full copy.
+	if c.full {
+		err = errors.Join(c.lost, err)
 	}
 	c.release(c.opt.Hold)
 	later := c.later

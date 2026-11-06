@@ -350,3 +350,72 @@ func TestSoak(t *testing.T) {
 		t.Fatal("no point restored")
 	}
 }
+
+// Close uploads what was committed while staging was stopped at the limit,
+// once the store is back: what is staged goes up first, then a full copy.
+func TestCloseStagingStopped(t *testing.T) {
+	cfg, r, name := stopStaging(t, testConfig(t))
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sameAs(t, cfg, name)
+}
+
+// failOnce fails the first request for credentials after fail is set.
+type failOnce struct {
+	CredentialsProvider
+	fail atomic.Bool
+}
+
+func (p *failOnce) Credentials(ctx context.Context) (Credentials, error) {
+	if p.fail.Swap(false) {
+		return Credentials{}, errors.New("test: no credentials")
+	}
+	return p.CredentialsProvider.Credentials(ctx)
+}
+
+// When Close cannot upload what is staged before the capturer closes, what
+// was committed while staging was stopped is not staged: Close says so, and
+// the next New stages it as a full copy.
+func TestCloseStagingStoppedFails(t *testing.T) {
+	cfg := testConfig(t)
+	p := &failOnce{CredentialsProvider: cfg.Credentials}
+	cfg.Credentials = p
+	cfg, r, name := stopStaging(t, cfg)
+	p.fail.Store(true)
+	if err := r.Close(); !errors.Is(err, ErrStagingFull) {
+		t.Fatalf("Close: %v, want ErrStagingFull", err)
+	}
+	r = newReplica(t, name, cfg)
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sameAs(t, cfg, name)
+}
+
+// stopStaging gives a replicator whose staging stopped at the limit while
+// the store was down, with a row committed since, the store back up and the
+// database closed.
+func stopStaging(t *testing.T, cfg Config) (Config, *Replica, string) {
+	t.Helper()
+	cfg, cnt := countingStore(t, cfg)
+	cfg.StagingLimit = 1
+	cfg.manual = true // only Sync and Close upload
+	name := filepath.Join(t.TempDir(), "x.db")
+	r := newReplica(t, name, cfg)
+	db := openDB(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	syncNow(t, r)
+	cnt.down.Store(1)
+	run(t, db, "INSERT INTO t VALUES (1)")
+	if err := r.Sync(context.Background()); err == nil {
+		t.Fatal("Sync with the store down")
+	}
+	run(t, db, "INSERT INTO t VALUES (2)")
+	if err := r.c.Sync(context.Background()); !errors.Is(err, ErrStagingFull) {
+		t.Fatalf("staging past the limit: %v, want ErrStagingFull", err)
+	}
+	cnt.down.Store(0)
+	db.Close()
+	return cfg, r, name
+}

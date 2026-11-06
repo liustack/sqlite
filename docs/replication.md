@@ -55,7 +55,7 @@ The settings you are most likely to change:
 
 With the store up and nothing waiting, the copy is usually `SyncInterval` plus one upload behind the last commit. Files go up one at a time, and wait while a merge or a snapshot runs, so after an outage, or on a store far away, the copy can fall further behind. When a write must be in the store before you go on, call `r.Sync(ctx)`: once it returns nil, what was committed before the call is in the store.
 
-`r.Close()` copies what is left, checkpoints, and tries for 10 seconds to upload it. What it could not upload stays staged, and the next `New` uploads it. While staging is stopped at `StagingLimit`, Close does not copy what was committed since, and a later `New` uploads it as a full copy: call `Sync` before `Close` to have it in the store.
+`r.Close()` copies what is left, checkpoints, and tries for 10 seconds to upload it. What it could not upload stays staged, and the next `New` uploads it. While staging is stopped at `StagingLimit`, Close first uploads what was staged, then stages a full copy with what was committed since, and uploads it in the same 10 seconds. If the store is still down, Close gives an error under `replica.ErrStagingFull`, and the next `New` stages and uploads that full copy.
 
 `r.Status()` says where replication is: the last TXID staged, the last TXID in the store, the bytes waiting, and the error of the last upload. A TXID numbers the files of the replica, as Litestream counts them: each copy into the staging folder is one TXID, and holds every commit since the copy before. A restore point is the end of a file, not each commit.
 
