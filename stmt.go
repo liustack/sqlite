@@ -274,9 +274,10 @@ func (s *stmt) bind(args []driver.NamedValue) error {
 	return nil
 }
 
-// allBound says each parameter the statement reads has an argument, given
-// what bound marks. One name used twice in the SQL is one parameter, and a
-// number no parameter takes (1 in "SELECT ?2, :x") needs none.
+// allBound says each parameter has an argument, given what bound marks. One
+// name used twice in the SQL is one parameter. A number up to the largest
+// needs an argument even when the SQL skips it (1 in "SELECT ?2, :x"), as
+// it does with no names.
 func (s *stmt) allBound(bound []bool) error {
 	for i := range s.nparams {
 		if bound[i] {
@@ -285,9 +286,7 @@ func (s *stmt) allBound(bound []bool) error {
 		if n := s.s.ParamName(i + 1); n != "" {
 			return fmt.Errorf("sqlite: no argument for parameter %s", n)
 		}
-		if s.s.ParamUsed(i + 1) {
-			return fmt.Errorf("sqlite: no argument for parameter %d", i+1)
-		}
+		return fmt.Errorf("sqlite: no argument for parameter %d", i+1)
 	}
 	return nil
 }

@@ -354,9 +354,13 @@ func TestMissingArgument(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO a VALUES (:x, :x)`, sql.Named("x", 1)); err != nil {
 		t.Fatalf("one name twice: %v", err)
 	}
+	// A number the SQL skips needs an argument, as it does with no names.
 	var a, b int
-	if err := db.QueryRow(`SELECT ?2, :x`, sql.Named("x", 9), 5).Scan(&a, &b); err != nil || a != 5 || b != 9 {
-		t.Fatalf("a number past a hole: (%d, %d), %v, want (5, 9)", a, b, err)
+	if err := db.QueryRow(`SELECT ?2, :x`, sql.Named("x", 9), 5).Scan(&a, &b); err == nil {
+		t.Fatal("a statement ran with a number it skips left without an argument")
+	}
+	if err := db.QueryRow(`SELECT ?2, :x`, 0, 5, sql.Named("x", 9)).Scan(&a, &b); err != nil || a != 5 || b != 9 {
+		t.Fatalf("(%d, %d), %v, want (5, 9)", a, b, err)
 	}
 	if _, err := db.Exec(`INSERT INTO a VALUES (?, :y)`, sql.Named("y", 1)); err == nil {
 		t.Fatal("a statement ran with a ? left unbound")
@@ -369,6 +373,19 @@ func TestMissingArgument(t *testing.T) {
 	}
 	if err := db.QueryRow(`SELECT count(*) FROM w WHERE s LIKE ? AND :x`, sql.Named("x", 1)).Scan(&a); err == nil {
 		t.Fatal("a statement ran with a ? of LIKE left unbound")
+	}
+	// A prepared statement SQLite made again for the value bound last.
+	mExec(t, db, `INSERT INTO w VALUES ('abc'); CREATE TABLE log(x)`)
+	s, err := db.Prepare(`INSERT INTO log SELECT :x WHERE NOT EXISTS (SELECT 1 FROM w INDEXED BY w_s WHERE s GLOB ?)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Exec(sql.Named("x", 9), "a*"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Exec(sql.Named("x", 9)); err == nil {
+		t.Fatal("a prepared statement ran with a ? of GLOB left unbound")
 	}
 }
 
