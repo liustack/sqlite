@@ -567,6 +567,18 @@ void go_collate_failed(sqlite3 *db) { sqlite3OomFault(db); }
    to SQLite, as sqlite3OomFault is. */
 int go_vtabs_in_tx(sqlite3 *db) { return db->nVTrans > 0; }
 
+/* go_param_used says the program of s reads parameter i. A number no
+   parameter takes (?1 in "SELECT ?2") is read by none. SQLite reads each
+   parameter with OP_Variable, even one a LIKE optimization made needless
+   (it adds one then). Vdbe is internal to SQLite, as above. */
+int go_param_used(sqlite3_stmt *s, int i) {
+  Vdbe *v = (Vdbe *)s;
+  int k;
+  for (k = 0; k < v->nOp; k++)
+    if (v->aOp[k].opcode == OP_Variable && v->aOp[k].p1 == i) return 1;
+  return 0;
+}
+
 /* ---- replication ---- */
 
 /* The replicator reads a database as the read transaction open on its

@@ -561,6 +561,7 @@ var goasmKeep = []any{
 	go_create_window,
 	go_init,
 	go_page_count,
+	go_param_used,
 	go_read_page,
 	go_strdup,
 	go_vtab_error,

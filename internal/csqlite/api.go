@@ -547,6 +547,10 @@ func (s *Stmt) ParamName(i int) string {
 	return cstring(sqlite3_bind_parameter_name(s.c.sp, s.p, uintptr(i)))
 }
 
+// ParamUsed says the statement reads parameter i (from 1). A number no
+// parameter takes, as 1 in "SELECT ?2", is read by none.
+func (s *Stmt) ParamUsed(i int) bool { return int32(go_param_used(s.c.sp, s.p, uintptr(i))) != 0 }
+
 func (s *Stmt) BindNull(i int) error {
 	if err := s.c.brokenErr(); err != nil {
 		return err

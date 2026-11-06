@@ -354,6 +354,22 @@ func TestMissingArgument(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO a VALUES (:x, :x)`, sql.Named("x", 1)); err != nil {
 		t.Fatalf("one name twice: %v", err)
 	}
+	var a, b int
+	if err := db.QueryRow(`SELECT ?2, :x`, sql.Named("x", 9), 5).Scan(&a, &b); err != nil || a != 5 || b != 9 {
+		t.Fatalf("a number past a hole: (%d, %d), %v, want (5, 9)", a, b, err)
+	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (?, :y)`, sql.Named("y", 1)); err == nil {
+		t.Fatal("a statement ran with a ? left unbound")
+	}
+	if _, err := db.Exec(`INSERT INTO a VALUES (:x, 1) RETURNING ?`, sql.Named("x", 1)); err == nil {
+		t.Fatal("a statement ran with a ? of RETURNING left unbound")
+	}
+	if _, err := db.Exec(`CREATE TABLE w(s TEXT); CREATE INDEX w_s ON w(s)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM w WHERE s LIKE ? AND :x`, sql.Named("x", 1)).Scan(&a); err == nil {
+		t.Fatal("a statement ran with a ? of LIKE left unbound")
+	}
 }
 
 func TestMergeLastInsertRowid(t *testing.T) {
