@@ -367,12 +367,22 @@ func (c *conn) canMerge() bool {
 	return !c.private() && !c.closed && !c.bad && !c.readOnlyTx && !c.c.Broken() && c.c.AutoCommit() && !c.c.InTx()
 }
 
-// beginWrite takes the write lock before a statement that may write.
+// beginWrite takes the write lock before a statement that may write. A
+// connection in a read transaction does not wait for it, as SQLite does not
+// call the busy handler then: in rollback journal mode the writer that
+// holds the lock waits for this connection's read lock to go before it
+// commits, so both would wait until the timeout. In WAL mode the writer's
+// commit leaves this connection's snapshot old, so the write would fail
+// once the wait ended.
 func (c *conn) beginWrite(ctx context.Context, readOnly bool) error {
 	if c.wl == nil || c.writing || readOnly || c.readOnlyTx {
 		return nil
 	}
-	if err := c.wl.acquire(ctx, c.busyTimeout); err != nil {
+	timeout := c.busyTimeout
+	if c.c.InTx() {
+		timeout = 0
+	}
+	if err := c.wl.acquire(ctx, timeout); err != nil {
 		return err
 	}
 	c.writing = true
