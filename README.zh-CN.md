@@ -13,9 +13,20 @@
   <a href="https://github.com/liustack/sqlite/actions/workflows/test.yml"><img src="https://github.com/liustack/sqlite/actions/workflows/test.yml/badge.svg?branch=main" alt="test"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
   <a href="https://x.com/liustack"><img src="https://img.shields.io/badge/follow-%40liustack-black?style=flat-square&logo=x&logoColor=white" alt="Follow @liustack on X"></a>
+  <img src="https://img.shields.io/badge/CGO-off-success?style=flat-square" alt="CGO off">
+  <img src="https://img.shields.io/badge/Not%20backed%20by-Y%20Combinator-FF6600?style=flat-square&logo=ycombinator&logoColor=white" alt="Not backed by Y Combinator">
+  <img src="https://img.shields.io/badge/users-unknown-lightgrey?style=flat-square" alt="Users unknown">
 </p>
 
 给数据放在 SQLite 里、又想保持纯 Go 的 Go 程序用：一个静态二进制，在哪台机器上都能交叉编译，构建和容器里都不需要 C 编译器。以前这样做要牺牲速度，现在落在后面的反而是 cgo 驱动。
+
+> liustack/sqlite 还在 v0.1，到 v1 之前 API 可能还会变。
+
+## 为什么有它
+
+做 [Tifa](https://github.com/liustack/tifa) 的时候，我想让每个应用都打成一个 Go 二进制，拷到一台小 VPS 上就能跑。数据要放在 SQLite 里，CGO 又必须关掉，不然交叉编译和 `scratch` 镜像就都没了。
+
+现有的纯 Go 驱动为此付出了速度。modernc 把 SQLite 的 C 翻译成 Go，ncruces 把它当 WebAssembly 跑，两个都比 cgo 驱动慢。所以我让 LLVM 把 SQLite 原本的 C 直接编译成 Go 汇编，一直磨到落在后面的变成 cgo 驱动。
 
 ## 基准测试
 
@@ -113,6 +124,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 
 ## 凭什么信它
 
+- **Tifa 建在它上面。** 用 `tifa new` 新建的应用都用这个驱动存数据（[Tifa](https://github.com/liustack/tifa) 是全栈 Go 框架）。
 - **稳定和安全第一，速度第二，内存第三。** 更快但可能丢写入、返回错结果或削弱提交的改动，一律不做。合并提交给每条合并的语句都包一个 SAVEPOINT，就是这个原因，哪怕它拖慢速度。
 - **C 是 SQLite 原版，一个字没改。** `engine/` 放的是 3.54.1 发布版的合并源码，按哈希核对（`engine/vendor.sh --verify`）。编译选项集中在一个文件里，每条都写了理由。
 - **Go 汇编是生成的，从不手写。** LLVM 编译 C，生成器把 LLVM 的输出改写成 Go 汇编。遇到没有规则的东西就停下，还会核对链接后的二进制。仓库里的汇编和生成器按 `engine/` 现在生成的不一致时，`make check-gen` 会失败。
@@ -136,6 +148,16 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 | [上游](docs/upstream.zh-CN.md) | 想知道用的是哪个 SQLite，或者怎么升级到新版 |
 | [Testing](docs/testing.md)、[Commits](docs/commit.md)（英文） | 准备改代码 |
 
+## 联系我们
+
+随时欢迎提 issue：[新建一个](https://github.com/liustack/sqlite/issues/new/choose)。用它做了什么、哪里不好用、下一步该做什么，都可以说。推荐你关注公众号 liustack，也欢迎你来 X 上聊：**[@liustack](https://x.com/liustack)**。驱动有什么变化、接下来做什么，都会在公众号和 X 同步更新。
+
+关注微信公众号「liustack」：AI 创业机会、独立开发见解、AI 实战与工具，第一时间推送。微信扫码，或搜一搜「liustack」：
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/liustack/sqlite/main/assets/wechat-qrcode.png" width="420" alt="微信公众号 liustack" />
+</p>
+
 ## 参与
 
 liustack/sqlite 不接受 pull request。这里改一处，可能从 SQLite 的 C 一路牵动到生成器、合并提交和复制，做对需要大量上下文，所以每一行都由作者一个人写和审。可以这样帮忙：
@@ -144,6 +166,16 @@ liustack/sqlite 不接受 pull request。这里改一处，可能从 SQLite 的 
 - **fork 它。** 按 MIT 许可，你的副本随你改、随你发布。在 fork 上开发的说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 安全问题请私下报告，不要提公开 issue，见 [SECURITY.md](SECURITY.md)。
+
+## Star History
+
+<a href="https://www.star-history.com/#liustack/sqlite&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=liustack/sqlite&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=liustack/sqlite&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=liustack/sqlite&type=Date" />
+ </picture>
+</a>
 
 ## 致谢
 
