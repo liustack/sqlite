@@ -65,6 +65,12 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 - **虚拟表。** Go 写的模块（`WithModule`）在 `engine/os.c` 里是一个 `sqlite3_module`，它的方法带着表或游标的句柄调用 Go。用 `ModuleWritable` 创建的模块是另一个 `sqlite3_module`，带 `xUpdate` 和事务方法。写它的表的语句从不合并：它的 Go 代码可能在数据库之外留状态，批次重跑或换个连接执行都撤不回来。`goClassify` 查到这张表，就把语句标成单独执行。读 Go 表的语句也不合并，比如从它 `INSERT INTO t SELECT ... FROM`：每个连接有自己的表实例，给出的行可能和别的连接不同。SQLite 把刚建的表放进事务时不调 `xBegin`，所以可写模块的 `xCreate` 自己调一次：收到 `xSync`、`xCommit` 或 `xRollback` 的表都先收到过 `xBegin`。SQLite 每读一行都要问一次 `xEof`，所以 `engine/os.c` 直接用 Go 在 `Filter` 和 `Next` 之后设好的字段回答。
 - **Go 代码 panic。** 函数、聚合或虚拟表的方法 panic 时，和返回错误一样，让它所在的语句失败。排序规则没有办法报错，所以 panic 时 `engine/os.c` 调用 `sqlite3OomFault`，这是 SQLite 自己记录内存分配失败的函数：SQLite 以 `SQLITE_NOMEM` 中止语句，回滚这条语句或整个事务，走的是它对每次内存分配都测过的错误路径。宿主另外还读 SQLite 的两处内部实现（见下文），在和 `sqlite3.c` 一起编译的 `engine/os.c` 里：`db->nVTrans`，以及 `Parse` 指向它所属语句的链接。一条写语句正在执行时，如果别的语句出错把它的事务回滚了，它结束时报错，不报成功（用回滚钩子计数）。
 
+## 查询的语句留着复用
+
+不经过 `*sql.Stmt` 的查询（`Query`、`QueryRow`）会把它编译好的语句留在自己的连接上，每条连接最多 64 条。同一条连接上再来同样的 SQL，就直接再跑这条语句，不再编译（`cache.go`）。语句的结果集还开着时不共用：这时同样的 SQL 另外编译一条。只留只读主库的语句。写语句每次都重新编译：SQLite 编译写语句时会把 `foreign_keys`、`defer_foreign_keys` 这类设置编进去，设置变了也不一定让它重新编译，留着的写语句就可能跳过外键检查。PRAGMA、`ATTACH`、`EXPLAIN`、读其他 schema 的语句也每次重新编译。连接一旦编译了会改变自己的语句（设置某项的 PRAGMA、`ATTACH`、临时对象），不管执行没有，留着的语句全部丢掉。schema 变了以后，SQLite 会自己重新编译留着的语句。
+
+很多读者能跑快靠的就是这个。`*sql.Stmt` 每次查询都要拿它所属 `*sql.DB` 的互斥锁，在 `*sql.Conn` 上编译的也一样，读者一多，限住速度的就是这把锁，不是 SQLite。在 `*sql.Conn` 上不用 `Stmt` 查询，不碰读者之间共用的锁，语句又留着，也不用再编译。
+
 ## 每个文件一个写入者
 
 在驱动内部，一个连接执行可能写入的语句之前（`sqlite3_stmt_readonly`）先拿这个文件的写锁，等连接结束事务后再还回去。读从不拿这把锁。没有这把锁时，同一进程里的许多写入者会在 SQLite 的 busy handler 里等，它的休眠时间越来越长（1、2、5 ms，最高 100 ms），而持有 SQLite 锁的写入者却在等一个线程：在 Apple M4 上，64 个 goroutine 各插入一行，每次插入 1.7 ms，有了这把锁是 12 µs。用 cgo 时每次调用各占一个线程，所以 mattn/go-sqlite3 碰不到这个问题。其他进程的写入者仍然要面对 SQLite 自己的锁。

@@ -34,6 +34,10 @@ type stmt struct {
 	explain bool
 	// once is a statement of conn.QueryContext: its rows finalize it.
 	once bool
+	// kept is the query a statement of conn.QueryContext is cached for, and
+	// used when it last ran (cache.go).
+	kept string
+	used uint64
 	// busy says rows of the statement are open.
 	busy bool
 	// cols, decl and isTime describe the columns of its rows. They are read
@@ -410,6 +414,10 @@ func (r *rows) Close() error {
 	if r.s.once {
 		if ferr := r.s.Close(); err == nil {
 			err = ferr
+		}
+	} else if r.s.kept != "" {
+		if kerr := r.s.c.keepQuery(r.s, err); err == nil {
+			err = kerr
 		}
 	}
 	if r.done {

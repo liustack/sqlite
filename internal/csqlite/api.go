@@ -469,6 +469,11 @@ func (s *Stmt) classify() int32 {
 // trigger.
 func (s *Stmt) ChangesConn() bool { return s.kind&changesConn != 0 }
 
+// Private says the statement, as prepared, is not plain DML or a query of the
+// main database: a PRAGMA, ATTACH, a read of another schema, a function that
+// reads the connection's state (goClassify's GO_PRIVATE).
+func (s *Stmt) Private() bool { return s.kind&private != 0 }
+
 // IsExplain says the statement is an EXPLAIN or EXPLAIN QUERY PLAN.
 func (s *Stmt) IsExplain() bool { return int32(sqlite3_stmt_isexplain(s.c.sp, s.p)) != 0 }
 
