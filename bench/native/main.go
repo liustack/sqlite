@@ -17,6 +17,9 @@
 // through database/sql as a program would: a *sql.Conn of its own and
 // QueryRowContext, with no *sql.Stmt, whose every query takes the mutex of
 // the *sql.DB.
+//
+// A writer calls db.Exec, as programs write. RAW 1 has it call the driver
+// itself on a connection of its own, with the insert prepared once.
 package main
 
 import (
@@ -174,11 +177,18 @@ func threads(a []string) error {
 	for range nw {
 		ready.Add(1)
 		wg.Go(func() {
+			write, done, err := writer(ctx, db, payload, raw)
 			ready.Done()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "native: writer:", err)
+				errs.Add(1)
+				return
+			}
+			defer done()
 			<-start
 			var k int64
 			for !stop.Load() {
-				if _, err := db.Exec(`INSERT INTO w(v) VALUES (?)`, payload); err != nil {
+				if err := write(); err != nil {
 					errs.Add(1)
 					continue
 				}
@@ -254,6 +264,43 @@ func reader(ctx context.Context, db *sql.DB, cache string, raw bool) (read func(
 			}
 			rows.Close()
 			return n
+		}, func() {
+			s.Close()
+			c.Close()
+		}, nil
+}
+
+// writer gives write, which inserts one row of payload, and done, which
+// lets go of what write uses. As programs write, it calls db.Exec, which
+// takes any connection of the pool. raw has it call the driver itself on a
+// connection of its own, with the insert prepared once, as c/threads.c does.
+func writer(ctx context.Context, db *sql.DB, payload string, raw bool) (write func() error, done func(), err error) {
+	const insert = `INSERT INTO w(v) VALUES (?)`
+	if !raw {
+		return func() error {
+			_, err := db.ExecContext(ctx, insert, payload)
+			return err
+		}, func() {}, nil
+	}
+	c, err := db.Conn(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	var s driver.Stmt
+	err = c.Raw(func(dc any) error {
+		var err error
+		s, err = dc.(driver.ConnPrepareContext).PrepareContext(ctx, insert)
+		return err
+	})
+	if err != nil {
+		c.Close()
+		return nil, nil, err
+	}
+	e := s.(driver.StmtExecContext)
+	args := []driver.NamedValue{{Ordinal: 1, Value: payload}}
+	return func() error {
+			_, err := e.ExecContext(ctx, args)
+			return err
 		}, func() {
 			s.Close()
 			c.Close()

@@ -33,9 +33,6 @@ type nativeCase struct {
 
 var nativeCases = func() []nativeCase {
 	var cs []nativeCase
-	// Writes go through database/sql on every Go column, so they have no
-	// column of the driver called directly.
-	writes := []string{"c", "liustack", "mattn"}
 	for _, n := range []int{1, 8, 64} {
 		cs = append(cs, nativeCase{fmt.Sprintf("Point/g=%d", n), "read", n, "NORMAL", "0", nativeDrivers})
 	}
@@ -43,8 +40,8 @@ var nativeCases = func() []nativeCase {
 		cs = append(cs, nativeCase{fmt.Sprintf("PointCached/g=%d", n), "read", n, "NORMAL", "-65536", nativeDrivers})
 	}
 	return append(cs,
-		nativeCase{"PointInsert/g=8", "mixed", 8, "NORMAL", "0", writes},
-		nativeCase{"InsertFull/g=64", "write", 64, "FULL", "0", writes})
+		nativeCase{"PointInsert/g=8", "mixed", 8, "NORMAL", "0", nativeDrivers},
+		nativeCase{"InsertFull/g=64", "write", 64, "FULL", "0", nativeDrivers})
 }()
 
 func cmdNative(args []string) error {
@@ -242,8 +239,8 @@ var nativeWork = map[string]struct{ en, zh string }{
 	"Engine/fts5":   {"4 FTS5 searches in 200k documents", "20 万篇文档里做 4 次 FTS5 搜索"},
 	"Point":         {"Read one row by key, %s threads", "按主键读一行，%s 个线程"},
 	"PointCached":   {"Read one row by key, whole file in cache, %s threads", "按主键读一行，整个文件在缓存里，%s 个线程"},
-	"PointInsert/r": {"8 readers next to 8 writers: the reads", "8 读 8 写：读"},
-	"PointInsert/w": {"8 readers next to 8 writers: the writes", "8 读 8 写：写"},
+	"PointInsert/r": {"8 threads read while 8 others write: the reads", "8 个线程读、另 8 个同时写：读的速率"},
+	"PointInsert/w": {"8 threads read while 8 others write: the writes", "8 个线程读、另 8 个同时写：写的速率"},
 	"InsertFull":    {"Insert one row, `synchronous=FULL`, %s threads", "插入一行，`synchronous=FULL`，%s 个线程"},
 }
 
