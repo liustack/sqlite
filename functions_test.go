@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/liustack/sqlite/internal/csqlite"
 )
 
 func fOpen(t *testing.T, dsn string, opts ...Option) *sql.DB {
@@ -392,7 +394,8 @@ func TestFunctionResultsAndErrors(t *testing.T) {
 }
 
 // A collation that panics in one statement of a merged batch fails that
-// statement, and the others commit.
+// statement and ends the transaction (SQLITE_NOMEM): the statements before
+// it get SQLITE_ABORT_ROLLBACK, and those after it commit in the next batch.
 func TestMergeWithCollationPanic(t *testing.T) {
 	p := mPath(t)
 	pc := WithCollation("pc", func(a, b string) int {
@@ -416,32 +419,40 @@ func TestMergeWithCollationPanic(t *testing.T) {
 
 	words := []string{"a", "b", "zz", "c", "d"}
 	errs := make(chan error, len(words))
-	// The holder keeps the lock until every insert waits in the queue, so
-	// they run as one batch.
+	// The holder keeps the lock until every insert waits in the queue, in
+	// the order of words, so they run as one batch in that order.
 	tx, err := other.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
 	mExec(t, tx, `INSERT INTO h VALUES (1)`)
-	for _, w := range words {
+	deadline := time.Now().Add(5 * time.Second)
+	for i, w := range words {
 		go func() {
 			_, err := db.Exec(`INSERT INTO t VALUES (?)`, w)
-			if w == "zz" {
-				if err == nil || !strings.Contains(err.Error(), "cannot compare zz") {
+			var e *Error
+			switch {
+			case w == "zz":
+				if !errors.Is(err, csqlite.ErrCollationPanic) || !strings.Contains(err.Error(), "cannot compare zz") {
 					err = fmt.Errorf("zz: %v, want the panic", err)
+				} else {
+					err = nil
+				}
+			case i < slices.Index(words, "zz"):
+				if !errors.As(err, &e) || e.ExtendedCode() != ABORT_ROLLBACK || !errors.Is(err, csqlite.ErrCollationPanic) {
+					err = fmt.Errorf("%s: %v, want SQLITE_ABORT_ROLLBACK over the panic", w, err)
 				} else {
 					err = nil
 				}
 			}
 			errs <- err
 		}()
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for waiting() < len(words) {
-		if time.Now().After(deadline) {
-			t.Fatalf("%d of %d inserts wait", waiting(), len(words))
+		for waiting() < i+1 {
+			if time.Now().After(deadline) {
+				t.Fatalf("%d of %d inserts wait", waiting(), i+1)
+			}
+			time.Sleep(time.Millisecond)
 		}
-		time.Sleep(time.Millisecond)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
@@ -454,7 +465,7 @@ func TestMergeWithCollationPanic(t *testing.T) {
 	if m := wl.stats.merged.Load() - merged0; m < 2 {
 		t.Errorf("%d statements merged", m)
 	}
-	if got := fString(t, db, `SELECT group_concat(x, ',') FROM (SELECT x FROM t ORDER BY x)`); got != "a,b,c,d,m" {
+	if got := fString(t, db, `SELECT group_concat(x, ',') FROM (SELECT x FROM t ORDER BY x)`); got != "c,d,m" {
 		t.Fatalf("rows: %s", got)
 	}
 	if got := fString(t, db, `PRAGMA integrity_check`); got != "ok" {

@@ -528,38 +528,85 @@ func batchCount(t *testing.T, c *conn, q string) int64 {
 	return s.ColumnInt64(0)
 }
 
-// TestMergeOrFailKeptOnReplay: the rows an OR FAIL statement keeps are
-// committed even when a later statement of the batch ends the transaction
-// and the batch runs again, and its caller hears of it only after the
-// commit.
-func TestMergeOrFailKeptOnReplay(t *testing.T) {
-	var first *request
-	early := false
+// TestMergeNoRerun: when a statement ends the transaction of its batch, it
+// gets its own error, each statement that ran before it gets
+// SQLITE_ABORT_ROLLBACK over that error, those that failed alone too, and
+// none runs again. The statements after it never touched SQLite and go back
+// to the queue. A statement whose context ended before it stepped is
+// answered alone.
+func TestMergeNoRerun(t *testing.T) {
+	var calls atomic.Int64
 	c := batchConn(t, WithFunction("observe", 0, func([]driver.Value) (driver.Value, error) {
-		select {
-		case <-first.done:
-			early = true
-		default:
-		}
+		calls.Add(1)
 		return int64(4), nil
-	}, Innocuous)) // so that the batch runs it again
+	}, Innocuous))
 	if err := c.c.Exec(`CREATE TABLE t(x UNIQUE); INSERT INTO t VALUES (3)`); err != nil {
 		t.Fatal(err)
 	}
-	first = batchReq(`INSERT OR FAIL INTO t VALUES (1), (2), (3)`)
-	next := batchReq(`INSERT INTO t VALUES (observe())`)
-	last := batchReq(`INSERT OR ROLLBACK INTO t VALUES (3)`)
-	if back := c.runBatch([]*request{first, next, last}); len(back) != 0 {
-		t.Fatalf("%d requests back", len(back))
+	fail := batchReq(`INSERT OR FAIL INTO t VALUES (1), (2), (3)`)
+	ok := batchReq(`INSERT INTO t VALUES (observe())`)
+	late := batchReq(`INSERT INTO t VALUES (6)`)
+	late.ctx = &lateCtx{Context: context.Background()}
+	end := batchReq(`INSERT OR ROLLBACK INTO t VALUES (3)`)
+	after := batchReq(`INSERT INTO t VALUES (5)`)
+	back := c.runBatch([]*request{fail, ok, late, end, after})
+	if len(back) != 1 || back[0] != after {
+		t.Fatalf("back %v, want only the statement after the one that ended the transaction", back)
 	}
-	if first.err == nil || last.err == nil || next.err != nil {
-		t.Fatalf("errors: %v, %v, %v", first.err, next.err, last.err)
+	var e *Error
+	if !errors.As(end.err, &e) || e.ExtendedCode() != CONSTRAINT_UNIQUE {
+		t.Fatalf("the statement that ended the transaction got %v", end.err)
 	}
-	if early {
-		t.Fatal("the OR FAIL caller was answered before the commit")
+	for name, r := range map[string]*request{"OR FAIL": fail, "observe": ok} {
+		if !errors.As(r.err, &e) || e.ExtendedCode() != ABORT_ROLLBACK {
+			t.Fatalf("%s: %v, want SQLITE_ABORT_ROLLBACK", name, r.err)
+		}
+		if !errors.Is(r.err, end.err) {
+			t.Fatalf("%s: %v does not wrap %v", name, r.err, end.err)
+		}
 	}
-	if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 4 {
-		t.Fatalf("%d rows, want 4: 3, then 1 and 2 kept by OR FAIL, then 4", n)
+	if !errors.Is(late.err, context.Canceled) {
+		t.Fatalf("the statement whose context ended got %v", late.err)
+	}
+	for _, r := range []*request{fail, ok, late, end} {
+		select {
+		case <-r.done:
+		default:
+			t.Fatalf("%s not answered", r.sql)
+		}
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("observe() ran %d times, want 1", n)
+	}
+	if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 1 {
+		t.Fatalf("%d rows, want 1: the batch rolled back", n)
+	}
+}
+
+// TestLeadNotRerun: a request handed the lock leads a batch. When a later
+// statement ends the transaction, the leader ran: it gets
+// SQLITE_ABORT_ROLLBACK and does not run again on its own connection.
+func TestLeadNotRerun(t *testing.T) {
+	c := batchConn(t)
+	if err := c.c.Exec(`CREATE TABLE t(x UNIQUE); INSERT INTO t VALUES (3)`); err != nil {
+		t.Fatal(err)
+	}
+	lead := batchReq(`INSERT INTO t VALUES (1)`)
+	lead.key = c.key
+	end := batchReq(`INSERT OR ROLLBACK INTO t VALUES (3)`)
+	end.key = c.key
+	c.wl.mu.Lock()
+	c.wl.queue = append(c.wl.queue, end)
+	c.wl.mu.Unlock()
+	if !c.wl.lead(c, lead) {
+		t.Fatal("the leader is to run alone")
+	}
+	var e *Error
+	if !errors.As(lead.err, &e) || e.ExtendedCode() != ABORT_ROLLBACK {
+		t.Fatalf("the leader got %v, want SQLITE_ABORT_ROLLBACK", lead.err)
+	}
+	if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 1 {
+		t.Fatalf("%d rows, want 1", n)
 	}
 }
 
@@ -1399,7 +1446,7 @@ func TestMergeSideEffectsRunOnce(t *testing.T) {
 		back  int   // statements left for the next batch
 	}{
 		{"side", 1, 1},
-		{"pure", 2, 0}, // run again with the batch, which is allowed
+		{"pure", 1, 0}, // rolled back with the batch, never run again
 	} {
 		t.Run(tc.fn, func(t *testing.T) {
 			calls.Store(0)
@@ -1413,8 +1460,14 @@ func TestMergeSideEffectsRunOnce(t *testing.T) {
 			if len(back) != tc.back {
 				t.Fatalf("%d statements back, want %d", len(back), tc.back)
 			}
-			if a.err != nil {
+			if tc.back == 1 && a.err != nil {
 				t.Fatal(a.err)
+			}
+			if tc.back == 0 {
+				wantRolledBack(t, a.err)
+				if !errors.Is(b.err, context.Canceled) {
+					t.Fatalf("the canceled statement got %v", b.err)
+				}
 			}
 			if n := calls.Load(); n != tc.calls {
 				t.Fatalf("%s() ran %d times, want %d", tc.fn, n, tc.calls)
@@ -1554,7 +1607,9 @@ func TestMergeSideEffectsFromAnywhere(t *testing.T) {
 		time.AfterFunc(50*time.Millisecond, cancel)
 		back := c.runBatch([]*request{a, b})
 		cancel()
-		if a.err != nil {
+		if tc.calls == 0 {
+			wantRolledBack(t, a.err)
+		} else if a.err != nil {
 			t.Fatalf("%s: %v", tc.q, a.err)
 		}
 		if n := calls.Load(); n != tc.calls {
@@ -1563,6 +1618,23 @@ func TestMergeSideEffectsFromAnywhere(t *testing.T) {
 		if want := int(tc.calls); len(back) != want {
 			t.Errorf("%s: %d statements left for the next batch, want %d", tc.q, len(back), want)
 		}
+	}
+}
+
+// wantRolledBack checks err is the SQLITE_ABORT_ROLLBACK of a statement whose
+// batch another statement's canceled context rolled back: that cancel is not
+// its own.
+func wantRolledBack(t *testing.T, err error) {
+	t.Helper()
+	var e *Error
+	if !errors.As(err, &e) || e.ExtendedCode() != ABORT_ROLLBACK {
+		t.Fatalf("%v, want SQLITE_ABORT_ROLLBACK", err)
+	}
+	if errors.Is(err, context.Canceled) {
+		t.Fatalf("%v is a cancel of its own", err)
+	}
+	if !errors.As(errors.Unwrap(err), &e) || e.Code() != INTERRUPT {
+		t.Fatalf("%v is not over an interrupt", err)
 	}
 }
 

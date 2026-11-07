@@ -174,9 +174,17 @@ func (s *stmt) run(ctx context.Context, args []driver.NamedValue) (*result, erro
 	if err := s.bind(args); err != nil {
 		return nil, err
 	}
+	res, _, err := s.step(ctx)
+	return res, ctxErr(ctx, err)
+}
+
+// step steps the bound statement once and resets it. stepped says it did
+// step: it does not when ctx is done already (watch). The error is SQLite's,
+// as an interrupt: ctxErr makes it the error of ctx.
+func (s *stmt) step(ctx context.Context) (res *result, stepped bool, err error) {
 	stop, err := s.c.watch(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	_, err = s.s.Step()
 	stop()
@@ -184,9 +192,9 @@ func (s *stmt) run(ctx context.Context, args []driver.NamedValue) (*result, erro
 		err = rerr
 	}
 	if err != nil {
-		return nil, ctxErr(ctx, err)
+		return nil, true, err
 	}
-	return &result{id: s.c.c.LastInsertRowID(), n: s.c.c.Changes()}, nil
+	return &result{id: s.c.c.LastInsertRowID(), n: s.c.c.Changes()}, true, nil
 }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
