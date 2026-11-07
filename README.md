@@ -122,6 +122,8 @@ db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=syn
 
 The name is a file, `:memory:` or a [SQLite URI](https://sqlite.org/uri.html). `_pragma=name(value)` runs a PRAGMA on every new connection, and `_txlock=immediate` makes `BEGIN` take the write lock at once. A connection waits 5 seconds for a lock unless `busy_timeout` says otherwise. The rest is on [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite).
 
+An error from SQLite is a `*sqlite.Error`. `errors.As` gets it, and `Code()` and `ExtendedCode()` give its [result code](https://sqlite.org/rescode.html), as `sqlite.BUSY` or `sqlite.CONSTRAINT_UNIQUE`.
+
 SQL functions, aggregates, window functions, collations and virtual tables written in Go go on the connector, so that every connection of the pool has them:
 
 ```go

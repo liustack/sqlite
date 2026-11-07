@@ -122,6 +122,8 @@ db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=syn
 
 名字可以是文件名、`:memory:` 或 [SQLite URI](https://sqlite.org/uri.html)。`_pragma=name(value)` 在每个新连接上执行一条 PRAGMA，`_txlock=immediate` 让 `BEGIN` 马上拿写锁。没有用 `busy_timeout` 另设的话，连接等锁最多 5 秒。其余见 [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite)。
 
+SQLite 给的错误是 `*sqlite.Error`。用 `errors.As` 取出来，`Code()` 和 `ExtendedCode()` 给出它的[错误码](https://sqlite.org/rescode.html)，比如 `sqlite.BUSY`、`sqlite.CONSTRAINT_UNIQUE`。
+
 Go 写的 SQL 函数、聚合函数、窗口函数、排序规则和虚拟表放在 connector 上，这样连接池里的每个连接都有：
 
 ```go

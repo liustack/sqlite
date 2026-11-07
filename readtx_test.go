@@ -49,7 +49,7 @@ func TestWriteFromReadTx(t *testing.T) {
 				t.Errorf("the reader's write waited %v", took.Round(time.Millisecond))
 			}
 			var e *csqlite.Error
-			if !errors.As(err, &e) || e.Code&0xff != 5 {
+			if !errors.As(err, &e) || e.Code() != 5 {
 				t.Fatalf("the reader's write: %v, want database is locked", err)
 			}
 			mustExec(t, r, "ROLLBACK")

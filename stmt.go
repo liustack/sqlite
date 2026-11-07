@@ -362,7 +362,7 @@ func (c *conn) watch(ctx context.Context) func() {
 // ctxErr is the error of the context when it ended the statement.
 func ctxErr(ctx context.Context, err error) error {
 	var e *csqlite.Error
-	if errors.As(err, &e) && e.Primary() == 9 && ctx.Err() != nil { // SQLITE_INTERRUPT
+	if errors.As(err, &e) && e.Code() == 9 && ctx.Err() != nil { // SQLITE_INTERRUPT
 		return ctx.Err()
 	}
 	return err

@@ -42,7 +42,7 @@ func (c *Conn) guardErr(r int32) error {
 	if r == OK || *(*int32)(at(c.classifyWord()))&guarded == 0 {
 		return nil
 	}
-	return &Error{Code: int(r), Msg: guardedMsg, err: ErrGuarded}
+	return &Error{code: int(r), msg: guardedMsg, err: ErrGuarded}
 }
 
 // WALHeader is the header of the WAL a read transaction reads: struct
@@ -66,7 +66,7 @@ func (c *Conn) WALHeader() (WALHeader, error) {
 	a := c.args()
 	out := a.space(48)
 	if r := int32(go_wal_header(a.top, c.db, out)); r != OK {
-		return WALHeader{}, &Error{Code: int(r), Msg: "no read transaction on a database in WAL mode"}
+		return WALHeader{}, &Error{code: int(r), msg: "no read transaction on a database in WAL mode"}
 	}
 	b := bytesAt(out, 48)
 	ne := binary.NativeEndian
@@ -106,7 +106,7 @@ func (c *Conn) PageCount() (uint32, error) {
 	a := c.args()
 	n := a.word()
 	if r := int32(go_page_count(a.top, c.db, n)); r != OK {
-		return 0, &Error{Code: int(r), Msg: "no read transaction"}
+		return 0, &Error{code: int(r), msg: "no read transaction"}
 	}
 	return *(*uint32)(at(n)), nil
 }
@@ -119,7 +119,7 @@ func (c *Conn) ReadPage(pgno uint32, buf []byte) error {
 		return err
 	}
 	if len(buf) > 65536 {
-		return &Error{Code: 1, Msg: "not a page size"}
+		return &Error{code: 1, msg: "not a page size"}
 	}
 	a := c.args()
 	out := a.space(len(buf))

@@ -33,7 +33,7 @@ func TestCloseWithOpenStatement(t *testing.T) {
 	base := c.st.base
 	err = c.Close()
 	var e *Error
-	if !errors.As(err, &e) || e.Primary() != 5 {
+	if !errors.As(err, &e) || e.Code() != 5 {
 		t.Fatalf("Close with an open statement: %v", err)
 	}
 	if c.st.base != base || c.st.base == 0 || c.db == 0 {
@@ -58,7 +58,7 @@ func TestOpenLongName(t *testing.T) {
 	long := strings.Repeat("a", 40<<20)
 	c, err := openRaw(t, long, OpenReadWrite|OpenCreate)
 	var e *Error
-	if !errors.As(err, &e) || e.Primary() != 18 {
+	if !errors.As(err, &e) || e.Code() != 18 {
 		if c != nil {
 			c.Close()
 		}
@@ -103,7 +103,7 @@ func TestStageAllocFailure(t *testing.T) {
 	check := func(what string, err error) {
 		t.Helper()
 		var e *Error
-		if !errors.As(err, &e) || e.Primary() != 7 {
+		if !errors.As(err, &e) || e.Code() != 7 {
 			t.Errorf("%s: %v", what, err)
 		}
 	}
@@ -139,7 +139,7 @@ func TestCallbackPanicBreaksConn(t *testing.T) {
 	}
 	err = c.Exec("INSERT INTO t VALUES (1)")
 	var e *Error
-	if !errors.As(err, &e) || e.Primary() != 10 {
+	if !errors.As(err, &e) || e.Code() != 10 {
 		t.Fatalf("Exec after the file vanished: %v", err)
 	}
 	if !c.Broken() {
