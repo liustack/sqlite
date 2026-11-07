@@ -381,6 +381,14 @@ func (c *conn) answered(ctx context.Context, s *stmt, req *request) (*result, er
 			return nil, err
 		}
 		if !c.canMerge() || !c.wl.lead(c, req) {
+			if !c.c.AutoCommit() {
+				// The batch c led would not roll back (conn.abandon). req
+				// never ran and must not run in that transaction: c keeps
+				// the lock until it is closed, and database/sql runs req on
+				// another connection.
+				c.writing = true
+				return nil, driver.ErrBadConn
+			}
 			return c.runHeld(ctx, s, req.args)
 		}
 		c.writing = true
@@ -625,12 +633,12 @@ func (c *conn) runOne(r *request) (outcome, error) {
 		// may leave terms. When it fails, the statement is undone: alone, its
 		// COMMIT would have failed.
 		if ferr := c.flushVirtualTables(); ferr != nil {
+			if c.c.AutoCommit() {
+				r.err = ferr // the failure ended the transaction
+				return ended, ferr
+			}
 			if err == nil {
 				err = ferr
-			}
-			if c.c.AutoCommit() {
-				r.err = err // the failure ended the transaction
-				return ended, err
 			}
 			undo = true
 		}

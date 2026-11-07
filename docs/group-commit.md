@@ -59,7 +59,7 @@ Each request taken into a batch ends one way only, once: it gets its result, or 
 
 | Step | Result |
 | --- | --- |
-| Still in the queue, its context ends or it waits past the busy timeout | Taken out of the queue, gets the error of its context or `SQLITE_BUSY`. It never ran and touches no one else |
+| Still in the queue, its context ends or it waits past the busy timeout | Taken out of the queue, gets the error of its context or `SQLITE_BUSY`. It never ran and touches no one else. A request that goes back to the queue after its caller stopped waiting there is not taken out again: it waits for its answer from the next batch or the lock |
 | Taken into the batch, its context is done when its turn comes | Does not run. Gets the error of its context alone, and is no part of the batch |
 | Taken into the batch, its prepare or its bind fails | Did not run. Gets its own error alone, and is no part of the batch |
 | Refused as it is prepared again (rule 4) | Once its `SAVEPOINT` is undone, it goes back to the queue, and in its turn runs on its caller's connection. It did nothing, so this is not running it again. If the undo fails, as below for a transaction that ended |
@@ -68,7 +68,7 @@ Each request taken into a batch ends one way only, once: it gets its result, or 
 | A statement leaves a deferred foreign key unresolved | It is undone with `ROLLBACK TO`, and keeps the foreign key error its own commit would have given. What it finally gets depends on how the batch ends |
 | Writing a virtual table's index fails and the transaction goes on | The statement is undone and keeps its error. What it finally gets depends on how the batch ends |
 | A statement, or a `SAVEPOINT`, `ROLLBACK TO`, `RELEASE` or index write of the driver, ends the whole transaction (an interrupt, an IO error, a full disk, out of memory, `OR ROLLBACK`, `RAISE(ROLLBACK)`, a panic in a collation) | The request running then gets the error that ended the transaction. Every request that ran before it, whether it succeeded or failed alone, gets `SQLITE_ABORT_ROLLBACK` (516) instead, whose `Unwrap()` is the error that ended the transaction. The requests after it have not run: they go back to the queue in their place |
-| The driver's `ROLLBACK` fails too, and the transaction is still open | Results as in the row above. The connection is marked bad and keeps the write lock while its transaction is open. When `database/sql` drops it, it is closed, which rolls the transaction back and gives the lock back |
+| The driver's `ROLLBACK` fails too, and the transaction is still open | Results as in the row above. The connection is marked bad and keeps the write lock while its transaction is open. When `database/sql` drops it, it is closed, which rolls the transaction back and gives the lock back. A request handed the lock that led this batch and did not run gets `driver.ErrBadConn`, so that `database/sql` runs it on another connection |
 | Rule 10 ends the batch | What ran commits as usual. What did not run goes back to the queue |
 | `COMMIT` succeeds | Each request that ran gets what it kept: `RowsAffected` and `LastInsertId` when it succeeded, its own error when it failed alone |
 | `COMMIT` fails | Every request of the batch that ran gets the error of COMMIT, those that failed alone too. Nothing runs again |
@@ -87,7 +87,7 @@ Notes:
 12. **A statement that would have succeeded can get `SQLITE_ABORT_ROLLBACK` because another statement of its batch failed.** SQLite gives this code to the statements of a transaction it rolled back. The driver gives it to each request a failed batch took with it. An autocommit statement run alone never gets it, so seeing it means another statement of the batch failed.
     - It means this write to the database was rolled back. It does not mean nothing happened outside the database (Go functions of the batch may have been called), nor that the statement will succeed if tried again. Whether to try again is the caller's choice.
     - `Unwrap()` is the cause as SQLite reported it. When the context of another caller ended and interrupted the batch, the cause is `SQLITE_INTERRUPT`, not `context.Canceled`: `errors.Is(err, context.Canceled)` holds only when your own context ended.
-13. **A statement that failed alone can still end with 516 or the error of COMMIT** instead of its own error, since what it left was rolled back with the batch.
+13. **A statement that failed alone can still end with 516 or the error of COMMIT** instead of its own error, since what it left was rolled back with the batch. The statement that ended the transaction may also have failed over a write of the batch before it, which was rolled back with it: a UNIQUE error over a row that in the end is not in the database.
 14. **`changes()` and `total_changes()` belong to the connection that ran the statement.** When another connection runs it, the caller's counts leave it out, and the counts of the running connection include the statements of others. `RowsAffected()`, `LastInsertId()` and `last_insert_rowid()` on the caller's connection are kept for each request and are right.
 15. **The writes of a batch become visible together at `COMMIT`.** A read that starts after the commit sees an early statement of the batch only once the whole batch committed. A read transaction already open keeps its older snapshot, as with a statement run alone.
 16. **Replication gives no restore point inside a batch.** A batch is one SQLite transaction. One TXID of replication is one staging, which may hold several batches or other transactions (see [replication.md](replication.md)).
@@ -103,12 +103,12 @@ if errors.As(err, &e) && e.ExtendedCode() == sqlite.ABORT_ROLLBACK {
 }
 ```
 
-The driver never turns these errors into `driver.ErrBadConn`: `database/sql` would try the statement again by itself, which is running it again.
+The driver never turns these errors into `driver.ErrBadConn`: `database/sql` would try the statement again by itself, which is running it again. The one `driver.ErrBadConn` is for a request that never ran, on a connection that went bad (section 4).
 
 ## 7. What a change to this code must keep
 
 - **A statement that ran never runs again.** This binds `runBatch`, `lead` and its fall back to the caller's connection, and the path of a bad connection. Any new way to fail must say what each request that ran gets.
-- **Only two kinds of request go back to the queue:** those after the point of failure or of the cut that the batch never touched, and those refused as they were prepared again whose undo succeeded. Both keep their place in line, context, arguments and last_insert_rowid, and their `done` stays open.
+- **Only these requests go back to the queue:** those after the point of failure or of the cut that the batch never touched, those refused as they were prepared again whose undo succeeded, and those whose statement the connection of the batch already knows it cannot merge (no `SAVEPOINT`, no step). All keep their place in line, context, arguments and last_insert_rowid, and their `done` stays open.
 - **Each request ends once**, and its `done` is closed once. The path of a leading request and the path back to the queue both make sure the lock is handed on in the end, and the committed callback of replication is called before the lock is handed on.
 - **Before another kind of statement merges**, show in `goClassify` that it touches nothing of its connection, then add tests. When unsure, do not merge: it is only slower, never wrong.
 - **A new kind of Go callback** (a function, a method of a virtual table) must say what happens when it fails inside a batch, has side effects or is called more than once, and whether it marks the connection as in rule 10.

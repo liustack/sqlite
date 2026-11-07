@@ -132,6 +132,11 @@ func (c *conn) Close() error {
 	c.closed = true
 	if c.writing {
 		c.writing = false
+		if !c.c.AutoCommit() {
+			// A transaction that would not roll back made c bad. Try once
+			// more before the lock goes on: closing c rolls it back anyway.
+			c.c.Exec("ROLLBACK")
+		}
 		c.wl.release(c)
 	}
 	c.dropQueries()
