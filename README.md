@@ -69,6 +69,37 @@ Time per operation, lower is better, the median of 6 runs. The best of a row is 
 
 Where another driver still wins: work that stays inside SQLite (the join), where this driver runs the same C but as Go assembly, and reading large text values. Why reads and many writers are faster, the versions of each driver, and how to run it all again are in [docs/benchmarks.md](docs/benchmarks.md).
 
+## Real-time backup to S3
+
+Start the replicator before you open the database, and every commit goes to S3, Cloudflare R2 or MinIO about a second later:
+
+```go
+cfg := replica.Config{
+	URL: "s3://my-bucket/app.db?endpoint=https://<account>.r2.cloudflarestorage.com&region=auto",
+}
+r, err := replica.New(ctx, "app.db", cfg)
+if err != nil {
+	return err
+}
+defer r.Close()
+
+db, err := sql.Open("sqlite", "app.db")
+```
+
+On a new machine one call brings the database back, as it is now or as it was at an earlier time, at least a day back by default:
+
+```go
+txid, err := replica.Restore(ctx, "app.db", cfg, replica.RestoreOptions{})
+```
+
+- **Writes never wait for the upload.** A slow or unreachable store never slows a write or makes it fail. Changes wait on disk next to the database and go up once the store answers.
+- **Nothing else to deploy.** It is a package in your program, so the deploy stays one binary, with no Litestream process beside it.
+- **Every file is checked on restore**, then `PRAGMA integrity_check` runs, and a database already there is never written over.
+- **Litestream reads the same copy.** It is laid out as Litestream lays it out, and the tests have `litestream restore` rebuild it at every point and check it gives the same bytes.
+- **`r.Sync(ctx)` waits until what you committed is in the store**, for the writes that must be safe before you go on.
+
+Settings, how far behind the copy is, and its limits: [Replication](docs/replication.md).
+
 ## Install
 
 ```sh
@@ -120,7 +151,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 - **Many writers stop waiting on each other.** When goroutines write at the same time, the driver runs their autocommit `INSERT`, `UPDATE` and `DELETE` statements as one transaction and commits once. Each call still gets its own error, `LastInsertId` and `RowsAffected`, and returns only after the commit, so nothing is less durable. Transactions you open yourself are never merged. [How it works](docs/architecture.md#group-commit)
 - **Writers queue instead of failing with `database is locked`.** Inside the driver one connection of your program writes a file at a time, and the others queue for it, up to `busy_timeout`, instead of sleeping in SQLite's busy handler. A transaction that reads first and writes later can still fail when another wrote in between, so start such transactions with `_txlock=immediate`. Other processes still meet SQLite's own locks.
 - **Reads cost less.** A call into SQLite is a plain Go call, and on Go 1.27 scanning a number into your variable allocates nothing (a string costs one allocation, its own).
-- **Losing the machine no longer means losing the database.** `replica.New` copies every commit to S3, R2 or MinIO about a second later, from inside your program, with no Litestream process beside it. `replica.Restore` brings it back on another machine, checked file by file, and `litestream restore` reads the same copy. [How it works](docs/replication.md)
+- **Real-time backup is built in.** Every commit reaches S3, R2 or MinIO about a second later, from inside your program. See [Real-time backup to S3](#real-time-backup-to-s3).
 
 ## Why you can trust it
 
