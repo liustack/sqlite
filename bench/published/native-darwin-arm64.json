@@ -1,0 +1,517 @@
+{
+  "name": "native-darwin-arm64",
+  "meta": [
+    {
+      "k": "note",
+      "v": "the M4 has 4 performance and 6 efficiency cores, and the rates of 8 and 64 threads change with the cores they get, by up to a third: read those rows on linux"
+    },
+    {
+      "k": "note_zh",
+      "v": "M4 有 4 个性能核和 6 个能效核，8 个和 64 个线程的速率随分到的核变化，最多差三分之一：这几行以 linux 为准"
+    },
+    {
+      "k": "date",
+      "v": "2026-11-07"
+    },
+    {
+      "k": "commit",
+      "v": "7fac18a"
+    },
+    {
+      "k": "go",
+      "v": "1.27.2"
+    },
+    {
+      "k": "os",
+      "v": "Darwin 24.3.0 arm64"
+    },
+    {
+      "k": "cpu",
+      "v": "Apple M4"
+    },
+    {
+      "k": "threads",
+      "v": "10"
+    },
+    {
+      "k": "gomaxprocs",
+      "v": "10"
+    },
+    {
+      "k": "modules",
+      "v": "github.com/mattn/go-sqlite3 v1.14.52 modernc.org/sqlite v1.61.1 github.com/ncruces/go-sqlite3 v0.36.0"
+    },
+    {
+      "k": "cc",
+      "v": "Homebrew clang version 22.1.8"
+    },
+    {
+      "k": "count",
+      "v": "10"
+    },
+    {
+      "k": "reps",
+      "v": "5"
+    },
+    {
+      "k": "secs",
+      "v": "3"
+    },
+    {
+      "k": "drivers",
+      "v": "c,liustack-raw,liustack,mattn"
+    },
+    {
+      "k": "load_before",
+      "v": "1.75 1.90 2.53"
+    },
+    {
+      "k": "load_after",
+      "v": "8.17 8.27 6.96"
+    },
+    {
+      "k": "minutes",
+      "v": "22.0"
+    }
+  ],
+  "drivers": [
+    "c",
+    "liustack-raw",
+    "liustack",
+    "mattn"
+  ],
+  "rows": [
+    {
+      "bench": "Engine/insert",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.18992000000000003,
+          "lo": 0.187151,
+          "hi": 0.192809,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.26423131250000004,
+          "lo": 0.260743916,
+          "hi": 0.271171417,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/index",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.20212750000000002,
+          "lo": 0.199975,
+          "hi": 0.20989200000000002,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.25781122900000003,
+          "lo": 0.252967333,
+          "hi": 0.274215792,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/sort",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 1.5829345000000001,
+          "lo": 1.5568410000000001,
+          "hi": 1.6314270000000002,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1.7991720415000003,
+          "lo": 1.782053,
+          "hi": 1.8476709160000002,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/group",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.1482345,
+          "lo": 0.14428200000000002,
+          "hi": 0.150563,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.20736470850000002,
+          "lo": 0.2036435,
+          "hi": 0.210602583,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/join",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.036041000000000004,
+          "lo": 0.035614,
+          "hi": 0.036215000000000004,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.0480700835,
+          "lo": 0.047946875,
+          "hi": 0.048357333,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/cte",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.2005985,
+          "lo": 0.19895400000000002,
+          "hi": 0.203685,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.26868989600000004,
+          "lo": 0.26792900000000003,
+          "hi": 0.269030625,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/like",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.046786,
+          "lo": 0.04646,
+          "hi": 0.047232,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.054671521,
+          "lo": 0.054359416,
+          "hi": 0.055562625000000004,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/json",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.211503,
+          "lo": 0.210677,
+          "hi": 0.21466800000000003,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.25680575,
+          "lo": 0.256006042,
+          "hi": 0.257986667,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/math",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.067639,
+          "lo": 0.06714300000000001,
+          "hi": 0.068382,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.1073787915,
+          "lo": 0.10716525,
+          "hi": 0.108887833,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/fts5",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.0012560000000000002,
+          "lo": 0.0012430000000000002,
+          "hi": 0.0012820000000000002,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.001859125,
+          "lo": 0.001842625,
+          "hi": 0.0019234170000000002,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Point/g=1",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 658841,
+          "lo": 644446,
+          "hi": 673830,
+          "n": 10
+        },
+        "liustack": {
+          "median": 756285.5,
+          "lo": 669512,
+          "hi": 783944,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 993288.5,
+          "lo": 941119,
+          "hi": 1012343,
+          "n": 10
+        },
+        "mattn": {
+          "median": 324838.5,
+          "lo": 310698,
+          "hi": 328187,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Point/g=8",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 896768,
+          "lo": 851163,
+          "hi": 923945,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1369316,
+          "lo": 1293365,
+          "hi": 1485433,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 1614653,
+          "lo": 1450669,
+          "hi": 1682267,
+          "n": 10
+        },
+        "mattn": {
+          "median": 690869.5,
+          "lo": 625549,
+          "hi": 777953,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Point/g=64",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 791853,
+          "lo": 748549,
+          "hi": 817310,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1295113.5,
+          "lo": 1234601,
+          "hi": 1374703,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 1520020,
+          "lo": 1435574,
+          "hi": 1570558,
+          "n": 10
+        },
+        "mattn": {
+          "median": 612413,
+          "lo": 581518,
+          "hi": 643889,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointCached/g=1",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 877620.5,
+          "lo": 868415,
+          "hi": 884266,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1328830.5,
+          "lo": 1276972,
+          "hi": 1341056,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 1837018,
+          "lo": 1774606,
+          "hi": 1843004,
+          "n": 10
+        },
+        "mattn": {
+          "median": 390534.5,
+          "lo": 388238,
+          "hi": 399822,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointCached/g=8",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 1380699,
+          "lo": 1221432,
+          "hi": 1407592,
+          "n": 10
+        },
+        "liustack": {
+          "median": 2142310,
+          "lo": 2017507,
+          "hi": 2476986,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 2805124.5,
+          "lo": 2524028,
+          "hi": 3147281,
+          "n": 10
+        },
+        "mattn": {
+          "median": 789678.5,
+          "lo": 710600,
+          "hi": 862865,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointCached/g=64",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 1179236,
+          "lo": 1129946,
+          "hi": 1207228,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1767995.5,
+          "lo": 1622839,
+          "hi": 1999195,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 2242717,
+          "lo": 1985113,
+          "hi": 2390139,
+          "n": 10
+        },
+        "mattn": {
+          "median": 658444.5,
+          "lo": 642567,
+          "hi": 752134,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointInsert/g=8",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 516315.5,
+          "lo": 472067,
+          "hi": 573807,
+          "n": 10
+        },
+        "liustack": {
+          "median": 543032,
+          "lo": 508593,
+          "hi": 595621,
+          "n": 10
+        },
+        "mattn": {
+          "median": 272330,
+          "lo": 238384,
+          "hi": 301709,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointInsert/g=8",
+      "unit": "writes/s",
+      "cells": {
+        "c": {
+          "median": 16704,
+          "lo": 16103,
+          "hi": 17968,
+          "n": 10
+        },
+        "liustack": {
+          "median": 57647.5,
+          "lo": 53534,
+          "hi": 60736,
+          "n": 10
+        },
+        "mattn": {
+          "median": 16525.5,
+          "lo": 15127,
+          "hi": 17762,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "InsertFull/g=64",
+      "unit": "writes/s",
+      "cells": {
+        "c": {
+          "median": 28192,
+          "lo": 23721,
+          "hi": 33027,
+          "n": 10
+        },
+        "liustack": {
+          "median": 526004.5,
+          "lo": 403550,
+          "hi": 540491,
+          "n": 10
+        },
+        "mattn": {
+          "median": 41843,
+          "lo": 25420,
+          "hi": 43446,
+          "n": 10
+        }
+      }
+    }
+  ]
+}
