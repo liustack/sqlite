@@ -173,8 +173,8 @@ func TestFunctionsSeparateKeys(t *testing.T) {
 	}
 }
 
-// A statement that calls a Go function merges, and each caller gets the
-// result of its own arguments, or its own error.
+// A statement that calls a Go function marked Innocuous merges, and each
+// caller gets the result of its own arguments, or its own error.
 func TestMergeWithFunction(t *testing.T) {
 	p := mPath(t)
 	tag := WithFunction("tag", 1, func(a []driver.Value) (driver.Value, error) {
@@ -186,7 +186,7 @@ func TestMergeWithFunction(t *testing.T) {
 			panic("not three")
 		}
 		return fmt.Sprintf("row-%d", n), nil
-	}, Deterministic)
+	}, Deterministic, Innocuous)
 	db := fOpen(t, "file:"+p, tag)
 	db.SetMaxOpenConns(8)
 	mExec(t, db, `CREATE TABLE h(x); CREATE TABLE t(id INTEGER PRIMARY KEY, s TEXT)`)
@@ -542,7 +542,7 @@ func (s *movingSum) Value() (driver.Value, error)   { return s.n, nil }
 func (s *movingSum) Final() (driver.Value, error)   { return s.n, nil }
 
 func withMovingSum() Option {
-	return WithWindow("msum", 1, func() Window { return &movingSum{} }, Deterministic)
+	return WithWindow("msum", 1, func() Window { return &movingSum{} }, Deterministic, Innocuous)
 }
 
 func TestWithWindow(t *testing.T) {
@@ -572,7 +572,7 @@ func TestWithWindow(t *testing.T) {
 	}
 }
 
-// An INSERT that runs a window function merges with others.
+// An INSERT that runs a window function marked Innocuous merges with others.
 func TestMergeWithWindow(t *testing.T) {
 	p := mPath(t)
 	db := fOpen(t, "file:"+p, withMovingSum())

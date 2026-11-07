@@ -35,6 +35,9 @@ const (
 	// rollbackOffset is the word go_count_rollbacks (engine/os.c) counts
 	// the rolled back transactions of the connection in.
 	rollbackOffset = 128
+	// effectsOffset is the int a call of a Go function that may have side
+	// effects sets (markEffects), and SetMerging clears.
+	effectsOffset = 136
 	// pollInterval is how many ticks of the code run between two calls of
 	// host_poll.
 	pollInterval = 10000
@@ -52,7 +55,7 @@ func init() {
 	if pollCounterOffset+8 > stackHeader {
 		panic("csqlite: the poll counter is outside the host's header")
 	}
-	if classifyOffset+classifySize > rollbackOffset || rollbackOffset+8 > pollCounterOffset {
+	if classifyOffset+classifySize > rollbackOffset || rollbackOffset+8 > effectsOffset || effectsOffset+4 > pollCounterOffset {
 		panic("csqlite: the words of the host's header meet")
 	}
 }
@@ -161,4 +164,10 @@ func cstring(a uintptr) string {
 		n++
 	}
 	return string(bytesAt(a, n))
+}
+
+// markEffects notes on the connection of sp that a Go function that may have
+// side effects ran (Conn.RanEffects).
+func markEffects(sp uintptr) {
+	*(*int32)(at(stackBase(sp) + effectsOffset)) = 1
 }

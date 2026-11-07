@@ -33,9 +33,10 @@ import (
 // It may run on any connection of its connector, and from several
 // goroutines at once. It must not use the database: it runs in the middle
 // of a statement. It may also run more than once for the same row: SQLite
-// does not promise how often it calls a function, and group commit runs a
-// batch again when a failure of one statement ended its transaction. Keep
-// side effects out of it, or make them safe to repeat.
+// does not promise how often it calls a function. Group commit runs a
+// batch again when a failure of one statement ends its transaction, but a
+// statement that called a function not marked Innocuous is never run
+// again: its batch commits right after it.
 type Func func(args []driver.Value) (driver.Value, error)
 
 // FuncFlag tells SQLite how a function behaves.
@@ -52,7 +53,9 @@ const (
 	// file someone else made cannot call it.
 	DirectOnly FuncFlag = csqlite.FuncDirectOnly
 	// Innocuous: the function has no side effects and reveals nothing, so
-	// it is safe wherever SQL comes from.
+	// it is safe wherever SQL comes from. Group commit may run a statement
+	// that calls only such functions again, so it merges more: a statement
+	// that calls a Go function without this flag ends its batch.
 	Innocuous FuncFlag = csqlite.FuncInnocuous
 )
 
@@ -92,6 +95,11 @@ type collation struct {
 // WithFunction makes fn the SQL function name of nArg arguments (-1 for any
 // number) on every connection of the connector. A later option of the same
 // name and nArg replaces an earlier one.
+//
+// Give a function with no side effects the flag Innocuous. Without it, a
+// write that calls the function is the last of its group commit batch and
+// commits right away, so many writers that call it commit one by one. The
+// same holds for WithAggregate and WithWindow.
 func WithFunction(name string, nArg int, fn Func, flags ...FuncFlag) Option {
 	return Option{func(o *options) error {
 		f, err := newFunction(name, nArg, fn == nil, flags)
@@ -229,7 +237,9 @@ func newFunction(name string, nArg int, isNil bool, flags []FuncFlag) (function,
 
 // WithCollation makes cmp the collation name, for COLLATE name in queries
 // and in the schema. cmp returns a negative number, 0 or a positive number
-// as a sorts before, with or after b, and must be a total order. A panic in
+// as a sorts before, with or after b, and must be a total order. It must
+// have no side effects: SQLite calls it as often and in the order its plan
+// needs, and group commit may run a statement that used it again. A panic in
 // cmp fails the statement with the panic, and SQLite undoes it as it does
 // when memory runs out: it rolls back the statement, or the whole
 // transaction. When the whole transaction is gone, the next statements of it

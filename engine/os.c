@@ -450,17 +450,21 @@ static int goNested(sqlite3 *db) {
   return p->pOuterParse != 0;
 }
 
-/* goReprepare says the statement being parsed on db, or the one it is
-   parsed for, is one SQLite prepares again in sqlite3_step after a change
-   of the schema (sqlite3Reprepare). */
-static int goReprepare(sqlite3 *db) {
+/* goTop is the Parse of the statement db prepares at the top: the one
+   the statement being parsed belongs to, or is prepared for. */
+static Parse *goTop(sqlite3 *db) {
   Parse *p = db->pParse;
   for (;;) {
     if (p->pToplevel) p = p->pToplevel;
-    if (!p->pOuterParse) return p->pReprepare != 0;
+    if (!p->pOuterParse) return p;
     p = p->pOuterParse;
   }
 }
+
+/* goReprepare says the statement being parsed on db, or the one it is
+   parsed for, is one SQLite prepares again in sqlite3_step after a change
+   of the schema (sqlite3Reprepare). */
+static int goReprepare(sqlite3 *db) { return goTop(db)->pReprepare != 0; }
 
 static int goClassify(void *p, int op, const char *a, const char *b, const char *db, const char *trigger) {
   struct goClassifyWord *w = (struct goClassifyWord *)p;
@@ -531,7 +535,16 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
      statement on its caller's connection. */
   if (w->merging && (f & (GO_PRIVATE | GO_STATE)) && goReprepare(w->db)) {
     w->merging = GO_REFUSED;
-    return SQLITE_DENY;
+    if (!goNested(w->db)) return SQLITE_DENY;
+    /* A statement prepared while the statement is prepared again (by a
+       virtual table that connects) is not refused itself: the module may
+       go on when its prepare fails, as R*Tree with an auxiliary column
+       does, and the statement would then run. The Parse of the statement
+       gets the error a refusal of its own gives (sqlite3AuthCheck), so its
+       prepare fails. */
+    Parse *top = goTop(w->db);
+    if (top->rc == SQLITE_OK || top->rc == SQLITE_DONE) top->rc = SQLITE_AUTH;
+    top->nErr++;
   }
   w->flags |= f;
   return SQLITE_OK;
