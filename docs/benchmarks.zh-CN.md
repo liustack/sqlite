@@ -24,7 +24,7 @@
 
 每次操作的耗时，越低越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | **18.5 µs** ±2% | 19.5 µs ±3% | 22.9 µs ±4% | 21.0 µs ±4% |
 | InsertTx | **1.30 ms** ±1% | 1.46 ms ±1% | 1.95 ms ±1% | 1.65 ms ±1% |
@@ -53,7 +53,7 @@
 
 速率，越高越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Large/size=50k | 2672 MB/s ±3% | 2775 MB/s ±4% | 2359 MB/s ±1% | 2486 MB/s ±1% |
 | Large/size=200k | 2764 MB/s ±1% | **2955 MB/s** ±3% | 2535 MB/s ±6% | 2562 MB/s ±4% |
@@ -61,7 +61,7 @@
 
 每次操作的内存分配次数，越低越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | **5** | 6 | 7 | **5** |
 | InsertTx | 5.50k | 6.51k | 7.50k | **4.76k** |
@@ -98,7 +98,7 @@
 
 每次操作的耗时，越低越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | PointParallel | 1.69 µs ±81% | 2.31 µs ±30% | 2.25 µs ±35% | 2.09 µs ±52% |
 | InsertParallel/g=1 | 18.0 µs ±3% | 19.0 µs ±3% | 22.1 µs ±2% | 20.3 µs ±3% |
@@ -115,13 +115,13 @@
 
 速率，越高越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | ReadWrite | 16992 writes/s ±12% | 12806 writes/s ±12% | 7563 writes/s ±22% | **28731 writes/s** ±25% |
 
 每次操作的内存分配次数，越低越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | PointParallel | **13** | 18 | 30 | 19 |
 | InsertParallel/g=1 | **4** | 5 | 6 | 5 |
@@ -144,7 +144,7 @@
 
 每次操作的耗时，越低越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | 6.28 µs ±4% | 5.93 µs ±17% | 7.40 µs ±7% | 6.92 µs ±2% |
 | InsertTx | 479 µs ±22% | 556 µs ±12% | 739 µs ±3% | 570 µs ±8% |
@@ -173,7 +173,7 @@
 
 速率，越高越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Large/size=50k | 6094 MB/s ±8% | 6159 MB/s ±16% | 5562 MB/s ±5% | 5743 MB/s ±9% |
 | Large/size=200k | 5906 MB/s ±6% | 5949 MB/s ±17% | 5365 MB/s ±12% | 5523 MB/s ±4% |
@@ -181,7 +181,7 @@
 
 每次操作的内存分配次数，越低越好：
 
-| 基准 | 本驱动 | mattn | modernc | ncruces |
+| 基准 | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | **5** | 6 | 7 | **5** |
 | InsertTx | 5.50k | 6.51k | 7.50k | **4.76k** |
@@ -241,90 +241,90 @@ MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -coun
 
 ## 和 C 版 SQLite 比
 
-同一份 SQLite 3.54.1，用 `engine/sqlite.c` 里的编译选项，由 clang `-O2` 编成直接调用 C API 的 C 程序。负载和四列各是什么见 [bench/README.md](../bench/README.md#against-sqlite-in-c)。简单说：C 和「本驱动，不经 database/sql」把读的语句编译一次，反复执行。两列「经 database/sql」像普通程序一样读，每个 goroutine 一个 `*sql.Conn`，用 `QueryRowContext`。引擎内部的工作在 `:memory:` 上用一条连接跑，时间是整项工作的，比如插入那项是 100 万行全部插完。速率用的是 WAL 模式、10 万行的文件，算的是所有线程加起来的操作数。
+同一份 SQLite 3.54.1，用 `engine/sqlite.c` 里的编译选项，由 clang `-O2` 编成直接调用 C API 的 C 程序。负载和四列各是什么见 [bench/README.md](../bench/README.md#against-sqlite-in-c)。简单说：SQLite(C) 和 liustack/sqlite(直接调用) 把每条语句编译一次，反复执行，直接调 C API 或驱动本身。两列 (database/sql) 像普通程序一样读写：每个读者一个 `*sql.Conn`，用 `QueryRowContext`，每次写用 `db.Exec`。mattn 通过 cgo 跑 SQLite 的 C。
 
 ### linux/amd64
 
 <!-- bench:native-linux-amd64 -->
-提交 `7fac18a`，Go 1.27.2，Ubuntu clang version 22.1.8 (1ubuntu1)，AMD EPYC 7B13，Linux 7.3.0-1003-gcp x86_64，GOMAXPROCS 8，共 8 个线程，2026-11-07。取 10 轮的中位数，± 是它的 95% 置信区间。负载（1、5、15 分钟）开始前 1.06 1.19 1.60，结束后 6.78 5.53 4.63。
+提交 `ea5dd2a`，Go 1.27.2，Ubuntu clang version 22.1.8 (1ubuntu1)，AMD EPYC 7B13，Linux 7.3.0-1003-gcp x86_64，GOMAXPROCS 8，共 8 个线程，2026-11-07。取 10 轮的中位数，± 是它的 95% 置信区间。负载（1、5、15 分钟）开始前 1.03 1.20 1.35，结束后 5.77 5.23 4.58。
 
-整项工作的耗时，越低越好：
+**引擎计算速度**：每项工作在一条连接、`:memory:` 上花的时间，越短越好。最后一列是 liustack/sqlite 比 C 多花的时间：
 
-| 基准 | C 版 SQLite | 本驱动，经 database/sql |
-| :-- | --: | --: |
-| 一条语句插入 100 万行 | **435 ms** ±2% | 587 ms ±0% |
-| 给 100 万个文本建索引 | **361 ms** ±1% | 461 ms ±0% |
-| 排序 100 万个文本 | **3.43 s** ±1% | 4.03 s ±0% |
-| 100 万行分 1000 组求平均 | **286 ms** ±1% | 371 ms ±2% |
-| 30 万行按主键连 100 万行的表 | **61.1 ms** ±1% | 79.2 ms ±1% |
-| 递归 CTE 走 200 万步 | **412 ms** ±1% | 511 ms ±0% |
-| 100 万个文本做 LIKE 和字符串函数 | **77.6 ms** ±1% | 109 ms ±1% |
-| 生成并读取 30 万个 JSON 对象 | **386 ms** ±1% | 571 ms ±0% |
-| 100 万个数算 sqrt、sin、log、pow | **151 ms** ±1% | 189 ms ±1% |
-| 20 万篇文档里做 4 次 FTS5 搜索 | **2.68 ms** ±2% | 3.34 ms ±0% |
-| 几何平均 | 185 ms | 240 ms |
+| 基准 | SQLite(C) | liustack/sqlite | 比 C 慢 |
+| :-- | --: | --: | --: |
+| 一条语句插入 100 万行 | **427 ms** ±4% | 588 ms ±0% | +38% |
+| 给 100 万个文本建索引 | **358 ms** ±1% | 461 ms ±1% | +29% |
+| 排序 100 万个文本 | **3.41 s** ±1% | 4.03 s ±1% | +18% |
+| 100 万行分 1000 组求平均 | **285 ms** ±0% | 370 ms ±0% | +30% |
+| 30 万行按主键连 100 万行的表 | **61.6 ms** ±2% | 78.6 ms ±5% | +28% |
+| 递归 CTE 走 200 万步 | **412 ms** ±2% | 516 ms ±1% | +25% |
+| 100 万个文本做 LIKE 和字符串函数 | **77.5 ms** ±1% | 109 ms ±1% | +40% |
+| 生成并读取 30 万个 JSON 对象 | **383 ms** ±1% | 569 ms ±0% | +48% |
+| 100 万个数算 sqrt、sin、log、pow | **151 ms** ±4% | 189 ms ±0% | +25% |
+| 20 万篇文档里做 4 次 FTS5 搜索 | **2.67 ms** ±0% | 3.34 ms ±0% | +25% |
+| 几何平均 | 184 ms | 240 ms | +30% |
 
-速率，越高越好：
+**吞吐量**：所有线程加起来每秒完成多少次读或写，文件是 WAL 模式、10 万行，越高越好：
 
-| 基准 | C 版 SQLite | 本驱动，不经 database/sql | 本驱动，经 database/sql | mattn（cgo），经 database/sql |
+| 基准 | SQLite(C) | liustack/sqlite(直接调用) | liustack/sqlite(database/sql) | mattn(database/sql) |
 | :-- | --: | --: | --: | --: |
-| 按主键读一行，1 个线程 | 218k reads/s ±1% | **405k reads/s** ±1% | 314k reads/s ±1% | 115k reads/s ±0% |
-| 按主键读一行，8 个线程 | **1964k reads/s** ±3% | 1690k reads/s ±1% | 1145k reads/s ±6% | 534k reads/s ±1% |
-| 按主键读一行，64 个线程 | **1840k reads/s** ±1% | 1650k reads/s ±3% | 1125k reads/s ±2% | 542k reads/s ±3% |
-| 按主键读一行，整个文件在缓存里，1 个线程 | 278k reads/s ±1% | **802k reads/s** ±3% | 537k reads/s ±3% | 133k reads/s ±1% |
-| 按主键读一行，整个文件在缓存里，8 个线程 | **2652k reads/s** ±5% | 2544k reads/s ±1% | 1547k reads/s ±4% | 477k reads/s ±2% |
-| 按主键读一行，整个文件在缓存里，64 个线程 | **2410k reads/s** ±2% | 2183k reads/s ±11% | 1422k reads/s ±6% | 388k reads/s ±3% |
-| 8 读 8 写：读 | **1435k reads/s** ±10% |  | 441k reads/s ±4% | 243k reads/s ±1% |
-| 8 读 8 写：写 | 6510 writes/s ±13% |  | **14986 writes/s** ±23% | 9008 writes/s ±2% |
-| 插入一行，`synchronous=FULL`，64 个线程 | 1308 writes/s ±4% |  | **69825 writes/s** ±2% | 1265 writes/s ±6% |
+| 1 个线程，每次按主键读一行 | 218k reads/s ±1% | **408k reads/s** ±1% | 314k reads/s ±1% | 116k reads/s ±0% |
+| 8 个线程，每次按主键读一行 | **1933k reads/s** ±4% | 1715k reads/s ±1% | 1161k reads/s ±1% | 546k reads/s ±9% |
+| 64 个线程，每次按主键读一行 | **1841k reads/s** ±8% | 1647k reads/s ±11% | 1127k reads/s ±3% | 551k reads/s ±1% |
+| 1 个线程，每次按主键读一行，整个文件在缓存里 | 276k reads/s ±0% | **810k reads/s** ±1% | 542k reads/s ±2% | 135k reads/s ±1% |
+| 8 个线程，每次按主键读一行，整个文件在缓存里 | 2525k reads/s ±9% | 2555k reads/s ±1% | 1541k reads/s ±1% | 489k reads/s ±2% |
+| 64 个线程，每次按主键读一行，整个文件在缓存里 | **2401k reads/s** ±1% | 2196k reads/s ±1% | 1422k reads/s ±3% | 389k reads/s ±3% |
+| 8 个线程照上面读，同时另有 8 个线程在写 | **1492k reads/s** ±8% | 563k reads/s ±1% | 452k reads/s ±4% | 242k reads/s ±2% |
+| 8 个线程，每次插入一行，同时另有 8 个线程在读 | 6352 writes/s ±13% | 10039 writes/s ±34% | 13468 writes/s ±23% | 9029 writes/s ±1% |
+| 64 个线程，每次插入一行，`synchronous=FULL` | 1268 writes/s ±2% | 71316 writes/s ±2% | 70712 writes/s ±2% | 1237 writes/s ±7% |
 
 <!-- /bench:native-linux-amd64 -->
 
 ### darwin/arm64
 
 <!-- bench:native-darwin-arm64 -->
-提交 `7fac18a`，Go 1.27.2，Homebrew clang version 22.1.8，Apple M4，Darwin 24.3.0 arm64，GOMAXPROCS 10，共 10 个线程，2026-11-07。取 10 轮的中位数，± 是它的 95% 置信区间。负载（1、5、15 分钟）开始前 1.75 1.90 2.53，结束后 8.17 8.27 6.96。M4 有 4 个性能核和 6 个能效核，8 个和 64 个线程的速率随分到的核变化，最多差三分之一：这几行以 linux 为准。
+提交 `ea5dd2a`，Go 1.27.2，Homebrew clang version 22.1.8，Apple M4，Darwin 24.3.0 arm64，GOMAXPROCS 10，共 10 个线程，2026-11-07。取 10 轮的中位数，± 是它的 95% 置信区间。负载（1、5、15 分钟）开始前 3.38 3.81 3.88，结束后 8.80 8.29 7.21。M4 有 4 个性能核和 6 个能效核，8 个和 64 个线程的速率随分到的核变化，最多差三分之一：这几行以 linux 为准。
 
-整项工作的耗时，越低越好：
+**引擎计算速度**：每项工作在一条连接、`:memory:` 上花的时间，越短越好。最后一列是 liustack/sqlite 比 C 多花的时间：
 
-| 基准 | C 版 SQLite | 本驱动，经 database/sql |
-| :-- | --: | --: |
-| 一条语句插入 100 万行 | **190 ms** ±2% | 264 ms ±3% |
-| 给 100 万个文本建索引 | **202 ms** ±4% | 258 ms ±6% |
-| 排序 100 万个文本 | **1.58 s** ±3% | 1.80 s ±3% |
-| 100 万行分 1000 组求平均 | **148 ms** ±3% | 207 ms ±2% |
-| 30 万行按主键连 100 万行的表 | **36.0 ms** ±1% | 48.1 ms ±1% |
-| 递归 CTE 走 200 万步 | **201 ms** ±2% | 269 ms ±0% |
-| 100 万个文本做 LIKE 和字符串函数 | **46.8 ms** ±1% | 54.7 ms ±2% |
-| 生成并读取 30 万个 JSON 对象 | **212 ms** ±1% | 257 ms ±0% |
-| 100 万个数算 sqrt、sin、log、pow | **67.6 ms** ±1% | 107 ms ±1% |
-| 20 万篇文档里做 4 次 FTS5 搜索 | **1.26 ms** ±2% | 1.86 ms ±3% |
-| 几何平均 | 94.2 ms | 125 ms |
+| 基准 | SQLite(C) | liustack/sqlite | 比 C 慢 |
+| :-- | --: | --: | --: |
+| 一条语句插入 100 万行 | **191 ms** ±4% | 263 ms ±1% | +38% |
+| 给 100 万个文本建索引 | **213 ms** ±8% | 260 ms ±2% | +22% |
+| 排序 100 万个文本 | **1.62 s** ±3% | 1.83 s ±2% | +13% |
+| 100 万行分 1000 组求平均 | **147 ms** ±6% | 208 ms ±3% | +41% |
+| 30 万行按主键连 100 万行的表 | **36.0 ms** ±0% | 48.0 ms ±1% | +34% |
+| 递归 CTE 走 200 万步 | **199 ms** ±1% | 269 ms ±1% | +35% |
+| 100 万个文本做 LIKE 和字符串函数 | **46.6 ms** ±2% | 54.7 ms ±1% | +17% |
+| 生成并读取 30 万个 JSON 对象 | **211 ms** ±1% | 257 ms ±0% | +22% |
+| 100 万个数算 sqrt、sin、log、pow | **67.3 ms** ±1% | 107 ms ±2% | +59% |
+| 20 万篇文档里做 4 次 FTS5 搜索 | **1.25 ms** ±1% | 1.84 ms ±1% | +47% |
+| 几何平均 | 94.6 ms | 125 ms | +32% |
 
-速率，越高越好：
+**吞吐量**：所有线程加起来每秒完成多少次读或写，文件是 WAL 模式、10 万行，越高越好：
 
-| 基准 | C 版 SQLite | 本驱动，不经 database/sql | 本驱动，经 database/sql | mattn（cgo），经 database/sql |
+| 基准 | SQLite(C) | liustack/sqlite(直接调用) | liustack/sqlite(database/sql) | mattn(database/sql) |
 | :-- | --: | --: | --: | --: |
-| 按主键读一行，1 个线程 | 659k reads/s ±2% | **993k reads/s** ±5% | 756k reads/s ±11% | 325k reads/s ±4% |
-| 按主键读一行，8 个线程 | 897k reads/s ±5% | 1615k reads/s ±10% | 1369k reads/s ±8% | 691k reads/s ±13% |
-| 按主键读一行，64 个线程 | 792k reads/s ±5% | **1520k reads/s** ±6% | 1295k reads/s ±6% | 612k reads/s ±5% |
-| 按主键读一行，整个文件在缓存里，1 个线程 | 878k reads/s ±1% | **1837k reads/s** ±3% | 1329k reads/s ±4% | 391k reads/s ±2% |
-| 按主键读一行，整个文件在缓存里，8 个线程 | 1381k reads/s ±12% | **2805k reads/s** ±12% | 2142k reads/s ±16% | 790k reads/s ±10% |
-| 按主键读一行，整个文件在缓存里，64 个线程 | 1179k reads/s ±4% | 2243k reads/s ±11% | 1768k reads/s ±13% | 658k reads/s ±14% |
-| 8 读 8 写：读 | 516k reads/s ±11% |  | 543k reads/s ±10% | 272k reads/s ±12% |
-| 8 读 8 写：写 | 16704 writes/s ±8% |  | **57648 writes/s** ±7% | 16526 writes/s ±8% |
-| 插入一行，`synchronous=FULL`，64 个线程 | 28192 writes/s ±17% |  | **526k writes/s** ±23% | 41843 writes/s ±39% |
+| 1 个线程，每次按主键读一行 | 661k reads/s ±5% | **981k reads/s** ±3% | 743k reads/s ±5% | 319k reads/s ±2% |
+| 8 个线程，每次按主键读一行 | 826k reads/s ±16% | 1388k reads/s ±13% | 1157k reads/s ±19% | 546k reads/s ±36% |
+| 64 个线程，每次按主键读一行 | 745k reads/s ±6% | 1213k reads/s ±11% | 1101k reads/s ±14% | 498k reads/s ±19% |
+| 1 个线程，每次按主键读一行，整个文件在缓存里 | 868k reads/s ±4% | **1817k reads/s** ±3% | 1286k reads/s ±3% | 383k reads/s ±3% |
+| 8 个线程，每次按主键读一行，整个文件在缓存里 | 1103k reads/s ±20% | 2353k reads/s ±29% | 1820k reads/s ±32% | 617k reads/s ±30% |
+| 64 个线程，每次按主键读一行，整个文件在缓存里 | 1105k reads/s ±10% | **1862k reads/s** ±10% | 1516k reads/s ±11% | 551k reads/s ±10% |
+| 8 个线程照上面读，同时另有 8 个线程在写 | 419k reads/s ±13% | 502k reads/s ±15% | 421k reads/s ±11% | 216k reads/s ±9% |
+| 8 个线程，每次插入一行，同时另有 8 个线程在读 | 14902 writes/s ±10% | 52404 writes/s ±11% | 48105 writes/s ±8% | 14005 writes/s ±8% |
+| 64 个线程，每次插入一行，`synchronous=FULL` | 18040 writes/s ±21% | 521k writes/s ±7% | 433k writes/s ±21% | 40402 writes/s ±18% |
 
 <!-- /bench:native-darwin-arm64 -->
 
 从表里能看出：
 
-- **引擎内部的计算**要花 C 的 1.14 到 1.58 倍时间，两台机器上几何平均都约 1.3 倍：C 编成的 Go 汇编接近 clang 为本机生成的代码，但不如它。引擎用的还是 musl 的字符串和数学函数，数学函数编译时不开 fused multiply-add，这样每个平台算出的每一位都相同，而 C 程序用的是系统自带的。
-- **单个读者**比 C 快：不经 database/sql 时是 C 的 1.5 到 2.9 倍。C 里每次读都要用一次 `fcntl` 拿 WAL 的读锁，再用一次还回去，除非进程里另一个连接正拿着。本驱动在最后一个读者离开后把锁多留约一毫秒，下一次读就不用系统调用（见 `internal/vfs`）。linux 虚拟机上系统调用最贵。
-- **多个读者**在 linux 上 C 更快，这时 C 的读者之间共用读锁，也不用系统调用。不经 database/sql 时本驱动是 C 的 86% 到 96%。darwin 上本驱动仍然比 C 快。
-- **通过 `database/sql`** 读比不经它多花四分之一到一半的时间，差的是 `database/sql` 自己的开销，linux 上 8 个以上读者时这让本驱动只有 C 的 60% 左右。mattn 也要付这份开销，外加一次 cgo 调用。连接会留着读查询的语句，所以每次查询不用重新编译（见 [docs/architecture.zh-CN.md](architecture.zh-CN.md#查询的语句留着复用)）。用 `*sql.Stmt` 的话每次查询都要拿 `*sql.DB` 的锁，在 `*sql.Conn` 上准备的也一样，所以基准里不用它。
-- **读者旁边有写者**时（PointInsert），linux 上本驱动的读只有 C 的 31%，同时它的写者写了 C 的 2.3 倍。darwin 上读的次数持平。
-- **写**是组提交起作用的地方：一次提交带上很多次插入，所以有读者在旁边时本驱动写得是 C 的 2.3 到 3.5 倍，64 个写者加 `synchronous=FULL` 时是 C 的 19 到 53 倍，那时 C 的每个写者都要等自己的 fsync。
+- **引擎内部的计算**比 C 多花 13% 到 59% 的时间，两台机器上几何平均都约 30%：C 编成的 Go 汇编接近 clang 为本机生成的代码，但不如它。引擎用的还是 musl 的字符串和数学函数，数学函数编译时不开 fused multiply-add，这样每个平台算出的每一位都相同，而 C 程序用的是系统自带的。
+- **单个读者**比 C 快：liustack/sqlite(直接调用) 每秒读的行数是 C 的 1.5 到 2.9 倍。C 里每次读都要用一次 `fcntl` 拿 WAL 的读锁，再用一次还回去，除非进程里另一个连接正拿着。liustack/sqlite 在最后一个读者离开后把锁多留约一毫秒，下一次读就不用系统调用（见 `internal/vfs`）。linux 虚拟机上系统调用最贵。
+- **多个读者**在 linux 上 C 更快，这时 C 的读者之间共用读锁，也不用系统调用：liustack/sqlite(直接调用) 是 C 的 89% 到 101%。darwin 上 liustack/sqlite 仍然比 C 快：那里 C 的读者约一半时间在等进程里管 WAL 锁的那把 pthread 互斥锁，几个线程一抢，macOS 就让它们进内核睡眠。liustack/sqlite 的锁是 Go 的互斥锁。
+- **通过 `database/sql`** 读比 liustack/sqlite(直接调用) 多花 30% 到 50% 的时间，差的是 `database/sql` 自己的开销，linux 上 8 个以上读者时这让 liustack/sqlite 只有 C 的 60% 左右。mattn 也要付这份开销，外加一次 cgo 调用。连接会留着读查询的语句，所以每次查询不用重新编译（见 [docs/architecture.zh-CN.md](architecture.zh-CN.md#查询的语句留着复用)）。用 `*sql.Stmt` 的话每次查询都要拿 `*sql.DB` 的锁，在 `*sql.Conn` 上准备的也一样，所以基准里不用它。
+- **读者旁边有写者**时，linux 上读出的行数只有 C 的 30% 到 38%，同时 liustack/sqlite 的写者插入的行数是 C 的 1.6 到 2.1 倍。darwin 上读的行数和 C 持平或更多。
+- **写**是组提交起作用的地方：一次提交带上很多次插入，所以有读者在旁边时 liustack/sqlite 插入的行数是 C 的 1.6 到 3.5 倍，64 个写者加 `synchronous=FULL` 时是 C 的 24 到 56 倍，那时 C 的每个写者都要等自己的 fsync。
 
 ## 数字说明了什么
 
@@ -335,7 +335,7 @@ MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -coun
 - **连表加分组**（Aggregate）全是引擎内部的计算，比 cgo 慢 10%（linux）到 18%（darwin）：引擎是同一份 C，由 LLVM 编译，变成的 Go 汇编接近 clang 为本机生成的代码，但还不如它。
 - **大文本**在 linux 上比 mattn 慢 7%（100 行 200 KB 的文本 7.23 ms，mattn 6.77 ms），比 modernc 和 ncruces 快。darwin 上四个驱动持平。
 - **内存分配**：数字直接拷进 `Scan` 的目标（`driver.RowsColumnScanner`，Go 1.27），不装进接口，所以扫描的分配次数是 mattn 和 modernc 的一半。
-- **和 C 版 SQLite 比**，引擎内部的计算约花 1.3 倍时间。单个读者比 C 快，因为读不用为锁做系统调用。linux 上多个读者不经 `database/sql` 时是 C 的 86% 到 96%，通过 `database/sql` 约 60%。写者靠组提交快 2 到 53 倍。linux 上读者旁边有写者时，读只有 C 的三分之一。
+- **和 C 版 SQLite 比**，引擎内部的计算多花约 30% 的时间。单个读者比 C 快，因为读不用为锁做系统调用。linux 上多个读者直接调用 liustack/sqlite 约是 C 的 90%，通过 `database/sql` 约 60%。写者靠组提交插入的行数是 C 的 1.6 到 56 倍。linux 上读者旁边有写者时，读的行数只有 C 的三分之一。
 - **linux 上的 Point** 每次查询都含一次 `fstat`，每个驱动都一样：WAL 为空时（夹具刚拷出来就是这样），SQLite 在每次读开始时读一次数据库文件的大小。这台虚拟机上一次系统调用约 0.8 µs，这一行 linux 和 darwin 的差距大半来自这里。
 
 ## 自己再跑一遍

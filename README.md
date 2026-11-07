@@ -35,7 +35,7 @@ Time per operation, lower is better, the median of 6 runs. The best of a row is 
 <!-- bench:readme-linux-amd64 -->
 **linux/amd64** (AMD EPYC 7B13, Go 1.27.2, commit `bc87680`):
 
-| Workload | this driver | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
+| Workload | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
 | Insert one row | **18.5 µs** | 19.5 µs | 22.9 µs | 21.0 µs |
 | Insert 1000 rows in a transaction | **1.30 ms** | 1.46 ms | 1.95 ms | 1.65 ms |
@@ -53,7 +53,7 @@ Time per operation, lower is better, the median of 6 runs. The best of a row is 
 <!-- bench:readme-darwin-arm64 -->
 **darwin/arm64** (Apple M4, Go 1.27.2, commit `92ec4bf`, other work ran on the machine: read differences under 30% as noise):
 
-| Workload | this driver | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
+| Workload | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
 | Insert one row | 6.28 µs | 5.93 µs | 7.40 µs | 6.92 µs |
 | Insert 1000 rows in a transaction | 479 µs | 556 µs | 739 µs | 570 µs |

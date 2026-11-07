@@ -33,9 +33,6 @@ type nativeCase struct {
 
 var nativeCases = func() []nativeCase {
 	var cs []nativeCase
-	// Writes go through database/sql on every Go column, so they have no
-	// column of the driver called directly.
-	writes := []string{"c", "liustack", "mattn"}
 	for _, n := range []int{1, 8, 64} {
 		cs = append(cs, nativeCase{fmt.Sprintf("Point/g=%d", n), "read", n, "NORMAL", "0", nativeDrivers})
 	}
@@ -43,8 +40,8 @@ var nativeCases = func() []nativeCase {
 		cs = append(cs, nativeCase{fmt.Sprintf("PointCached/g=%d", n), "read", n, "NORMAL", "-65536", nativeDrivers})
 	}
 	return append(cs,
-		nativeCase{"PointInsert/g=8", "mixed", 8, "NORMAL", "0", writes},
-		nativeCase{"InsertFull/g=64", "write", 64, "FULL", "0", writes})
+		nativeCase{"PointInsert/g=8", "mixed", 8, "NORMAL", "0", nativeDrivers},
+		nativeCase{"InsertFull/g=64", "write", 64, "FULL", "0", nativeDrivers})
 }()
 
 func cmdNative(args []string) error {
@@ -240,11 +237,11 @@ var nativeWork = map[string]struct{ en, zh string }{
 	"Engine/json":   {"Build and read 300k JSON objects", "生成并读取 30 万个 JSON 对象"},
 	"Engine/math":   {"sqrt, sin, log and pow of 1M numbers", "100 万个数算 sqrt、sin、log、pow"},
 	"Engine/fts5":   {"4 FTS5 searches in 200k documents", "20 万篇文档里做 4 次 FTS5 搜索"},
-	"Point":         {"Read one row by key, %s threads", "按主键读一行，%s 个线程"},
-	"PointCached":   {"Read one row by key, whole file in cache, %s threads", "按主键读一行，整个文件在缓存里，%s 个线程"},
-	"PointInsert/r": {"8 readers next to 8 writers: the reads", "8 读 8 写：读"},
-	"PointInsert/w": {"8 readers next to 8 writers: the writes", "8 读 8 写：写"},
-	"InsertFull":    {"Insert one row, `synchronous=FULL`, %s threads", "插入一行，`synchronous=FULL`，%s 个线程"},
+	"Point":         {"%s threads, each reads one row by key", "%s 个线程，每次按主键读一行"},
+	"PointCached":   {"%s threads, each reads one row by key, whole file in cache", "%s 个线程，每次按主键读一行，整个文件在缓存里"},
+	"PointInsert/r": {"8 threads read as above while 8 others write", "8 个线程照上面读，同时另有 8 个线程在写"},
+	"PointInsert/w": {"8 threads, each inserts one row, while 8 others read", "8 个线程，每次插入一行，同时另有 8 个线程在读"},
+	"InsertFull":    {"%s threads, each inserts one row, `synchronous=FULL`", "%s 个线程，每次插入一行，`synchronous=FULL`"},
 }
 
 // nativeLabel is r in the words of nativeWork.
@@ -263,6 +260,9 @@ func nativeLabel(r Row, l *lang) (string, bool) {
 	if l.zh {
 		s = w.zh
 	}
+	if threads == "1" && !l.zh {
+		s = strings.Replace(s, "%s threads", "1 thread", 1)
+	}
 	if strings.Contains(s, "%s") {
 		s = fmt.Sprintf(s, threads)
 	}
@@ -272,8 +272,8 @@ func nativeLabel(r Row, l *lang) (string, bool) {
 // nativeColumns names the columns of a comparison with C by how each one
 // reads, for the tables of the docs.
 var nativeColumns = map[string]struct{ en, zh string }{
-	"c":            {"SQLite in C", "C 版 SQLite"},
-	"liustack-raw": {"this driver, without database/sql", "本驱动，不经 database/sql"},
-	"liustack":     {"this driver, through database/sql", "本驱动，经 database/sql"},
-	"mattn":        {"mattn (cgo), through database/sql", "mattn（cgo），经 database/sql"},
+	"c":            {"SQLite(C)", "SQLite(C)"},
+	"liustack-raw": {"liustack/sqlite(direct)", "liustack/sqlite(直接调用)"},
+	"liustack":     {"liustack/sqlite(database/sql)", "liustack/sqlite(database/sql)"},
+	"mattn":        {"mattn(database/sql)", "mattn(database/sql)"},
 }

@@ -24,17 +24,17 @@ type lang struct {
 	zh                                    bool
 	us, bench, time, allocs, rates, mean  string
 	c, raw                                string // the columns of a comparison with SQLite in C
-	work                                  string // the title of its engine table
+	work, through, slower                 string // its titles and the column of how much slower
 	commit, threads, median, load, before string
 }
 
 var (
-	en = &lang{us: "this driver", c: "SQLite in C", raw: "this driver, called directly", work: "Time for the whole job, lower is better:", bench: "Benchmark", time: "Time per op, lower is better:",
+	en = &lang{us: "liustack/sqlite", c: "SQLite(C)", raw: "liustack/sqlite(direct)", work: "**How fast the engine computes.** The time each job takes on one connection to `:memory:`, lower is better. The last column is how much longer liustack/sqlite takes than C:", through: "**Throughput.** Reads or writes done per second by all threads together, on a file of 100k rows in WAL mode, higher is better:", slower: "slower than C", bench: "Benchmark", time: "Time per op, lower is better:",
 		allocs: "Allocations per op, lower is better:", rates: "Rates, higher is better:", mean: "geomean",
 		commit: "Commit", threads: "GOMAXPROCS %s of %s threads",
 		median: "The median of %d runs, ± is its 95%% confidence interval",
 		load:   "Load average (1, 5, 15 minutes) before: %s, after: %s", before: "Load average before: %s"}
-	zh = &lang{zh: true, us: "本驱动", c: "C 版 SQLite", raw: "本驱动，直接调用", work: "整项工作的耗时，越低越好：", bench: "基准", time: "每次操作的耗时，越低越好：",
+	zh = &lang{zh: true, us: "liustack/sqlite", c: "SQLite(C)", raw: "liustack/sqlite(直接调用)", work: "**引擎计算速度**：每项工作在一条连接、`:memory:` 上花的时间，越短越好。最后一列是 liustack/sqlite 比 C 多花的时间：", through: "**吞吐量**：所有线程加起来每秒完成多少次读或写，文件是 WAL 模式、10 万行，越高越好：", slower: "比 C 慢", bench: "基准", time: "每次操作的耗时，越低越好：",
 		allocs: "每次操作的内存分配次数，越低越好：", rates: "速率，越高越好：", mean: "几何平均",
 		commit: "提交", threads: "GOMAXPROCS %s，共 %s 个线程",
 		median: "取 %d 轮的中位数，± 是它的 95%% 置信区间",
@@ -191,11 +191,14 @@ func renderMarker(name string, sets map[string]*Set, l *lang) (string, error) {
 	return renderSet(s, l), nil
 }
 
-// renderSet is the full tables of a set, for docs/benchmarks*.md.
+// renderSet is the full tables of a set, for docs/benchmarks*.md. A
+// comparison with C (native-*) says in words what each row and column is,
+// and how much longer the engine takes than C.
 func renderSet(s *Set, l *lang) string {
+	native := strings.HasPrefix(s.Name, "native-")
 	var b strings.Builder
 	b.WriteString(metaLine(s.Meta, l) + "\n\n")
-	table := func(title string, keep func(unit string) bool, spread bool) {
+	table := func(title string, keep func(unit string) bool, spread, columns bool) {
 		var rows []Row
 		for _, r := range s.Rows {
 			if keep(r.Unit) {
@@ -213,11 +216,13 @@ func renderSet(s *Set, l *lang) string {
 				ds = append(ds, d)
 			}
 		}
+		// slower is the column of how much longer this driver takes than C.
+		slower := native && keep("sec/op") && slices.Contains(ds, "c") && slices.Contains(ds, "liustack")
 		b.WriteString(title + "\n\n")
 		b.WriteString("| " + l.bench)
 		for _, d := range ds {
 			name := driverName(d, l)
-			if w, ok := nativeColumns[d]; ok && strings.HasPrefix(s.Name, "native-") {
+			if w, ok := nativeColumns[d]; ok && columns {
 				name = w.en
 				if l.zh {
 					name = w.zh
@@ -225,10 +230,15 @@ func renderSet(s *Set, l *lang) string {
 			}
 			b.WriteString(" | " + name)
 		}
-		b.WriteString(" |\n| :--" + strings.Repeat(" | --:", len(ds)) + " |\n")
+		n := len(ds)
+		if slower {
+			b.WriteString(" | " + l.slower)
+			n++
+		}
+		b.WriteString(" |\n| :--" + strings.Repeat(" | --:", n) + " |\n")
 		for _, r := range rows {
 			name := r.Bench
-			if strings.HasPrefix(s.Name, "native-") {
+			if native {
 				if w, ok := nativeLabel(r, l); ok {
 					name = w
 				}
@@ -236,27 +246,44 @@ func renderSet(s *Set, l *lang) string {
 			b.WriteString("| " + name)
 			best := bestOf(r, ds)
 			for _, d := range ds {
-				b.WriteString(" | " + cell(r, d, bold(r, ds, d, best), spread))
+				c := cell(r, d, bold(r, ds, d, best), spread)
+				b.WriteString(" | " + c)
+			}
+			if slower {
+				b.WriteString(" | " + longer(r.Cells["liustack"].Median, r.Cells["c"].Median))
 			}
 			b.WriteString(" |\n")
 		}
 		if keep("sec/op") {
 			b.WriteString("| " + l.mean)
 			for _, d := range ds {
-				b.WriteString(" | " + geomean(rows, d, ds))
+				g := ""
+				if m := geomeanOf(rows, d, ds); !math.IsNaN(m) {
+					g = value(m, "sec/op")
+				}
+				b.WriteString(" | " + g)
+			}
+			if slower {
+				b.WriteString(" | " + longer(geomeanOf(rows, "liustack", ds), geomeanOf(rows, "c", ds)))
 			}
 			b.WriteString(" |\n")
 		}
 		b.WriteString("\n")
 	}
-	time := l.time
-	if strings.HasPrefix(s.Name, "native-") {
-		time = l.work
+	if native {
+		table(l.work, func(u string) bool { return u == "sec/op" }, true, false)
+		table(l.through, higher, true, true)
+		return b.String()
 	}
-	table(time, func(u string) bool { return u == "sec/op" }, true)
-	table(l.rates, higher, true)
-	table(l.allocs, func(u string) bool { return u == "allocs/op" }, false)
+	table(l.time, func(u string) bool { return u == "sec/op" }, true, false)
+	table(l.rates, higher, true, false)
+	table(l.allocs, func(u string) bool { return u == "allocs/op" }, false, false)
 	return b.String()
+}
+
+// longer is how much longer a time t takes than base, as +35%.
+func longer(t, base float64) string {
+	return fmt.Sprintf("%+.0f%%", (t/base-1)*100)
 }
 
 func renderReadme(name string, rows []readmeRow, sets map[string]*Set, l *lang) (string, error) {
@@ -459,8 +486,9 @@ func cell(r Row, d string, best, spread bool) string {
 	return s
 }
 
-// geomean is the geometric mean of d's times over the rows every driver has.
-func geomean(rows []Row, d string, ds []string) string {
+// geomeanOf is the geometric mean of d's times over the rows every driver
+// has, NaN when no row has them all.
+func geomeanOf(rows []Row, d string, ds []string) float64 {
 	sum, n := 0.0, 0
 	for _, r := range rows {
 		all := true
@@ -475,9 +503,9 @@ func geomean(rows []Row, d string, ds []string) string {
 		}
 	}
 	if n == 0 {
-		return ""
+		return math.NaN()
 	}
-	return value(math.Exp(sum/float64(n)), "sec/op")
+	return math.Exp(sum / float64(n))
 }
 
 // value writes v of unit with three significant digits.
