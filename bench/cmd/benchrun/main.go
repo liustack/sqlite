@@ -9,6 +9,7 @@
 //	benchrun run [flags]          build, check and run every driver, in turns
 //	benchrun publish -from DIR -name NAME
 //	                              summarize a run into published/NAME.json
+//	benchrun native [flags]       compare the driver with SQLite in C
 //	benchrun docs [-check]        write the tables from published/*.json
 //
 // Run it from bench/ (go run ./cmd/benchrun ...).
@@ -31,6 +32,8 @@ func main() {
 		err = cmdPublish(os.Args[2:])
 	case "docs":
 		err = cmdDocs(os.Args[2:])
+	case "native":
+		err = cmdNative(os.Args[2:])
 	default:
 		usage()
 	}
@@ -41,6 +44,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: benchrun run|publish|docs [flags]")
+	fmt.Fprintln(os.Stderr, "usage: benchrun run|native|publish|docs [flags]")
 	os.Exit(2)
 }
