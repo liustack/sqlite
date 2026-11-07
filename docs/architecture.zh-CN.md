@@ -73,7 +73,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 
 ## 每个文件一个写入者
 
-在驱动内部，一个连接执行可能写入的语句之前（`sqlite3_stmt_readonly`）先拿这个文件的写锁，等连接结束事务后再还回去。读从不拿这把锁。没有这把锁时，同一进程里的许多写入者会在 SQLite 的 busy handler 里等，它的休眠时间越来越长（1、2、5 ms，最高 100 ms），而持有 SQLite 锁的写入者却在等一个线程：在 Apple M4 上，64 个 goroutine 各插入一行，每次插入 1.7 ms，有了这把锁是 12 µs。用 cgo 时每次调用各占一个线程，所以 mattn/go-sqlite3 碰不到这个问题。其他进程的写入者仍然要面对 SQLite 自己的锁。
+在驱动内部，一个连接执行可能写入的语句之前（`sqlite3_stmt_readonly`）先拿这个文件的写锁，等连接结束事务后再还回去。读从不拿这把锁。没有这把锁时，同一进程里的许多写入者会在 SQLite 的 busy handler 里等，它的休眠时间越来越长（1、2、5 ms，最高 100 ms），而持有 SQLite 锁的写入者却在等一个线程：在 Apple M4 上，64 个 goroutine 各插入一行，每次插入 1.7 ms，有了这把锁是 12 µs。用 cgo 时每次调用各占一个线程，所以 mattn/go-sqlite3 碰不到这个问题。已经开着读事务的连接不等这把锁，锁被占就立刻得到 `SQLITE_BUSY`，和 SQLite 这时的做法一样。回滚日志模式下，持锁的写入者提交前要等这个连接的读锁放掉，等下去只会两边都耗到 busy timeout。其他进程的写入者仍然要面对 SQLite 自己的锁。
 
 在默认的回滚日志模式下，读仍然要面对 SQLite 的锁：COMMIT 锁住文件期间（和它的 fsync 一样长），任何连接都开始不了读，而提交一个接一个时，SQLite 的 busy handler 可能错过两次提交之间的每个空隙。写入不断、磁盘又慢时，一次读，或新连接的第一条语句，就可能等满整个 busy timeout，得到 `SQLITE_BUSY`。mattn/go-sqlite3 和 modernc.org/sqlite 也一样。WAL 模式下读从不等写：程序边写边读时就用它。
 
