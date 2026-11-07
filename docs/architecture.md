@@ -172,7 +172,7 @@ The engine is slower than the same C built by clang: on an Apple M4, work inside
 - **The same bits on every target.** The math functions stay without fused multiply-add, so every platform gives the same result.
 - **SQLite's C stays as released.** Changes go in the generator, `engine/libc` or the Go host.
 
-Before trying an idea, check the lists of what quickjs tried and did not do: [performance.md](https://github.com/liustack/quickjs/blob/main/docs/performance.md#what-was-tried-and-not-done) and [history.md](https://github.com/liustack/quickjs/blob/main/docs/history.md#what-was-tried-and-not-done-on-the-old-engine).
+quickjs keeps the same rules, with the reasons it learned them: [Making the engine faster](https://github.com/liustack/quickjs/blob/main/docs/architecture.md#making-the-engine-faster). Before trying an idea, check the lists of what quickjs tried and did not do: [performance.md](https://github.com/liustack/quickjs/blob/main/docs/performance.md#what-was-tried-and-not-done) and [history.md](https://github.com/liustack/quickjs/blob/main/docs/history.md#what-was-tried-and-not-done-on-the-old-engine).
 
 ## Routes left out
 

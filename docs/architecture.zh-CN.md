@@ -163,7 +163,7 @@ sequenceDiagram
 - **每个平台得到同样的位。** 数学函数继续不用融合乘加，每个平台算出同样的结果。
 - **SQLite 的 C 保持发布时的样子。** 改动放在生成器、`engine/libc` 或 Go host 里。
 
-试一个想法之前，先查 quickjs 试过但没做的清单：[performance.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/performance.zh-CN.md#试过但没做的) 和 [history.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/history.zh-CN.md#在旧引擎上试过但没做的)。
+quickjs 也守同样的规矩，还写了它是怎么得出这些规矩的：[让引擎更快](https://github.com/liustack/quickjs/blob/main/docs/architecture.zh-CN.md#让引擎更快)。试一个想法之前，先查 quickjs 试过但没做的清单：[performance.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/performance.zh-CN.md#试过但没做的) 和 [history.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/history.zh-CN.md#在旧引擎上试过但没做的)。
 
 ## 没有走的路
 
