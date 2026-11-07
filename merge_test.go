@@ -1600,3 +1600,56 @@ func TestExplainNotMerged(t *testing.T) {
 		t.Fatal("EXPLAIN INSERT waits for the write lock")
 	}
 }
+
+// lateCtx ends the first time Done is asked for: watch asks for it after
+// the statement is bound, the last moment before the step.
+type lateCtx struct {
+	context.Context
+	ended atomic.Bool
+}
+
+func (c *lateCtx) Done() <-chan struct{} {
+	c.ended.Store(true)
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
+func (c *lateCtx) Err() error {
+	if c.ended.Load() {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestCancelBetweenBindAndStep(t *testing.T) {
+	p := mPath(t)
+	db := mOpen(t, "file:"+p)
+	mExec(t, db, `CREATE TABLE t(x)`)
+	cn, err := NewConnector("file:" + p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dc, err := cn.Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dc.Close()
+	// SQLite forgets an interrupt that comes before a statement starts.
+	ran := false
+	if r, err := dc.(driver.QueryerContext).QueryContext(&lateCtx{Context: context.Background()}, `SELECT 1`, nil); err == nil {
+		ran = true
+		r.Close()
+	} else if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Query: %v", err)
+	}
+	if ran {
+		t.Fatal("Query stepped a statement whose context had ended")
+	}
+	if _, err := dc.(driver.ExecerContext).ExecContext(&lateCtx{Context: context.Background()}, `INSERT INTO t VALUES (1)`, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Exec: %v", err)
+	}
+	if n := mCount(t, db, `SELECT count(*) FROM t`); n != 0 {
+		t.Fatalf("Exec wrote %d rows after its context had ended", n)
+	}
+}

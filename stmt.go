@@ -174,8 +174,11 @@ func (s *stmt) run(ctx context.Context, args []driver.NamedValue) (*result, erro
 	if err := s.bind(args); err != nil {
 		return nil, err
 	}
-	stop := s.c.watch(ctx)
-	_, err := s.s.Step()
+	stop, err := s.c.watch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, err = s.s.Step()
 	stop()
 	if rerr := s.s.Reset(); err == nil {
 		err = rerr
@@ -216,7 +219,11 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, erro
 	if err := c.beginWrite(ctx, s.readOnly); err != nil {
 		return nil, err
 	}
-	stop := c.watch(ctx)
+	stop, err := c.watch(ctx)
+	if err != nil {
+		c.endWrite()
+		return nil, err
+	}
 	row, err := s.s.Step()
 	if err != nil {
 		stop()
@@ -339,13 +346,16 @@ func (s *stmt) paramIndex(name string) int {
 // watch interrupts the statement of the connection when ctx is done, until
 // stop is called. stop waits for an interrupt that has started, so that it
 // never reaches a connection that is closed or runs another statement.
-func (c *conn) watch(ctx context.Context) func() {
+// When ctx is already done it gives the error of ctx, and the statement must
+// not step: SQLite forgets an interrupt that comes before a statement starts.
+// A cancel that comes while the step starts may still let the statement
+// finish, as sqlite3_interrupt says.
+func (c *conn) watch(ctx context.Context) (func(), error) {
 	if ctx.Done() == nil {
-		return func() {}
+		return func() {}, nil
 	}
-	if ctx.Err() != nil {
-		c.c.Interrupt()
-		return func() {}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
@@ -356,7 +366,7 @@ func (c *conn) watch(ctx context.Context) func() {
 		if !stop() {
 			<-done
 		}
-	}
+	}, nil
 }
 
 // ctxErr is the error of the context when it ended the statement.
