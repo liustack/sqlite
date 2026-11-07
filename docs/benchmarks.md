@@ -1,5 +1,5 @@
 ---
-summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, what replication costs, and how the numbers were taken'
+summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, against SQLite in C, what replication costs, and how the numbers were taken'
 read_when:
   - Asked how fast the driver is, or how it compares with other drivers
   - Changing something on the path of a query or a commit, to measure it again
@@ -247,6 +247,58 @@ So an insert costs about 6 to 11% more with replication on. At 64 writers on six
 MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -count 6
 ```
 
+## Against SQLite in C
+
+The same SQLite 3.54.1 with the options of `engine/sqlite.c`, built by LLVM 22 clang `-O2` into a C program that calls the C API itself, against this driver through `database/sql`. Commit `5061830`, Go 1.27.2, Apple M4, darwin 24.3.0. Other work ran on the machine (load average 3 to 11), so C and Go took turns and each cell is the median of 5 rounds.
+
+Work inside the engine, `:memory:`, one connection, time in ms:
+
+| Work | C | this driver | this driver / C |
+| :-- | --: | --: | --: |
+| Insert 1M rows | 192 | 264 | 1.37 |
+| Index 1M rows | 200 | 258 | 1.29 |
+| Sort 1M texts | 1664 | 2019 | 1.21 |
+| Group by | 153 | 204 | 1.33 |
+| Join on an index | 36.0 | 49.1 | 1.37 |
+| Recursive CTE | 201 | 271 | 1.35 |
+| LIKE and string functions | 47.4 | 54.3 | 1.15 |
+| JSON | 213 | 258 | 1.21 |
+| Math functions | 68.5 | 107 | 1.56 |
+| FTS5 search | 1.3 | 1.9 | 1.45 |
+
+Many threads on one file: WAL, `synchronous=NORMAL` unless said, a table of 100k rows of 100 bytes. A read is one row by a random key, a write inserts one row, each run takes 3 s. In C each thread has a connection of its own, and the writes queue on a mutex of the process, which is faster than SQLite's busy handler. In Go the goroutines share one `*sql.DB`. Operations per second:
+
+| Threads | C | this driver |
+| :-- | --: | --: |
+| 1 reader | 653k | 704k |
+| 8 readers | 850k | 741k |
+| 64 readers | 735k | 562k |
+| 8 readers and 8 writers | 447k reads, 15.3k writes | 331k reads, 68.6k writes |
+| 64 writers, `synchronous=FULL` | 23.3k | 471k |
+
+The same readers with a page cache that holds the whole file (`cache_size=-65536`), so that a read makes no system call. The last column gives each goroutine a connection of its own (`db.Conn`) and prepares the query on it:
+
+| Readers | C | this driver, shared `*sql.DB` | this driver, one `*sql.Conn` each |
+| :-- | --: | --: | --: |
+| 1 | 857k | 1131k | 1084k |
+| 8 | 1387k | 1003k | 1303k |
+| 64 | 1147k | 759k | 948k |
+
+With a shared `*sql.DB`, 95% of the time goroutines wait on a lock is spent on the one lock of `database/sql`'s pool, which every query takes to get and give back its connection. The driver's own locks take about 4%. Every driver that works through `database/sql` pays this.
+
+A goroutine that reads in a tight loop can keep a connection of its own:
+
+```go
+conn, err := db.Conn(ctx) // held until Close
+if err != nil {
+	return err
+}
+defer conn.Close()
+get, err := conn.PrepareContext(ctx, `SELECT v FROM t WHERE id = ?`)
+```
+
+Each such connection counts against `SetMaxOpenConns` until it is closed.
+
 ## What the numbers say
 
 - **Reads** are faster than with cgo: one row by key in about half the time (3.61 µs against 6.53 to 8.32 µs on linux), 100k rows in 34 ms against 51 to 72 ms, a user with its 400 comments in 514 µs against 755 µs to 1.01 ms. A call into the engine is a plain Go call, with no cgo crossing, and a read transaction takes no lock in the kernel when another read of the process is running or just ended (see `internal/vfs`).
@@ -256,6 +308,7 @@ MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -coun
 - **Join and group** (Aggregate), which is all work inside the engine, is 10% (linux) to 18% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
 - **Large text values** are read 7% slower than with mattn on linux (100 rows of 200 KB in 7.23 ms against 6.77 ms) and faster than with modernc and ncruces. On darwin the four are even.
 - **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`, Go 1.27), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
+- **Against SQLite in C**, work inside the engine takes 1.15 to 1.56 times as long. Many writers go 20 times as fast with group commit. One reader is faster than C. Many readers sharing one `*sql.DB` reach 76 to 87% of C, and 66 to 72% when the whole file is in the cache, where the lock of `database/sql`'s pool shows most. With a connection each they reach 83 to 94%.
 - **Point on linux** includes one `fstat` per query, for every driver: when the WAL is empty, as it is in a fresh copy of the fixture, SQLite reads the size of the database file at the start of each read. A system call costs about 0.8 µs on this VM, which is most of the gap between linux and darwin in that row.
 
 ## Running them again
