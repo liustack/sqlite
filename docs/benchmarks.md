@@ -249,42 +249,42 @@ MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -coun
 
 ## Against SQLite in C
 
-The same SQLite 3.54.1 with the options of `engine/sqlite.c`, built by clang `-O2` into a C program that calls the C API itself. The workloads and the four columns are in [bench/README.md](../bench/README.md#against-sqlite-in-c). In short: C and "this driver, called directly" prepare the read once and run it again and again, while "this driver" and "mattn" read through `database/sql` as a program would, with a `*sql.Conn` for each goroutine.
+The same SQLite 3.54.1 with the options of `engine/sqlite.c`, built by clang `-O2` into a C program that calls the C API itself. The workloads and the four columns are in [bench/README.md](../bench/README.md#against-sqlite-in-c). In short: C and "this driver, without database/sql" prepare the read once and run it again and again. The two columns "through database/sql" read as a program would, with a `*sql.Conn` for each goroutine and `QueryRowContext`. The jobs inside the engine run on `:memory:` with one connection, and each time is that of the whole job, such as all 1M rows of an insert. The rates use a file in WAL mode with 100k rows, and count the operations of all threads together.
 
 ### linux/amd64
 
 <!-- bench:native-linux-amd64 -->
 Commit `7fac18a`, Go 1.27.2, Ubuntu clang version 22.1.8 (1ubuntu1), AMD EPYC 7B13, Linux 7.3.0-1003-gcp x86_64, GOMAXPROCS 8 of 8 threads, 2026-11-07. The median of 10 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.06 1.19 1.60, after: 6.78 5.53 4.63.
 
-Time per op, lower is better:
+Time for the whole job, lower is better:
 
-| Benchmark | SQLite in C | this driver |
+| Benchmark | SQLite in C | this driver, through database/sql |
 | :-- | --: | --: |
-| Engine/insert | **435 ms** ±2% | 587 ms ±0% |
-| Engine/index | **361 ms** ±1% | 461 ms ±0% |
-| Engine/sort | **3.43 s** ±1% | 4.03 s ±0% |
-| Engine/group | **286 ms** ±1% | 371 ms ±2% |
-| Engine/join | **61.1 ms** ±1% | 79.2 ms ±1% |
-| Engine/cte | **412 ms** ±1% | 511 ms ±0% |
-| Engine/like | **77.6 ms** ±1% | 109 ms ±1% |
-| Engine/json | **386 ms** ±1% | 571 ms ±0% |
-| Engine/math | **151 ms** ±1% | 189 ms ±1% |
-| Engine/fts5 | **2.68 ms** ±2% | 3.34 ms ±0% |
+| Insert 1M rows in one statement | **435 ms** ±2% | 587 ms ±0% |
+| Index 1M texts | **361 ms** ±1% | 461 ms ±0% |
+| Sort 1M texts | **3.43 s** ±1% | 4.03 s ±0% |
+| Average 1M rows in 1000 groups | **286 ms** ±1% | 371 ms ±2% |
+| Join 300k rows to a table of 1M on its key | **61.1 ms** ±1% | 79.2 ms ±1% |
+| Recursive CTE of 2M steps | **412 ms** ±1% | 511 ms ±0% |
+| LIKE and string functions on 1M texts | **77.6 ms** ±1% | 109 ms ±1% |
+| Build and read 300k JSON objects | **386 ms** ±1% | 571 ms ±0% |
+| sqrt, sin, log and pow of 1M numbers | **151 ms** ±1% | 189 ms ±1% |
+| 4 FTS5 searches in 200k documents | **2.68 ms** ±2% | 3.34 ms ±0% |
 | geomean | 185 ms | 240 ms |
 
 Rates, higher is better:
 
-| Benchmark | SQLite in C | this driver, called directly | this driver | mattn |
+| Benchmark | SQLite in C | this driver, without database/sql | this driver, through database/sql | mattn (cgo), through database/sql |
 | :-- | --: | --: | --: | --: |
-| Point/g=1 | 218k reads/s ±1% | **405k reads/s** ±1% | 314k reads/s ±1% | 115k reads/s ±0% |
-| Point/g=8 | **1964k reads/s** ±3% | 1690k reads/s ±1% | 1145k reads/s ±6% | 534k reads/s ±1% |
-| Point/g=64 | **1840k reads/s** ±1% | 1650k reads/s ±3% | 1125k reads/s ±2% | 542k reads/s ±3% |
-| PointCached/g=1 | 278k reads/s ±1% | **802k reads/s** ±3% | 537k reads/s ±3% | 133k reads/s ±1% |
-| PointCached/g=8 | **2652k reads/s** ±5% | 2544k reads/s ±1% | 1547k reads/s ±4% | 477k reads/s ±2% |
-| PointCached/g=64 | **2410k reads/s** ±2% | 2183k reads/s ±11% | 1422k reads/s ±6% | 388k reads/s ±3% |
-| PointInsert/g=8 | **1435k reads/s** ±10% |  | 441k reads/s ±4% | 243k reads/s ±1% |
-| PointInsert/g=8 | 6510 writes/s ±13% |  | **14986 writes/s** ±23% | 9008 writes/s ±2% |
-| InsertFull/g=64 | 1308 writes/s ±4% |  | **69825 writes/s** ±2% | 1265 writes/s ±6% |
+| Read one row by key, 1 threads | 218k reads/s ±1% | **405k reads/s** ±1% | 314k reads/s ±1% | 115k reads/s ±0% |
+| Read one row by key, 8 threads | **1964k reads/s** ±3% | 1690k reads/s ±1% | 1145k reads/s ±6% | 534k reads/s ±1% |
+| Read one row by key, 64 threads | **1840k reads/s** ±1% | 1650k reads/s ±3% | 1125k reads/s ±2% | 542k reads/s ±3% |
+| Read one row by key, whole file in cache, 1 threads | 278k reads/s ±1% | **802k reads/s** ±3% | 537k reads/s ±3% | 133k reads/s ±1% |
+| Read one row by key, whole file in cache, 8 threads | **2652k reads/s** ±5% | 2544k reads/s ±1% | 1547k reads/s ±4% | 477k reads/s ±2% |
+| Read one row by key, whole file in cache, 64 threads | **2410k reads/s** ±2% | 2183k reads/s ±11% | 1422k reads/s ±6% | 388k reads/s ±3% |
+| 8 readers next to 8 writers: the reads | **1435k reads/s** ±10% |  | 441k reads/s ±4% | 243k reads/s ±1% |
+| 8 readers next to 8 writers: the writes | 6510 writes/s ±13% |  | **14986 writes/s** ±23% | 9008 writes/s ±2% |
+| Insert one row, `synchronous=FULL`, 64 threads | 1308 writes/s ±4% |  | **69825 writes/s** ±2% | 1265 writes/s ±6% |
 
 <!-- /bench:native-linux-amd64 -->
 
@@ -293,44 +293,44 @@ Rates, higher is better:
 <!-- bench:native-darwin-arm64 -->
 Commit `7fac18a`, Go 1.27.2, Homebrew clang version 22.1.8, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 threads, 2026-11-07. The median of 10 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.75 1.90 2.53, after: 8.17 8.27 6.96. The M4 has 4 performance and 6 efficiency cores, and the rates of 8 and 64 threads change with the cores they get, by up to a third: read those rows on linux.
 
-Time per op, lower is better:
+Time for the whole job, lower is better:
 
-| Benchmark | SQLite in C | this driver |
+| Benchmark | SQLite in C | this driver, through database/sql |
 | :-- | --: | --: |
-| Engine/insert | **190 ms** ±2% | 264 ms ±3% |
-| Engine/index | **202 ms** ±4% | 258 ms ±6% |
-| Engine/sort | **1.58 s** ±3% | 1.80 s ±3% |
-| Engine/group | **148 ms** ±3% | 207 ms ±2% |
-| Engine/join | **36.0 ms** ±1% | 48.1 ms ±1% |
-| Engine/cte | **201 ms** ±2% | 269 ms ±0% |
-| Engine/like | **46.8 ms** ±1% | 54.7 ms ±2% |
-| Engine/json | **212 ms** ±1% | 257 ms ±0% |
-| Engine/math | **67.6 ms** ±1% | 107 ms ±1% |
-| Engine/fts5 | **1.26 ms** ±2% | 1.86 ms ±3% |
+| Insert 1M rows in one statement | **190 ms** ±2% | 264 ms ±3% |
+| Index 1M texts | **202 ms** ±4% | 258 ms ±6% |
+| Sort 1M texts | **1.58 s** ±3% | 1.80 s ±3% |
+| Average 1M rows in 1000 groups | **148 ms** ±3% | 207 ms ±2% |
+| Join 300k rows to a table of 1M on its key | **36.0 ms** ±1% | 48.1 ms ±1% |
+| Recursive CTE of 2M steps | **201 ms** ±2% | 269 ms ±0% |
+| LIKE and string functions on 1M texts | **46.8 ms** ±1% | 54.7 ms ±2% |
+| Build and read 300k JSON objects | **212 ms** ±1% | 257 ms ±0% |
+| sqrt, sin, log and pow of 1M numbers | **67.6 ms** ±1% | 107 ms ±1% |
+| 4 FTS5 searches in 200k documents | **1.26 ms** ±2% | 1.86 ms ±3% |
 | geomean | 94.2 ms | 125 ms |
 
 Rates, higher is better:
 
-| Benchmark | SQLite in C | this driver, called directly | this driver | mattn |
+| Benchmark | SQLite in C | this driver, without database/sql | this driver, through database/sql | mattn (cgo), through database/sql |
 | :-- | --: | --: | --: | --: |
-| Point/g=1 | 659k reads/s ±2% | **993k reads/s** ±5% | 756k reads/s ±11% | 325k reads/s ±4% |
-| Point/g=8 | 897k reads/s ±5% | 1615k reads/s ±10% | 1369k reads/s ±8% | 691k reads/s ±13% |
-| Point/g=64 | 792k reads/s ±5% | **1520k reads/s** ±6% | 1295k reads/s ±6% | 612k reads/s ±5% |
-| PointCached/g=1 | 878k reads/s ±1% | **1837k reads/s** ±3% | 1329k reads/s ±4% | 391k reads/s ±2% |
-| PointCached/g=8 | 1381k reads/s ±12% | **2805k reads/s** ±12% | 2142k reads/s ±16% | 790k reads/s ±10% |
-| PointCached/g=64 | 1179k reads/s ±4% | 2243k reads/s ±11% | 1768k reads/s ±13% | 658k reads/s ±14% |
-| PointInsert/g=8 | 516k reads/s ±11% |  | 543k reads/s ±10% | 272k reads/s ±12% |
-| PointInsert/g=8 | 16704 writes/s ±8% |  | **57648 writes/s** ±7% | 16526 writes/s ±8% |
-| InsertFull/g=64 | 28192 writes/s ±17% |  | **526k writes/s** ±23% | 41843 writes/s ±39% |
+| Read one row by key, 1 threads | 659k reads/s ±2% | **993k reads/s** ±5% | 756k reads/s ±11% | 325k reads/s ±4% |
+| Read one row by key, 8 threads | 897k reads/s ±5% | 1615k reads/s ±10% | 1369k reads/s ±8% | 691k reads/s ±13% |
+| Read one row by key, 64 threads | 792k reads/s ±5% | **1520k reads/s** ±6% | 1295k reads/s ±6% | 612k reads/s ±5% |
+| Read one row by key, whole file in cache, 1 threads | 878k reads/s ±1% | **1837k reads/s** ±3% | 1329k reads/s ±4% | 391k reads/s ±2% |
+| Read one row by key, whole file in cache, 8 threads | 1381k reads/s ±12% | **2805k reads/s** ±12% | 2142k reads/s ±16% | 790k reads/s ±10% |
+| Read one row by key, whole file in cache, 64 threads | 1179k reads/s ±4% | 2243k reads/s ±11% | 1768k reads/s ±13% | 658k reads/s ±14% |
+| 8 readers next to 8 writers: the reads | 516k reads/s ±11% |  | 543k reads/s ±10% | 272k reads/s ±12% |
+| 8 readers next to 8 writers: the writes | 16704 writes/s ±8% |  | **57648 writes/s** ±7% | 16526 writes/s ±8% |
+| Insert one row, `synchronous=FULL`, 64 threads | 28192 writes/s ±17% |  | **526k writes/s** ±23% | 41843 writes/s ±39% |
 
 <!-- /bench:native-darwin-arm64 -->
 
 What the tables show:
 
 - **Work inside the engine** takes 1.14 to 1.58 times as long as in C, about 1.3 times in the geometric mean on both machines: the Go assembly the C becomes is close to, but not as good as, what clang makes for the machine. The engine also uses musl's string and math functions, the math ones built without fused multiply-add so that every target gives the same bits, where the C program uses the system's.
-- **One reader** is faster than in C: 1.5 to 2.9 times as fast called directly. In C each read takes the WAL read lock with `fcntl` and gives it back with another, unless another connection of the process holds it. This driver keeps the lock about a millisecond after the last reader leaves, so the next read makes no system call (see `internal/vfs`). A system call costs most on the linux VM.
-- **Many readers** on linux are faster in C, whose readers share the lock without system calls too. Called directly, this driver reaches 86 to 96% of C. On darwin it stays ahead of C.
-- **Through `database/sql`** a read takes a quarter to a half more time than calling the driver directly: that is the work of `database/sql` itself, and with 8 readers or more on linux it brings the driver to about 60% of C. mattn pays the same and a cgo call on top. The connection keeps the statement of a read query, so the query is not prepared again each time (see [docs/architecture.md](architecture.md#statements-kept-for-queries)). A `*sql.Stmt` would take the lock of the `*sql.DB` on every query, even one prepared on a `*sql.Conn`, which is why the benchmark uses none.
+- **One reader** is faster than in C: 1.5 to 2.9 times as fast without database/sql. In C each read takes the WAL read lock with `fcntl` and gives it back with another, unless another connection of the process holds it. This driver keeps the lock about a millisecond after the last reader leaves, so the next read makes no system call (see `internal/vfs`). A system call costs most on the linux VM.
+- **Many readers** on linux are faster in C, whose readers share the lock without system calls too. Without database/sql, this driver reaches 86 to 96% of C. On darwin it stays ahead of C.
+- **Through `database/sql`** a read takes a quarter to a half more time than without it: that is the work of `database/sql` itself, and with 8 readers or more on linux it brings the driver to about 60% of C. mattn pays the same and a cgo call on top. The connection keeps the statement of a read query, so the query is not prepared again each time (see [docs/architecture.md](architecture.md#statements-kept-for-queries)). A `*sql.Stmt` would take the lock of the `*sql.DB` on every query, even one prepared on a `*sql.Conn`, which is why the benchmark uses none.
 - **Readers next to writers** (PointInsert) on linux get 31% of the reads of C, while the driver's writers do 2.3 times as many writes. On darwin the reads are even.
 - **Writes** are where group commit shows: one commit carries many inserts, so the driver writes 2.3 to 3.5 times as fast as C next to readers, and 19 to 53 times as fast with 64 writers and `synchronous=FULL`, where each of C's writers waits for its own fsync.
 
@@ -343,7 +343,7 @@ What the tables show:
 - **Join and group** (Aggregate), which is all work inside the engine, is 10% (linux) to 18% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
 - **Large text values** are read 7% slower than with mattn on linux (100 rows of 200 KB in 7.23 ms against 6.77 ms) and faster than with modernc and ncruces. On darwin the four are even.
 - **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`, Go 1.27), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
-- **Against SQLite in C**, work inside the engine takes about 1.3 times as long. One reader is faster than C, as a read makes no system call for its lock. Many readers on linux reach 86 to 96% of C calling the driver directly and about 60% through `database/sql`. Writers go 2 to 53 times as fast with group commit. Readers next to writers on linux get a third of C's reads.
+- **Against SQLite in C**, work inside the engine takes about 1.3 times as long. One reader is faster than C, as a read makes no system call for its lock. Many readers on linux reach 86 to 96% of C without `database/sql` and about 60% through `database/sql`. Writers go 2 to 53 times as fast with group commit. Readers next to writers on linux get a third of C's reads.
 - **Point on linux** includes one `fstat` per query, for every driver: when the WAL is empty, as it is in a fresh copy of the fixture, SQLite reads the size of the database file at the start of each read. A system call costs about 0.8 µs on this VM, which is most of the gap between linux and darwin in that row.
 
 ## Running them again
