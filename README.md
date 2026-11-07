@@ -150,7 +150,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 ## What changes for you
 
 - **No C anywhere.** `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build` from a Mac works, and the binary runs in a `scratch` image.
-- **Many writers stop waiting on each other.** When goroutines write at the same time, the driver runs their autocommit `INSERT`, `UPDATE` and `DELETE` statements as one transaction and commits once. Each call still gets its own error, `LastInsertId` and `RowsAffected`, and returns only after the commit, so nothing is less durable. Transactions you open yourself are never merged. [How it works](docs/architecture.md#group-commit)
+- **Many writers stop waiting on each other.** When goroutines write at the same time, the driver runs their autocommit `INSERT`, `UPDATE` and `DELETE` statements as one transaction and commits once. Each call still gets its own error, `LastInsertId` and `RowsAffected`, and returns only after the commit, so nothing is less durable. When one statement fails so badly that SQLite rolls back the whole transaction (an IO error, `ON CONFLICT ROLLBACK`, a context that ends while it runs), the statements merged before it fail with `ABORT_ROLLBACK`, and none runs twice. Transactions you open yourself are never merged. [The rules](docs/group-commit.md)
 - **Writers queue instead of failing with `database is locked`.** Inside the driver one connection of your program writes a file at a time, and the others queue for it, up to `busy_timeout`, instead of sleeping in SQLite's busy handler. A transaction that reads first and writes later can still fail when another wrote in between, so start such transactions with `_txlock=immediate`. Other processes still meet SQLite's own locks.
 - **Reads cost less.** A call into SQLite is a plain Go call, and on Go 1.27 scanning a number into your variable allocates nothing (a string costs one allocation, its own).
 - **Real-time backup is built in.** Every commit reaches S3, R2 or MinIO about a second later, from inside your program. See [Real-time backup to S3](#real-time-backup-to-s3).
@@ -177,6 +177,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 | :-- | :-- |
 | [Benchmarks](docs/benchmarks.md) | You want the full numbers, or to run them on your machine |
 | [Architecture](docs/architecture.md) | You want to know how C becomes Go assembly, or how group commit works |
+| [Group commit](docs/group-commit.md) | You want to know which concurrent writes merge, and what error each gets when one fails |
 | [Replication](docs/replication.md) | You want a copy of the database in S3, R2 or MinIO, or to restore one |
 | [Upstream](docs/upstream.md) | You want to know which SQLite it is, or how it moves to a new one |
 | [Testing](docs/testing.md), [Commits](docs/commit.md) | You are about to change the code |

@@ -220,6 +220,13 @@ func (l *writeLock) release(c *conn) {
 			back := c.runBatch(batch)
 			l.mu.Lock()
 			l.requeue(back)
+			if !c.c.AutoCommit() {
+				// The transaction of the batch would not roll back
+				// (conn.abandon): c keeps the lock, and Close gives it back.
+				c.writing = true
+				l.mu.Unlock()
+				return
+			}
 		}
 	}
 	if c != nil {
@@ -428,113 +435,144 @@ func (c *conn) endWrite() {
 
 // runBatch runs requests of the queue as one transaction on c, which holds
 // the lock and is out of any transaction, and answers each after the
-// commit. It returns the requests c turned out not to be able to run, for
-// the queue.
+// commit. It returns the requests c turned out not to be able to run, and
+// those it did not get to, for the queue.
 //
-// A request whose context is done before it runs is answered with its
-// error. A statement that fails keeps what SQLite kept of it, as its own
-// autocommit transaction would (nothing, or the rows before the failure for
-// ON CONFLICT FAIL), and its caller gets the error after the commit. One
-// that leaves a deferred foreign key unresolved is undone by its SAVEPOINT,
-// as its own COMMIT would fail. When a failure ends the whole transaction
-// (an IO error, an interrupt, ON CONFLICT ROLLBACK), the statements that
-// had run are run again in a new one, those that failed too.
+// No statement runs twice: what a statement did beside the database (a Go
+// function, a virtual table) cannot be undone. A statement that fails keeps
+// what SQLite kept of it, as its own autocommit transaction would (nothing,
+// or the rows before the failure for ON CONFLICT FAIL), and its caller gets
+// the error after the commit. One that leaves a deferred foreign key
+// unresolved is undone by its SAVEPOINT, as its own COMMIT would fail. When
+// a failure ends the whole transaction (an IO error, an interrupt, ON
+// CONFLICT ROLLBACK), the statements that had run are gone with it.
 func (c *conn) runBatch(batch []*request) (back []*request) {
 	// The statements set c's last_insert_rowid, which is c's own.
 	own := c.c.LastInsertRowID()
 	defer c.c.SetLastInsertRowID(own)
-	for {
-		live := batch[:0] // in place: batch is runBatch's own
-		for _, r := range batch {
-			if err := r.ctx.Err(); err != nil {
-				r.err = err
-				close(r.done)
-				continue
-			}
-			live = append(live, r)
-		}
-		batch = live
-		if len(batch) == 0 {
-			return back
-		}
-		if err := c.execCached("BEGIN IMMEDIATE"); err != nil {
-			answer(batch, err)
-			return back
-		}
-		// ran holds the statements that ran, those that failed too: one
-		// that failed may have kept rows (OR FAIL), which commit with the
-		// others, so it is answered after the commit and runs again with
-		// them.
-		ran := make([]*request, 0, len(batch))
-		lost := false
-		for i, r := range batch {
-			err := c.runOne(r)
-			if errors.Is(err, errNotHere) {
-				back = append(back, r)
-				continue
-			}
+	live := batch[:0] // in place: batch is runBatch's own
+	for _, r := range batch {
+		if err := r.ctx.Err(); err != nil {
 			r.err = err
-			if err == nil || !c.c.AutoCommit() {
-				ran = append(ran, r)
-				if r.effects {
-					// Its Go functions must not run twice: commit now, so
-					// that no later statement can end the transaction and
-					// make it run again. The rest wait for the next batch.
-					back = append(back, batch[i+1:]...)
-					break
-				}
-				continue
-			}
-			// The statement ended the transaction, as it would have ended
-			// its own: run the others again.
 			close(r.done)
-			batch = append(ran, batch[i+1:]...)
-			lost = true
-			break
-		}
-		if lost {
 			continue
 		}
-		start := time.Now()
-		if err := c.execCached("COMMIT"); err != nil {
-			answer(ran, c.abandon(err))
-			return back
+		live = append(live, r)
+	}
+	batch = live
+	if len(batch) == 0 {
+		return nil
+	}
+	if err := c.execCached("BEGIN IMMEDIATE"); err != nil {
+		answer(batch, err)
+		return nil
+	}
+	// ran holds the statements that ran, those that failed too: one that
+	// failed may have kept rows (OR FAIL), which commit with the others, so
+	// it is answered after the commit.
+	ran := make([]*request, 0, len(batch))
+	for i, r := range batch {
+		out, cause := c.runOne(r)
+		switch out {
+		case skipped:
+			close(r.done)
+			continue
+		case notHere:
+			back = append(back, r)
+			continue
+		case ended:
+			// r gets what ended the transaction, and those that ran before
+			// it get SQLITE_ABORT_ROLLBACK, as SQLite gives the statements
+			// of a transaction it rolled back. The statements after r never
+			// reached c: they wait for the next batch.
+			close(r.done)
+			answer(ran, rolledBack(cause))
+			return append(back, batch[i+1:]...)
 		}
-		c.wl.stats.commits.Add(1)
-		c.wl.stats.commitTime.Add(int64(time.Since(start)))
-		var merged int64
-		for _, r := range ran {
-			if r.err == nil {
-				merged++
-			}
+		ran = append(ran, r)
+		if r.effects {
+			// Its Go functions did something outside the database: commit
+			// now, so that no later statement can roll it back. The rest
+			// wait for the next batch.
+			back = append(back, batch[i+1:]...)
+			break
 		}
-		c.wl.stats.merged.Add(merged)
-		answer(ran, nil)
+	}
+	start := time.Now()
+	if err := c.execCached("COMMIT"); err != nil {
+		answer(ran, c.abandon(err))
 		return back
 	}
+	c.wl.stats.commits.Add(1)
+	c.wl.stats.commitTime.Add(int64(time.Since(start)))
+	var merged int64
+	for _, r := range ran {
+		if r.err == nil {
+			merged++
+		}
+	}
+	c.wl.stats.merged.Add(merged)
+	answer(ran, nil)
+	return back
 }
 
-// errNotHere is what runOne gives for a statement c does not run as its own
-// connection would: after a change of the schema, it no longer qualifies.
+// rolledBack is the error of a statement of a batch whose transaction cause
+// ended after the statement ran.
+func rolledBack(cause error) error {
+	return csqlite.NewError(ABORT_ROLLBACK, "abort due to ROLLBACK: "+cause.Error(), cause)
+}
+
+// errNotHere is what cached gives for SQL that is not exactly one statement,
+// which a request never is: it then runs on its caller's connection.
 var errNotHere = errors.New("sqlite: not mergeable here")
 
-// runOne runs one statement of a batch in a SAVEPOINT. It leaves the
-// transaction open unless SQLite ended it.
-func (c *conn) runOne(r *request) error {
+// An outcome is what runOne did with a request.
+type outcome int
+
+const (
+	// skipped: the statement never stepped. Its context ended, or its
+	// prepare or its bind failed: r.err says which. It is answered alone.
+	skipped outcome = iota
+	// notHere: c does not run it as the caller's connection would. It did
+	// nothing, and goes back to the queue.
+	notHere
+	// ran: it ran, and the transaction is still open. r.err is its own
+	// error, or nil.
+	ran
+	// ended: the transaction is over. The statement, or a statement of the
+	// batch around it, ended it with r.err.
+	ended
+)
+
+// runOne runs one statement of a batch in a SAVEPOINT. When the transaction
+// ended it also gives what ended it, as SQLite said it: an interrupt is not
+// the error of the context of the others.
+func (c *conn) runOne(r *request) (outcome, error) {
 	r.effects = false
+	if r.err = r.ctx.Err(); r.err != nil {
+		return skipped, nil
+	}
 	s, err := c.cached(r.sql)
+	if errors.Is(err, errNotHere) {
+		return notHere, nil
+	}
 	if err != nil {
-		return err
+		r.err = err
+		return skipped, nil
 	}
 	if !s.s.Mergeable() {
-		return errNotHere
+		return notHere, nil
+	}
+	if r.err = s.bind(r.args); r.err != nil {
+		return skipped, nil
 	}
 	if err := c.execCached("SAVEPOINT merge"); err != nil {
-		return c.abandon(err)
+		r.err = c.abandon(err)
+		return ended, r.err
 	}
 	c.c.SetLastInsertRowID(r.lastID)
 	c.c.SetMerging(true)
-	res, err := s.run(r.ctx, r.args)
+	res, stepped, err := s.step(r.ctx)
 	r.effects = c.c.RanEffects()
 	if c.c.SetMerging(false) {
 		// SQLite prepared the statement again and it is no longer
@@ -543,12 +581,23 @@ func (c *conn) runOne(r *request) error {
 		// (goClassify). It runs on its caller's connection.
 		s.s.Reclassify()
 		if e := c.execCached("ROLLBACK TO merge"); e != nil {
-			return c.abandon(e)
+			r.err = c.abandon(e)
+			return ended, r.err
 		}
 		if e := c.execCached("RELEASE merge"); e != nil {
-			return c.abandon(e)
+			r.err = c.abandon(e)
+			return ended, r.err
 		}
-		return errNotHere
+		return notHere, nil
+	}
+	if !stepped {
+		// Its context ended after its turn came.
+		if e := c.execCached("RELEASE merge"); e != nil {
+			r.err = c.abandon(e)
+			return ended, r.err
+		}
+		r.err = err
+		return skipped, nil
 	}
 	// SQLite keeps last_insert_rowid when it undoes a statement, so this is
 	// the caller's whatever becomes of the statement.
@@ -557,7 +606,8 @@ func (c *conn) runOne(r *request) error {
 		if err == nil {
 			err = errBusy // cannot happen: a statement that succeeds keeps the transaction
 		}
-		return err
+		r.err = ctxErr(r.ctx, err)
+		return ended, err
 	}
 	// A statement that failed may have kept rows too (OR FAIL). SQLite
 	// rolls a statement it undoes back to its count of deferred foreign
@@ -579,24 +629,27 @@ func (c *conn) runOne(r *request) error {
 				err = ferr
 			}
 			if c.c.AutoCommit() {
-				return err // the failure ended the transaction
+				r.err = err // the failure ended the transaction
+				return ended, err
 			}
 			undo = true
 		}
 	}
 	if undo {
 		if e := c.execCached("ROLLBACK TO merge"); e != nil {
-			return c.abandon(e)
+			r.err = c.abandon(e)
+			return ended, r.err
 		}
 	}
 	if e := c.execCached("RELEASE merge"); e != nil {
-		return c.abandon(e)
+		r.err = c.abandon(e)
+		return ended, r.err
 	}
-	if err != nil {
-		return err
+	r.err = ctxErr(r.ctx, err)
+	if err == nil {
+		r.res = *res
 	}
-	r.res = *res
-	return nil
+	return ran, nil
 }
 
 // flushVirtualTables makes the virtual tables of the transaction write what
@@ -608,8 +661,10 @@ func (c *conn) flushVirtualTables() error {
 	return c.execCached("RELEASE flush")
 }
 
-// abandon rolls the transaction back when a SAVEPOINT of the batch fails, so
-// that the batch runs again without it.
+// abandon rolls the transaction of a batch back when a statement the batch
+// runs itself (SAVEPOINT, ROLLBACK TO, RELEASE, COMMIT) fails. A transaction
+// that will not roll back makes c bad: c keeps the lock until it is closed,
+// which rolls it back (writeLock.release).
 func (c *conn) abandon(err error) error {
 	if !c.c.AutoCommit() {
 		c.execCached("ROLLBACK")

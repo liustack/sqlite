@@ -33,10 +33,10 @@ import (
 // It may run on any connection of its connector, and from several
 // goroutines at once. It must not use the database: it runs in the middle
 // of a statement. It may also run more than once for the same row: SQLite
-// does not promise how often it calls a function. Group commit runs a
-// batch again when a failure of one statement ends its transaction, but a
-// statement that called a function not marked Innocuous is never run
-// again: its batch commits right after it.
+// does not promise how often it calls a function. Group commit never runs
+// a statement twice. A statement that called a function not marked
+// Innocuous ends its batch and commits right away, so that a failure of a
+// later statement cannot roll back what it wrote after the function acted.
 type Func func(args []driver.Value) (driver.Value, error)
 
 // FuncFlag tells SQLite how a function behaves.
@@ -53,9 +53,9 @@ const (
 	// file someone else made cannot call it.
 	DirectOnly FuncFlag = csqlite.FuncDirectOnly
 	// Innocuous: the function has no side effects and reveals nothing, so
-	// it is safe wherever SQL comes from. Group commit may run a statement
-	// that calls only such functions again, so it merges more: a statement
-	// that calls a Go function without this flag ends its batch.
+	// it is safe wherever SQL comes from. A write that calls only such
+	// functions merges with others: one that calls a Go function without
+	// this flag ends its group commit batch.
 	Innocuous FuncFlag = csqlite.FuncInnocuous
 )
 
@@ -239,11 +239,11 @@ func newFunction(name string, nArg int, isNil bool, flags []FuncFlag) (function,
 // and in the schema. cmp returns a negative number, 0 or a positive number
 // as a sorts before, with or after b, and must be a total order. It must
 // have no side effects: SQLite calls it as often and in the order its plan
-// needs, and group commit may run a statement that used it again. A panic in
-// cmp fails the statement with the panic, and SQLite undoes it as it does
-// when memory runs out: it rolls back the statement, or the whole
-// transaction. When the whole transaction is gone, the next statements of it
-// and its Commit fail. The connection stays good.
+// needs. A panic in cmp fails the statement with the panic, and SQLite
+// undoes it as it does when memory runs out: it rolls back the statement,
+// or the whole transaction. When the whole transaction is gone, the next
+// statements of it and its Commit fail, and so do the statements merged
+// before it (SQLITE_ABORT_ROLLBACK). The connection stays good.
 func WithCollation(name string, cmp func(a, b string) int) Option {
 	return Option{func(o *options) error {
 		switch {
