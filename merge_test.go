@@ -1247,3 +1247,83 @@ func TestBusyTimeoutSetByPrepare(t *testing.T) {
 		c.Close()
 	}
 }
+
+// Many goroutines insert at once until the database is full (max_page_count
+// stops it growing, as a full disk would), with their inserts merged. Each
+// caller gets either success or SQLITE_FULL, the table holds exactly the
+// rows whose callers got success, the file stays sound, and once rows are
+// deleted the writers go on.
+func TestMergeDiskFull(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=max_page_count(400)")
+	db.SetMaxOpenConns(32)
+	db.SetMaxIdleConns(32)
+	mExec(t, db, `CREATE TABLE t(k TEXT PRIMARY KEY, v BLOB)`)
+	sc, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wl *writeLock
+	sc.Raw(func(dc any) error { wl = dc.(*conn).wl; return nil })
+	sc.Close()
+	merged0 := wl.stats.merged.Load()
+
+	const goroutines, each = 32, 100
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		ok   = map[string]bool{}
+		full int
+	)
+	for g := range goroutines {
+		wg.Go(func() {
+			for i := range each {
+				k := fmt.Sprintf("g%d-%d", g, i)
+				_, err := db.Exec(`INSERT INTO t VALUES (?, randomblob(600))`, k)
+				mu.Lock()
+				if err == nil {
+					ok[k] = true
+				} else if strings.Contains(err.Error(), "full") {
+					full++
+				} else {
+					t.Errorf("%s: %v", k, err)
+				}
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	if full == 0 {
+		t.Fatal("the database never filled up")
+	}
+	if wl.stats.merged.Load() == merged0 {
+		t.Fatal("no insert was merged")
+	}
+	rows, err := db.Query(`SELECT k FROM t`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			t.Fatal(err)
+		}
+		if !ok[k] {
+			t.Errorf("row %s is in the table, but its caller got an error", k)
+		}
+		n++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if n != len(ok) {
+		t.Errorf("%d rows in the table, %d callers got success", n, len(ok))
+	}
+	var check string
+	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&check); err != nil || check != "ok" {
+		t.Fatalf("integrity_check: %q %v", check, err)
+	}
+	mExec(t, db, `DELETE FROM t WHERE rowid % 2 = 0`)
+	mExec(t, db, `INSERT INTO t VALUES ('after', randomblob(600))`)
+	t.Logf("%d inserts succeeded, %d got SQLITE_FULL, %d merged", len(ok), full, wl.stats.merged.Load()-merged0)
+}
