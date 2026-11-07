@@ -196,6 +196,8 @@ func TestMergeable(t *testing.T) {
 		"PRAGMA user_version = 3":                                    false,
 		"BEGIN":                                                      false,
 		"WITH x(v) AS (VALUES (1)) INSERT INTO t SELECT v, v FROM x": true,
+		"EXPLAIN INSERT INTO t VALUES (1, 2)":                        false,
+		"EXPLAIN QUERY PLAN UPDATE t SET b = 1":                      false,
 	} {
 		s, _, err := c.Prepare(sql)
 		if err != nil {

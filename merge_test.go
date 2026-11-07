@@ -1572,3 +1572,31 @@ func (effectsAgg) Step([]driver.Value) error    { return nil }
 func (effectsAgg) Final() (driver.Value, error) { return int64(1), nil }
 func (effectsAgg) Value() (driver.Value, error) { return int64(1), nil }
 func (effectsAgg) Inverse([]driver.Value) error { return nil }
+
+// EXPLAIN of a write writes nothing: it never waits for the write lock in
+// the queue.
+func TestExplainNotMerged(t *testing.T) {
+	p := mPath(t)
+	db := mOpen(t, "file:"+p)
+	mExec(t, db, `CREATE TABLE t(x)`)
+	other := mOpen(t, "file:"+p)
+	tx, err := other.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	mExec(t, tx, `INSERT INTO t VALUES (0)`) // holds the write lock
+	done := make(chan error, 1)
+	go func() {
+		_, err := db.Exec(`EXPLAIN INSERT INTO t VALUES (1)`)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("EXPLAIN INSERT waits for the write lock")
+	}
+}
