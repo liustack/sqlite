@@ -50,6 +50,9 @@ type funcEntry struct {
 	fn     Func
 	newAgg func() Agg
 	borrow bool // FuncBorrowBlobs
+	// effects says the function may have side effects: it is not marked
+	// FuncInnocuous. Calling it marks the connection (markEffects).
+	effects bool
 }
 
 // funcs holds the functions SQLite knows by handle. SQLite gives a handle
@@ -105,6 +108,7 @@ func (c *Conn) createFunc(name string, nArg, flags int, e funcEntry, create func
 	if len(name) > maxName {
 		return &Error{Code: 21, Msg: "function name too long"}
 	}
+	e.effects = flags&FuncInnocuous == 0
 	h := funcs.add(&e)
 	a := c.args()
 	z := a.str(name)
@@ -137,6 +141,9 @@ func (c *Conn) CreateCollation(name string, cmp func(a, b string) int) error {
 func host_func(sp, ctx, argc, argv uintptr) {
 	defer failQuiet(sp)
 	e := funcs.get(sqlite3_user_data(sp, ctx))
+	if e.effects {
+		markEffects(sp)
+	}
 	f := e.fn
 	args := values(sp, argc, argv, e.borrow)
 	v, err := safely(func() (driver.Value, error) { return f(args) })
@@ -241,7 +248,11 @@ func host_final(sp, ctx uintptr) {
 
 // newState makes the state of a group.
 func newState(sp, ctx uintptr) (Agg, error) {
-	newAgg := funcs.get(sqlite3_user_data(sp, ctx)).newAgg
+	e := funcs.get(sqlite3_user_data(sp, ctx))
+	if e.effects {
+		markEffects(sp) // every group of a call gets a state
+	}
+	newAgg := e.newAgg
 	var a Agg
 	_, err := safely(func() (driver.Value, error) { a = newAgg(); return nil, nil })
 	if err == nil && a == nil {

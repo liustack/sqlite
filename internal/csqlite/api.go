@@ -227,8 +227,15 @@ func (c *Conn) SetMerging(on bool) (wasRefused bool) {
 	*w = 0
 	if on {
 		*w = merging
+		*(*int32)(at(c.st.base + effectsOffset)) = 0
 	}
 	return wasRefused
+}
+
+// RanEffects reports whether a Go function that may have side effects (one
+// not marked FuncInnocuous) ran on the connection since SetMerging(true).
+func (c *Conn) RanEffects() bool {
+	return *(*int32)(at(c.st.base + effectsOffset)) != 0
 }
 
 // The bits goClassify writes (engine/os.c).

@@ -94,6 +94,9 @@ type request struct {
 	// statement from it, so no value has to stand for "nothing inserted".
 	lastID int64
 	err    error
+	// effects says the statement called a Go function that may have side
+	// effects (one not marked Innocuous): its batch commits after it.
+	effects bool
 }
 
 // maxBatch is the most statements one transaction of the queue takes.
@@ -473,6 +476,13 @@ func (c *conn) runBatch(batch []*request) (back []*request) {
 			r.err = err
 			if err == nil || !c.c.AutoCommit() {
 				ran = append(ran, r)
+				if r.effects {
+					// Its Go functions must not run twice: commit now, so
+					// that no later statement can end the transaction and
+					// make it run again. The rest wait for the next batch.
+					back = append(back, batch[i+1:]...)
+					break
+				}
 				continue
 			}
 			// The statement ended the transaction, as it would have ended
@@ -511,6 +521,7 @@ var errNotHere = errors.New("sqlite: not mergeable here")
 // runOne runs one statement of a batch in a SAVEPOINT. It leaves the
 // transaction open unless SQLite ended it.
 func (c *conn) runOne(r *request) error {
+	r.effects = false
 	s, err := c.cached(r.sql)
 	if err != nil {
 		return err
@@ -524,12 +535,12 @@ func (c *conn) runOne(r *request) error {
 	c.c.SetLastInsertRowID(r.lastID)
 	c.c.SetMerging(true)
 	res, err := s.run(r.ctx, r.args)
+	r.effects = c.c.RanEffects()
 	if c.c.SetMerging(false) {
 		// SQLite prepared the statement again and it is no longer
-		// mergeable: it failed before it did anything. A virtual table
-		// whose own prepare was refused may have hidden the refusal and
-		// let the statement run, so what it did is undone: it runs again
-		// on its caller's connection.
+		// mergeable: its prepare failed, so it did nothing, also when the
+		// refusal fell on a statement a virtual table prepared meanwhile
+		// (goClassify). It runs on its caller's connection.
 		s.s.Reclassify()
 		if e := c.execCached("ROLLBACK TO merge"); e != nil {
 			return c.abandon(e)

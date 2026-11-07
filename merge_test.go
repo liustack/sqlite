@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -541,7 +542,7 @@ func TestMergeOrFailKeptOnReplay(t *testing.T) {
 		default:
 		}
 		return int64(4), nil
-	}))
+	}, Innocuous)) // so that the batch runs it again
 	if err := c.c.Exec(`CREATE TABLE t(x UNIQUE); INSERT INTO t VALUES (3)`); err != nil {
 		t.Fatal(err)
 	}
@@ -1379,3 +1380,195 @@ func TestQueuedNotStarved(t *testing.T) {
 		}
 	}
 }
+
+// A Go function not marked Innocuous may have side effects, so the statement
+// that calls it is the last of its batch: the batch commits after it, and no
+// failure of a later statement can make it run again. Here the statement
+// after it is interrupted, which ends the whole transaction.
+func TestMergeSideEffectsRunOnce(t *testing.T) {
+	var calls atomic.Int64
+	side := func([]driver.Value) (driver.Value, error) { calls.Add(1); return int64(1), nil }
+	c := batchConn(t, WithFunction("side", 0, side), WithFunction("pure", 0, side, Innocuous))
+	if err := c.c.Exec(`CREATE TABLE t(x)`); err != nil {
+		t.Fatal(err)
+	}
+	long := `INSERT INTO t SELECT count(*) FROM (WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM r) SELECT x FROM r)`
+	for _, tc := range []struct {
+		fn    string
+		calls int64 // times the function runs
+		back  int   // statements left for the next batch
+	}{
+		{"side", 1, 1},
+		{"pure", 2, 0}, // run again with the batch, which is allowed
+	} {
+		t.Run(tc.fn, func(t *testing.T) {
+			calls.Store(0)
+			a := batchReq(`INSERT INTO t VALUES (` + tc.fn + `())`)
+			b := batchReq(long)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			b.ctx = ctx
+			time.AfterFunc(50*time.Millisecond, cancel)
+			back := c.runBatch([]*request{a, b})
+			if len(back) != tc.back {
+				t.Fatalf("%d statements back, want %d", len(back), tc.back)
+			}
+			if a.err != nil {
+				t.Fatal(a.err)
+			}
+			if n := calls.Load(); n != tc.calls {
+				t.Fatalf("%s() ran %d times, want %d", tc.fn, n, tc.calls)
+			}
+			if tc.back == 1 && back[0] != b {
+				t.Fatal("the statement after side() was not left for the next batch")
+			}
+		})
+	}
+}
+
+// Many writers, some cancelled as they run: a function with side effects
+// runs once for each statement that calls it and commits, never more.
+func TestMergeSideEffectsUnderCancels(t *testing.T) {
+	var calls atomic.Int64
+	cn, err := NewConnector("file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)", WithFunction("side", 0, func([]driver.Value) (driver.Value, error) {
+		calls.Add(1)
+		return int64(1), nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(cn)
+	t.Cleanup(func() { db.Close() })
+	mExec(t, db, `CREATE TABLE t(x)`)
+	const writers, each = 16, 40
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range each {
+				if w%2 == 0 {
+					db.Exec(`INSERT INTO t VALUES (side())`)
+					continue
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(i%5)*time.Millisecond)
+				db.ExecContext(ctx, `INSERT INTO t SELECT count(*) FROM (WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM r LIMIT 20000) SELECT x FROM r)`)
+				cancel()
+			}
+		}()
+	}
+	wg.Wait()
+	var rows int64
+	if err := db.QueryRow(`SELECT count(*) FROM t WHERE x = 1`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if n := calls.Load(); n != rows {
+		t.Fatalf("side() ran %d times for %d rows", n, rows)
+	}
+}
+
+// A statement SQLite prepares again on a connection that runs a batch, and
+// that is no longer mergeable, must fail before it does anything. Here the
+// refusal falls on a statement R*Tree prepares as it connects again after
+// the schema changed (a trigger on its shadow table writes), and R*Tree
+// with an auxiliary column goes on after its prepare fails: the statement
+// must still not run on the connection of the batch, and the table must
+// still work there.
+func TestMergeRefusedNestedPrepare(t *testing.T) {
+	var calls atomic.Int64
+	path := mPath(t)
+	cn, err := NewConnector("file:"+path+"?_pragma=journal_mode(WAL)", WithFunction("side", 0, func([]driver.Value) (driver.Value, error) {
+		calls.Add(1)
+		return int64(1), nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dc, err := cn.Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := dc.(*conn)
+	t.Cleanup(func() { c.Close() })
+	if err := c.c.Exec(`CREATE VIRTUAL TABLE rt USING rtree(id, x0, x1, +aux); INSERT INTO rt VALUES (1, 0, 1, 'a'); CREATE TABLE t(x); CREATE TABLE log(x)`); err != nil {
+		t.Fatal(err)
+	}
+	q := `INSERT INTO t SELECT side() FROM rt`
+	if back := c.runBatch([]*request{batchReq(q)}); len(back) != 0 || calls.Load() != 1 {
+		t.Fatalf("first run: %d back, %d calls", len(back), calls.Load())
+	}
+
+	other := mOpen(t, "file:"+path)
+	mExec(t, other, `CREATE TRIGGER tr AFTER INSERT ON rt_node BEGIN INSERT INTO log VALUES (1); END`)
+
+	calls.Store(0)
+	a := batchReq(q)
+	back := c.runBatch([]*request{a})
+	if len(back) == 1 && calls.Load() != 0 {
+		t.Fatalf("refused statement ran side() %d times on the connection of the batch: its caller runs it again", calls.Load())
+	}
+	if err := c.c.Exec(`INSERT INTO rt VALUES (2, 0, 1, 'b')`); err != nil {
+		t.Fatalf("rt on the connection of the batch: %v", err)
+	}
+}
+
+// A Go function without Innocuous ends its batch wherever the statement calls
+// it from: a trigger, a CHECK, a generated column, a DEFAULT, an aggregate,
+// a window function. One the statement never calls does not.
+func TestMergeSideEffectsFromAnywhere(t *testing.T) {
+	var calls atomic.Int64
+	side := func([]driver.Value) (driver.Value, error) { calls.Add(1); return int64(1), nil }
+	c := batchConn(t,
+		WithFunction("side", 0, side),
+		WithFunction("dside", 1, side, Deterministic),
+		WithAggregate("aside", 1, func() Aggregate { calls.Add(1); return &effectsAgg{} }),
+		WithWindow("wside", 1, func() Window { calls.Add(1); return &effectsAgg{} }),
+	)
+	if err := c.c.Exec(`CREATE TABLE t(x);
+		CREATE TABLE tr_t(x);
+		CREATE TRIGGER tr AFTER INSERT ON tr_t BEGIN SELECT side(); END;
+		CREATE TABLE ck(x CHECK (dside(x) = 1));
+		CREATE TABLE gc(x, y AS (dside(x)) STORED);
+		CREATE TABLE df(x, y DEFAULT (dside(1)));
+		CREATE TABLE u(x)`); err != nil {
+		t.Fatal(err)
+	}
+	long := `INSERT INTO t SELECT count(*) FROM (WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM r) SELECT x FROM r)`
+	for _, tc := range []struct {
+		q     string
+		calls int64
+	}{
+		{`INSERT INTO tr_t VALUES (1)`, 1},
+		{`INSERT INTO ck VALUES (1)`, 1},
+		{`INSERT INTO gc(x) VALUES (1)`, 1},
+		{`INSERT INTO df(x) VALUES (1)`, 1},
+		{`INSERT INTO u SELECT aside(1)`, 1},
+		{`INSERT INTO u SELECT wside(1) OVER () FROM (SELECT 1 UNION ALL SELECT 2)`, 1},
+		{`INSERT INTO u SELECT aside(x) FROM t WHERE 0 GROUP BY x`, 0}, // no group
+		{`INSERT INTO u SELECT 1 WHERE 0 AND side()`, 0},               // never called
+	} {
+		calls.Store(0)
+		a, b := batchReq(tc.q), batchReq(long)
+		ctx, cancel := context.WithCancel(context.Background())
+		b.ctx = ctx
+		time.AfterFunc(50*time.Millisecond, cancel)
+		back := c.runBatch([]*request{a, b})
+		cancel()
+		if a.err != nil {
+			t.Fatalf("%s: %v", tc.q, a.err)
+		}
+		if n := calls.Load(); n != tc.calls {
+			t.Errorf("%s: Go code ran %d times, want %d", tc.q, n, tc.calls)
+		}
+		if want := int(tc.calls); len(back) != want {
+			t.Errorf("%s: %d statements left for the next batch, want %d", tc.q, len(back), want)
+		}
+	}
+}
+
+type effectsAgg struct{}
+
+func (effectsAgg) Step([]driver.Value) error    { return nil }
+func (effectsAgg) Final() (driver.Value, error) { return int64(1), nil }
+func (effectsAgg) Value() (driver.Value, error) { return int64(1), nil }
+func (effectsAgg) Inverse([]driver.Value) error { return nil }
