@@ -225,3 +225,55 @@ func buildNative(cc, bin string) error {
 	}
 	return nil
 }
+
+// nativeWork says what each benchmark of a comparison with C does, in
+// words a reader knows, for the tables of the docs: the name of an Engine
+// block of native/engine.sql, or the workload of native/main.go.
+var nativeWork = map[string]struct{ en, zh string }{
+	"Engine/insert": {"Insert 1M rows in one statement", "一条语句插入 100 万行"},
+	"Engine/index":  {"Index 1M texts", "给 100 万个文本建索引"},
+	"Engine/sort":   {"Sort 1M texts", "排序 100 万个文本"},
+	"Engine/group":  {"Average 1M rows in 1000 groups", "100 万行分 1000 组求平均"},
+	"Engine/join":   {"Join 300k rows to a table of 1M on its key", "30 万行按主键连 100 万行的表"},
+	"Engine/cte":    {"Recursive CTE of 2M steps", "递归 CTE 走 200 万步"},
+	"Engine/like":   {"LIKE and string functions on 1M texts", "100 万个文本做 LIKE 和字符串函数"},
+	"Engine/json":   {"Build and read 300k JSON objects", "生成并读取 30 万个 JSON 对象"},
+	"Engine/math":   {"sqrt, sin, log and pow of 1M numbers", "100 万个数算 sqrt、sin、log、pow"},
+	"Engine/fts5":   {"4 FTS5 searches in 200k documents", "20 万篇文档里做 4 次 FTS5 搜索"},
+	"Point":         {"Read one row by key, %s threads", "按主键读一行，%s 个线程"},
+	"PointCached":   {"Read one row by key, whole file in cache, %s threads", "按主键读一行，整个文件在缓存里，%s 个线程"},
+	"PointInsert/r": {"8 readers next to 8 writers: the reads", "8 读 8 写：读"},
+	"PointInsert/w": {"8 readers next to 8 writers: the writes", "8 读 8 写：写"},
+	"InsertFull":    {"Insert one row, `synchronous=FULL`, %s threads", "插入一行，`synchronous=FULL`，%s 个线程"},
+}
+
+// nativeLabel is r in the words of nativeWork.
+func nativeLabel(r Row, l *lang) (string, bool) {
+	key, threads, _ := strings.Cut(r.Bench, "/g=")
+	if strings.HasPrefix(r.Bench, "Engine/") {
+		key, threads = r.Bench, ""
+	} else if key == "PointInsert" {
+		key += "/" + r.Unit[:1]
+	}
+	w, ok := nativeWork[key]
+	if !ok {
+		return "", false
+	}
+	s := w.en
+	if l.zh {
+		s = w.zh
+	}
+	if strings.Contains(s, "%s") {
+		s = fmt.Sprintf(s, threads)
+	}
+	return s, true
+}
+
+// nativeColumns names the columns of a comparison with C by how each one
+// reads, for the tables of the docs.
+var nativeColumns = map[string]struct{ en, zh string }{
+	"c":            {"SQLite in C", "C 版 SQLite"},
+	"liustack-raw": {"this driver, without database/sql", "本驱动，不经 database/sql"},
+	"liustack":     {"this driver, through database/sql", "本驱动，经 database/sql"},
+	"mattn":        {"mattn (cgo), through database/sql", "mattn（cgo），经 database/sql"},
+}

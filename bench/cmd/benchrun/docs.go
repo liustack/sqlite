@@ -24,16 +24,17 @@ type lang struct {
 	zh                                    bool
 	us, bench, time, allocs, rates, mean  string
 	c, raw                                string // the columns of a comparison with SQLite in C
+	work                                  string // the title of its engine table
 	commit, threads, median, load, before string
 }
 
 var (
-	en = &lang{us: "this driver", c: "SQLite in C", raw: "this driver, called directly", bench: "Benchmark", time: "Time per op, lower is better:",
+	en = &lang{us: "this driver", c: "SQLite in C", raw: "this driver, called directly", work: "Time for the whole job, lower is better:", bench: "Benchmark", time: "Time per op, lower is better:",
 		allocs: "Allocations per op, lower is better:", rates: "Rates, higher is better:", mean: "geomean",
 		commit: "Commit", threads: "GOMAXPROCS %s of %s threads",
 		median: "The median of %d runs, ± is its 95%% confidence interval",
 		load:   "Load average (1, 5, 15 minutes) before: %s, after: %s", before: "Load average before: %s"}
-	zh = &lang{zh: true, us: "本驱动", c: "C 版 SQLite", raw: "本驱动，直接调用", bench: "基准", time: "每次操作的耗时，越低越好：",
+	zh = &lang{zh: true, us: "本驱动", c: "C 版 SQLite", raw: "本驱动，直接调用", work: "整项工作的耗时，越低越好：", bench: "基准", time: "每次操作的耗时，越低越好：",
 		allocs: "每次操作的内存分配次数，越低越好：", rates: "速率，越高越好：", mean: "几何平均",
 		commit: "提交", threads: "GOMAXPROCS %s，共 %s 个线程",
 		median: "取 %d 轮的中位数，± 是它的 95%% 置信区间",
@@ -180,6 +181,13 @@ func renderMarker(name string, sets map[string]*Set, l *lang) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("no bench/published/%s.json", name)
 	}
+	if strings.HasPrefix(s.Name, "native-") {
+		for _, r := range s.Rows {
+			if _, ok := nativeLabel(r, l); !ok {
+				return "", fmt.Errorf("%s: no words for %s (%s) in nativeWork", name, r.Bench, r.Unit)
+			}
+		}
+	}
 	return renderSet(s, l), nil
 }
 
@@ -208,11 +216,24 @@ func renderSet(s *Set, l *lang) string {
 		b.WriteString(title + "\n\n")
 		b.WriteString("| " + l.bench)
 		for _, d := range ds {
-			b.WriteString(" | " + driverName(d, l))
+			name := driverName(d, l)
+			if w, ok := nativeColumns[d]; ok && strings.HasPrefix(s.Name, "native-") {
+				name = w.en
+				if l.zh {
+					name = w.zh
+				}
+			}
+			b.WriteString(" | " + name)
 		}
 		b.WriteString(" |\n| :--" + strings.Repeat(" | --:", len(ds)) + " |\n")
 		for _, r := range rows {
-			b.WriteString("| " + r.Bench)
+			name := r.Bench
+			if strings.HasPrefix(s.Name, "native-") {
+				if w, ok := nativeLabel(r, l); ok {
+					name = w
+				}
+			}
+			b.WriteString("| " + name)
 			best := bestOf(r, ds)
 			for _, d := range ds {
 				b.WriteString(" | " + cell(r, d, bold(r, ds, d, best), spread))
@@ -228,7 +249,11 @@ func renderSet(s *Set, l *lang) string {
 		}
 		b.WriteString("\n")
 	}
-	table(l.time, func(u string) bool { return u == "sec/op" }, true)
+	time := l.time
+	if strings.HasPrefix(s.Name, "native-") {
+		time = l.work
+	}
+	table(time, func(u string) bool { return u == "sec/op" }, true)
 	table(l.rates, higher, true)
 	table(l.allocs, func(u string) bool { return u == "allocs/op" }, false)
 	return b.String()
