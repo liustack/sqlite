@@ -11,11 +11,17 @@
 // Then var_samp(x), var_pop(x), stddev_samp(x) and stddev_pop(x), with
 // stddev and variance as other names of the sample ones, as in PostgreSQL.
 // NULLs are skipped. The sample ones give NULL for fewer than 2 values, the
-// population ones for none. A text or a blob is an error, and so is a result
-// that does not fit a float64 (the standard deviation of values whose
-// variance does not fit may). Large values with a small spread keep their
-// digits, integers past 2^53 too, and values near the ends of a float64
-// neither overflow nor underflow on the way.
+// population ones for none. A text or a blob is an error.
+//
+// The result is within a few units in the last place of the exact one
+// (Welford's one-pass method, akin to what PostgreSQL and DuckDB use), not
+// always the nearest float64. Large values with a small spread keep their digits, integers past
+// 2^53 too, and values near the ends of a float64 neither overflow nor
+// underflow on the way. A result whose computed value passes the largest
+// float64 is an error, as in PostgreSQL. The standard deviation of values
+// whose variance does not fit still comes back. Within a few units in the
+// last place of the largest float64, the exact result may come back as the
+// error, and one just past it as the largest float64.
 package stats
 
 import (
