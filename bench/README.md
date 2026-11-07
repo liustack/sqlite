@@ -75,3 +75,34 @@ In `InsertParallel`, `Readers` and `ReadWrite`, `ns/op` is wall time divided by 
 ## Reading the tables
 
 Time per op and allocations per op are lower is better. `MB/s` and `writes/s` are higher is better. Each cell is the median of the rounds, and `±` is its 95% confidence interval (benchstat's), shown from 6 rounds up. The best of a row is in bold when its interval overlaps no other driver's, and allocation counts, which do not vary, when they are the lowest. Use at least 6 rounds on a quiet machine for numbers you publish.
+
+## Against SQLite in C
+
+`benchrun native` times the driver against the same SQLite compiled to a C program, to show what compiling the C to Go assembly costs and what group commit gives:
+
+```sh
+go run ./cmd/benchrun native                     # 6 rounds
+go run ./cmd/benchrun native -count 2 -secs 1    # a quick look
+go run ./cmd/benchrun publish -from results/native-linux-amd64 -name native-linux-amd64
+```
+
+It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another), and a C compiler for cgo to build mattn/go-sqlite3. The C side is `native/c/engine.c` and `native/c/threads.c`, built at `-O2` with `engine/sqlite3.c` and the options of `engine/sqlite.c`, less the two lines that join SQLite to the Go host, so that SQLite uses its own VFS and mutexes. The Go side is `native/main.go`, built once with each driver's tag. Its columns:
+
+| Column | How it reads |
+| --- | --- |
+| SQLite in C | Each thread opens a connection, prepares the query once and runs `bind`, `step`, `reset` |
+| this driver, called directly | Each goroutine takes a `*sql.Conn` and calls the driver's own statement through `Conn.Raw`, prepared once, as the C does |
+| this driver | Each goroutine takes a `*sql.Conn` and calls `QueryRowContext`, as a program would. No `*sql.Stmt`: each query of one takes the mutex of the `*sql.DB` |
+| mattn | The same through database/sql, with mattn/go-sqlite3, which runs SQLite's C through cgo |
+
+Writes go through `db.Exec` on every Go column, so the write rows have no column for the driver called directly. Each round runs every workload in every column, starting with the next column each round, and the engine workloads (C and this driver) must give the same check value, or the run fails.
+
+| Name | One op is |
+| --- | --- |
+| `Engine/<name>` | One block of `native/engine.sql` on `:memory:`, one connection, the median of `-reps` runs |
+| `Point/g=N` | N threads read one row of 100k by a random key, each with a connection of its own. WAL, `synchronous=NORMAL`, SQLite's page cache of 2 MB, smaller than the 11 MB file |
+| `PointCached/g=N` | `Point` with a page cache that holds the whole file (`cache_size=-65536`), so that a read makes no system call |
+| `PointInsert/g=8` | 8 readers as in `Point` and 8 writers that insert one row each time |
+| `InsertFull/g=64` | 64 writers, `synchronous=FULL` |
+
+The threads run `-secs` seconds each time, and the rates count every thread's ops. In C the writes queue on a mutex of the process, which is faster than SQLite's busy handler. A read that does not return its 100 bytes, or a write that fails, fails the run.

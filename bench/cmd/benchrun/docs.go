@@ -23,16 +23,17 @@ import (
 type lang struct {
 	zh                                    bool
 	us, bench, time, allocs, rates, mean  string
+	c, raw                                string // the columns of a comparison with SQLite in C
 	commit, threads, median, load, before string
 }
 
 var (
-	en = &lang{us: "this driver", bench: "Benchmark", time: "Time per op, lower is better:",
+	en = &lang{us: "this driver", c: "SQLite in C", raw: "this driver, called directly", bench: "Benchmark", time: "Time per op, lower is better:",
 		allocs: "Allocations per op, lower is better:", rates: "Rates, higher is better:", mean: "geomean",
 		commit: "Commit", threads: "GOMAXPROCS %s of %s threads",
 		median: "The median of %d runs, ± is its 95%% confidence interval",
 		load:   "Load average (1, 5, 15 minutes) before: %s, after: %s", before: "Load average before: %s"}
-	zh = &lang{zh: true, us: "本驱动", bench: "基准", time: "每次操作的耗时，越低越好：",
+	zh = &lang{zh: true, us: "本驱动", c: "C 版 SQLite", raw: "本驱动，直接调用", bench: "基准", time: "每次操作的耗时，越低越好：",
 		allocs: "每次操作的内存分配次数，越低越好：", rates: "速率，越高越好：", mean: "几何平均",
 		commit: "提交", threads: "GOMAXPROCS %s，共 %s 个线程",
 		median: "取 %d 轮的中位数，± 是它的 95%% 置信区间",
@@ -196,31 +197,39 @@ func renderSet(s *Set, l *lang) string {
 		if len(rows) == 0 {
 			return
 		}
+		// Only the drivers that ran one of these: a comparison with C runs
+		// some benchmarks in more ways than others.
+		var ds []string
+		for _, d := range s.Drivers {
+			if slices.ContainsFunc(rows, func(r Row) bool { return r.Cells[d] != nil }) {
+				ds = append(ds, d)
+			}
+		}
 		b.WriteString(title + "\n\n")
 		b.WriteString("| " + l.bench)
-		for _, d := range s.Drivers {
+		for _, d := range ds {
 			b.WriteString(" | " + driverName(d, l))
 		}
-		b.WriteString(" |\n| :--" + strings.Repeat(" | --:", len(s.Drivers)) + " |\n")
+		b.WriteString(" |\n| :--" + strings.Repeat(" | --:", len(ds)) + " |\n")
 		for _, r := range rows {
 			b.WriteString("| " + r.Bench)
-			best := bestOf(r, s.Drivers)
-			for _, d := range s.Drivers {
-				b.WriteString(" | " + cell(r, d, bold(r, s.Drivers, d, best), spread))
+			best := bestOf(r, ds)
+			for _, d := range ds {
+				b.WriteString(" | " + cell(r, d, bold(r, ds, d, best), spread))
 			}
 			b.WriteString(" |\n")
 		}
 		if keep("sec/op") {
 			b.WriteString("| " + l.mean)
-			for _, d := range s.Drivers {
-				b.WriteString(" | " + geomean(rows, d, s.Drivers))
+			for _, d := range ds {
+				b.WriteString(" | " + geomean(rows, d, ds))
 			}
 			b.WriteString(" |\n")
 		}
 		b.WriteString("\n")
 	}
 	table(l.time, func(u string) bool { return u == "sec/op" }, true)
-	table(l.rates, func(u string) bool { return u == "B/s" || u == "writes/s" }, true)
+	table(l.rates, higher, true)
 	table(l.allocs, func(u string) bool { return u == "allocs/op" }, false)
 	return b.String()
 }
@@ -309,8 +318,13 @@ func findRow(s *Set, bench, unit string) *Row {
 }
 
 func driverName(d string, l *lang) string {
-	if d == "liustack" {
+	switch d {
+	case "liustack":
 		return l.us
+	case "c":
+		return l.c
+	case "liustack-raw":
+		return l.raw
 	}
 	return d
 }
@@ -323,7 +337,7 @@ func metaLine(m Meta, l *lang) string {
 	if g := m.Get("go"); g != "" {
 		parts = append(parts, "Go "+g)
 	}
-	for _, k := range []string{"cpu", "os"} {
+	for _, k := range []string{"cc", "cpu", "os"} {
 		if v := m.Get(k); v != "" {
 			parts = append(parts, v)
 		}
@@ -461,6 +475,9 @@ func value(v float64, unit string) string {
 			return sig3(v/1000) + "k"
 		}
 		return strconv.FormatFloat(math.Round(v), 'f', -1, 64)
+	}
+	if v >= 1e5 {
+		return sig3(v/1000) + "k " + unit
 	}
 	return sig3(v) + " " + unit
 }

@@ -1,0 +1,509 @@
+{
+  "name": "native-linux-amd64",
+  "meta": [
+    {
+      "k": "date",
+      "v": "2026-11-07"
+    },
+    {
+      "k": "commit",
+      "v": "7fac18a"
+    },
+    {
+      "k": "go",
+      "v": "1.27.2"
+    },
+    {
+      "k": "os",
+      "v": "Linux 7.3.0-1003-gcp x86_64"
+    },
+    {
+      "k": "cpu",
+      "v": "AMD EPYC 7B13"
+    },
+    {
+      "k": "threads",
+      "v": "8"
+    },
+    {
+      "k": "gomaxprocs",
+      "v": "8"
+    },
+    {
+      "k": "modules",
+      "v": "github.com/mattn/go-sqlite3 v1.14.52 modernc.org/sqlite v1.61.1 github.com/ncruces/go-sqlite3 v0.36.0"
+    },
+    {
+      "k": "cc",
+      "v": "Ubuntu clang version 22.1.8 (1ubuntu1)"
+    },
+    {
+      "k": "count",
+      "v": "10"
+    },
+    {
+      "k": "reps",
+      "v": "5"
+    },
+    {
+      "k": "secs",
+      "v": "3"
+    },
+    {
+      "k": "drivers",
+      "v": "c,liustack-raw,liustack,mattn"
+    },
+    {
+      "k": "load_before",
+      "v": "1.06 1.19 1.60"
+    },
+    {
+      "k": "load_after",
+      "v": "6.78 5.53 4.63"
+    },
+    {
+      "k": "minutes",
+      "v": "29.4"
+    }
+  ],
+  "drivers": [
+    "c",
+    "liustack-raw",
+    "liustack",
+    "mattn"
+  ],
+  "rows": [
+    {
+      "bench": "Engine/insert",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.435141193,
+          "lo": 0.425340494,
+          "hi": 0.44105154300000005,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.5874761589999999,
+          "lo": 0.585925233,
+          "hi": 0.589766953,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/index",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.36069046800000004,
+          "lo": 0.357949348,
+          "hi": 0.36204013700000004,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.460770157,
+          "lo": 0.46022869200000005,
+          "hi": 0.462234672,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/sort",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 3.4297615635000005,
+          "lo": 3.4038269120000004,
+          "hi": 3.439718458,
+          "n": 10
+        },
+        "liustack": {
+          "median": 4.031326100999999,
+          "lo": 4.021577165,
+          "hi": 4.04251801,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/group",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.28552345700000004,
+          "lo": 0.283886003,
+          "hi": 0.288417672,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.371015717,
+          "lo": 0.36986876700000004,
+          "hi": 0.376982627,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/join",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.06109624600000001,
+          "lo": 0.060927496000000005,
+          "hi": 0.061888396000000005,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.07920099550000001,
+          "lo": 0.07804709500000001,
+          "hi": 0.079695875,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/cte",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.41163520500000006,
+          "lo": 0.406206856,
+          "hi": 0.415582595,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.5106218280000001,
+          "lo": 0.5093278880000001,
+          "hi": 0.5126589890000001,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/like",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.0776167605,
+          "lo": 0.077069735,
+          "hi": 0.07841661600000001,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.108504408,
+          "lo": 0.107774193,
+          "hi": 0.10912933300000001,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/json",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.385818541,
+          "lo": 0.383738466,
+          "hi": 0.389076226,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.570788425,
+          "lo": 0.568124735,
+          "hi": 0.5714565650000001,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/math",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.1505515355,
+          "lo": 0.148599111,
+          "hi": 0.151284261,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.1887789085,
+          "lo": 0.188539379,
+          "hi": 0.19118041800000002,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Engine/fts5",
+      "unit": "sec/op",
+      "cells": {
+        "c": {
+          "median": 0.0026834695,
+          "lo": 0.0026679,
+          "hi": 0.0027459900000000002,
+          "n": 10
+        },
+        "liustack": {
+          "median": 0.0033385095000000005,
+          "lo": 0.00332913,
+          "hi": 0.0033498100000000004,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Point/g=1",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 218432,
+          "lo": 218035,
+          "hi": 219594,
+          "n": 10
+        },
+        "liustack": {
+          "median": 313526.5,
+          "lo": 310284,
+          "hi": 314188,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 405255,
+          "lo": 400150,
+          "hi": 407303,
+          "n": 10
+        },
+        "mattn": {
+          "median": 115205.5,
+          "lo": 114655,
+          "hi": 115366,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Point/g=8",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 1964090,
+          "lo": 1924002,
+          "hi": 2021295,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1145238,
+          "lo": 1080276,
+          "hi": 1152303,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 1689521,
+          "lo": 1672866,
+          "hi": 1708289,
+          "n": 10
+        },
+        "mattn": {
+          "median": 534282.5,
+          "lo": 528512,
+          "hi": 537879,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "Point/g=64",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 1839776,
+          "lo": 1818149,
+          "hi": 1862229,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1124988,
+          "lo": 1105725,
+          "hi": 1136434,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 1650330.5,
+          "lo": 1592963,
+          "hi": 1653130,
+          "n": 10
+        },
+        "mattn": {
+          "median": 541709,
+          "lo": 527981,
+          "hi": 556608,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointCached/g=1",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 278109,
+          "lo": 276160,
+          "hi": 278988,
+          "n": 10
+        },
+        "liustack": {
+          "median": 537147,
+          "lo": 522654,
+          "hi": 540276,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 802048.5,
+          "lo": 776295,
+          "hi": 804669,
+          "n": 10
+        },
+        "mattn": {
+          "median": 133267.5,
+          "lo": 132090,
+          "hi": 134047,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointCached/g=8",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 2651909,
+          "lo": 2571904,
+          "hi": 2774543,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1547163.5,
+          "lo": 1490237,
+          "hi": 1566810,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 2544111,
+          "lo": 2517098,
+          "hi": 2561072,
+          "n": 10
+        },
+        "mattn": {
+          "median": 477154.5,
+          "lo": 471141,
+          "hi": 484493,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointCached/g=64",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 2409552.5,
+          "lo": 2383813,
+          "hi": 2446037,
+          "n": 10
+        },
+        "liustack": {
+          "median": 1421861,
+          "lo": 1338755,
+          "hi": 1451701,
+          "n": 10
+        },
+        "liustack-raw": {
+          "median": 2183473.5,
+          "lo": 1948103,
+          "hi": 2205617,
+          "n": 10
+        },
+        "mattn": {
+          "median": 388129,
+          "lo": 377695,
+          "hi": 400478,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointInsert/g=8",
+      "unit": "reads/s",
+      "cells": {
+        "c": {
+          "median": 1434540,
+          "lo": 1347756,
+          "hi": 1576728,
+          "n": 10
+        },
+        "liustack": {
+          "median": 440640,
+          "lo": 425156,
+          "hi": 452506,
+          "n": 10
+        },
+        "mattn": {
+          "median": 242529.5,
+          "lo": 240117,
+          "hi": 244187,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "PointInsert/g=8",
+      "unit": "writes/s",
+      "cells": {
+        "c": {
+          "median": 6509.5,
+          "lo": 5886,
+          "hi": 7343,
+          "n": 10
+        },
+        "liustack": {
+          "median": 14986,
+          "lo": 11567,
+          "hi": 17218,
+          "n": 10
+        },
+        "mattn": {
+          "median": 9007.5,
+          "lo": 8840,
+          "hi": 9053,
+          "n": 10
+        }
+      }
+    },
+    {
+      "bench": "InsertFull/g=64",
+      "unit": "writes/s",
+      "cells": {
+        "c": {
+          "median": 1307.5,
+          "lo": 1268,
+          "hi": 1359,
+          "n": 10
+        },
+        "liustack": {
+          "median": 69824.5,
+          "lo": 68387,
+          "hi": 70826,
+          "n": 10
+        },
+        "mattn": {
+          "median": 1265,
+          "lo": 1205,
+          "hi": 1338,
+          "n": 10
+        }
+      }
+    }
+  ]
+}
