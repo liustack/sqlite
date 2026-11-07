@@ -19,7 +19,7 @@ import (
 )
 
 // The columns of a comparison with SQLite in C.
-var nativeDrivers = []string{"c", "liustack", "liustack-conn"}
+var nativeDrivers = []string{"c", "liustack-raw", "liustack", "mattn"}
 
 // A nativeCase is one run of native/c/threads.c and of native/main.go.
 type nativeCase struct {
@@ -33,16 +33,18 @@ type nativeCase struct {
 
 var nativeCases = func() []nativeCase {
 	var cs []nativeCase
-	two, three := []string{"c", "liustack"}, nativeDrivers
+	// Writes go through database/sql on every Go column, so they have no
+	// column of the driver called directly.
+	writes := []string{"c", "liustack", "mattn"}
 	for _, n := range []int{1, 8, 64} {
-		cs = append(cs, nativeCase{fmt.Sprintf("Point/g=%d", n), "read", n, "NORMAL", "0", two})
+		cs = append(cs, nativeCase{fmt.Sprintf("Point/g=%d", n), "read", n, "NORMAL", "0", nativeDrivers})
 	}
 	for _, n := range []int{1, 8, 64} {
-		cs = append(cs, nativeCase{fmt.Sprintf("PointCached/g=%d", n), "read", n, "NORMAL", "-65536", three})
+		cs = append(cs, nativeCase{fmt.Sprintf("PointCached/g=%d", n), "read", n, "NORMAL", "-65536", nativeDrivers})
 	}
 	return append(cs,
-		nativeCase{"PointInsert/g=8", "mixed", 8, "NORMAL", "0", two},
-		nativeCase{"InsertFull/g=64", "write", 64, "FULL", "0", two})
+		nativeCase{"PointInsert/g=8", "mixed", 8, "NORMAL", "0", writes},
+		nativeCase{"InsertFull/g=64", "write", 64, "FULL", "0", writes})
 }()
 
 func cmdNative(args []string) error {
@@ -115,11 +117,11 @@ func cmdNative(args []string) error {
 				a := []string{c.mode, fmt.Sprint(c.n), fmt.Sprint(*secs), c.sync, c.cache}
 				prog := filepath.Join(bin, "c-threads")
 				if d != "c" {
-					conn := "0"
-					if d == "liustack-conn" {
-						conn = "1"
+					build, raw := strings.TrimSuffix(d, "-raw"), "0"
+					if build != d {
+						raw = "1"
 					}
-					prog, a = filepath.Join(bin, "liustack"), append(append([]string{"threads"}, a...), conn)
+					prog, a = filepath.Join(bin, build), append(append([]string{"threads"}, a...), raw)
 				}
 				a = append(a, filepath.Join(dbs, d+".db"))
 				var buf bytes.Buffer
@@ -172,7 +174,7 @@ func cmdNative(args []string) error {
 
 // buildNative builds bin/c-engine and bin/c-threads from native/c/engine.c and
 // threads.c with the SQLite of engine/ and the options of engine/sqlite.c,
-// and bin/liustack from native/main.go.
+// and bin/liustack and bin/mattn from native/main.go with the tag of each.
 func buildNative(cc, bin string) error {
 	src, err := os.ReadFile("../engine/sqlite.c")
 	if err != nil {
@@ -210,12 +212,16 @@ func buildNative(cc, bin string) error {
 			return fmt.Errorf("build %s: %w", p.src, err)
 		}
 	}
-	logf("build liustack")
-	cmd := exec.Command("go", "build", "-o", filepath.Join(bin, "liustack"), "./native")
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("build liustack: %w", err)
+	for _, d := range []struct {
+		tag, cgo string
+	}{{"liustack", "0"}, {"mattn", "1"}} {
+		logf("build %s", d.tag)
+		cmd := exec.Command("go", "build", "-tags", d.tag, "-o", filepath.Join(bin, d.tag), "./native")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED="+d.cgo)
+		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("build %s: %w", d.tag, err)
+		}
 	}
 	return nil
 }

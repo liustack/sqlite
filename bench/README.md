@@ -86,13 +86,22 @@ go run ./cmd/benchrun native -count 2 -secs 1    # a quick look
 go run ./cmd/benchrun publish -from results/native-linux-amd64 -name native-linux-amd64
 ```
 
-It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another). The C side is `native/c/engine.c` and `native/c/threads.c`, built at `-O2` with `engine/sqlite3.c` and the options of `engine/sqlite.c`, less the two lines that join SQLite to the Go host, so that SQLite uses its own VFS and mutexes. The driver's side is `native/main.go`, through `database/sql`. Each round runs every workload on both sides, starting with the next side each round, and the engine workloads must give the same check value on both, or the run fails.
+It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another), and a C compiler for cgo to build mattn/go-sqlite3. The C side is `native/c/engine.c` and `native/c/threads.c`, built at `-O2` with `engine/sqlite3.c` and the options of `engine/sqlite.c`, less the two lines that join SQLite to the Go host, so that SQLite uses its own VFS and mutexes. The Go side is `native/main.go`, built once with each driver's tag. Its columns:
+
+| Column | How it reads |
+| --- | --- |
+| SQLite in C | Each thread opens a connection, prepares the query once and runs `bind`, `step`, `reset` |
+| this driver, called directly | Each goroutine takes a `*sql.Conn` and calls the driver's own statement through `Conn.Raw`, prepared once, as the C does |
+| this driver | Each goroutine takes a `*sql.Conn` and calls `QueryRowContext`, as a program would. No `*sql.Stmt`: each query of one takes the mutex of the `*sql.DB` |
+| mattn | The same through database/sql, with mattn/go-sqlite3, which runs SQLite's C through cgo |
+
+Writes go through `db.Exec` on every Go column, so the write rows have no column for the driver called directly. Each round runs every workload in every column, starting with the next column each round, and the engine workloads (C and this driver) must give the same check value, or the run fails.
 
 | Name | One op is |
 | --- | --- |
 | `Engine/<name>` | One block of `native/engine.sql` on `:memory:`, one connection, the median of `-reps` runs |
-| `Point/g=N` | N threads read one row of 100k by a random key, each with a connection of its own (C) or from one `*sql.DB` (the driver). WAL, `synchronous=NORMAL`, SQLite's page cache of 2 MB, smaller than the 11 MB file |
-| `PointCached/g=N` | `Point` with a page cache that holds the whole file (`cache_size=-65536`), so that a read makes no system call. The third column gives each goroutine a `*sql.Conn` of its own |
+| `Point/g=N` | N threads read one row of 100k by a random key, each with a connection of its own. WAL, `synchronous=NORMAL`, SQLite's page cache of 2 MB, smaller than the 11 MB file |
+| `PointCached/g=N` | `Point` with a page cache that holds the whole file (`cache_size=-65536`), so that a read makes no system call |
 | `PointInsert/g=8` | 8 readers as in `Point` and 8 writers that insert one row each time |
 | `InsertFull/g=64` | 64 writers, `synchronous=FULL` |
 

@@ -3,20 +3,26 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-// Command native is the driver's side of the comparison with SQLite in C
-// (benchrun native). It does through database/sql what c/engine.c and
-// c/threads.c do through the C API, and prints the same lines:
+// Command native is the Go side of the comparison with SQLite in C
+// (benchrun native), built with the tag of a driver of bench (liustack or
+// mattn). It does what c/engine.c and c/threads.c do through the C API, and
+// prints the same lines:
 //
 //	native engine FILE REPS
-//	native threads MODE N SECS SYNC CACHE CONN PATH
+//	native threads MODE N SECS SYNC CACHE RAW PATH
 //
-// CONN 1 gives each reader a *sql.Conn of its own, 0 has them share the
-// *sql.DB.
+// Each reader has a connection of its own, as each thread of c/threads.c
+// does. RAW 1 has it call the driver itself, as the C calls SQLite: it
+// prepares the query once and runs it again and again. RAW 0 has it go
+// through database/sql as a program would: a *sql.Conn of its own and
+// QueryRowContext, with no *sql.Stmt, whose every query takes the mutex of
+// the *sql.DB.
 package main
 
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -27,7 +33,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	_ "github.com/liustack/sqlite"
+	"github.com/liustack/sqlite/bench"
 )
 
 func main() {
@@ -38,7 +44,7 @@ func main() {
 	case len(os.Args) == 9 && os.Args[1] == "threads":
 		err = threads(os.Args[2:])
 	default:
-		fmt.Fprintln(os.Stderr, "usage: native engine FILE REPS | native threads MODE N SECS SYNC CACHE CONN PATH")
+		fmt.Fprintln(os.Stderr, "usage: native engine FILE REPS | native threads MODE N SECS SYNC CACHE RAW PATH")
 		os.Exit(2)
 	}
 	if err != nil {
@@ -66,7 +72,7 @@ func engine(file, repsArg string) error {
 			return fmt.Errorf("%s: want @@run and @@check", name)
 		}
 		if err := func() error {
-			db, err := sql.Open("sqlite", ":memory:")
+			db, err := sql.Open(bench.DriverName, ":memory:")
 			if err != nil {
 				return err
 			}
@@ -108,7 +114,7 @@ func threads(a []string) error {
 	if err1 != nil || err2 != nil || n < 1 || secs < 1 || (a[5] != "0" && a[5] != "1") {
 		return fmt.Errorf("bad arguments %q", a)
 	}
-	pin := a[5] == "1"
+	raw := a[5] == "1"
 	nr, nw := n, n
 	switch mode {
 	case "read":
@@ -124,11 +130,7 @@ func threads(a []string) error {
 			return err
 		}
 	}
-	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(" + syncMode + ")&_pragma=busy_timeout(5000)"
-	if cache != "0" {
-		dsn += "&_pragma=cache_size(" + cache + ")"
-	}
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open(bench.DriverName, bench.DSN(path, syncMode))
 	if err != nil {
 		return err
 	}
@@ -137,14 +139,8 @@ func threads(a []string) error {
 		WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM r WHERE i < 100000) INSERT INTO t SELECT i, printf('%.100c', 'v') FROM r`); err != nil {
 		return err
 	}
-	db.SetMaxOpenConns(nr + nw)
-	db.SetMaxIdleConns(nr + nw)
-	const query = `SELECT v FROM t WHERE id = ?`
-	shared, err := db.Prepare(query)
-	if err != nil {
-		return err
-	}
-	defer shared.Close()
+	db.SetMaxOpenConns(nr + nw + 1)
+	db.SetMaxIdleConns(nr + nw + 1)
 	ctx := context.Background()
 	payload := strings.Repeat("x", 100)
 	var stop atomic.Bool
@@ -154,27 +150,19 @@ func threads(a []string) error {
 	for i := range nr {
 		ready.Add(1)
 		wg.Go(func() {
-			q := shared
-			if pin {
-				c, err := db.Conn(ctx)
-				if err == nil {
-					defer c.Close()
-					q, err = c.PrepareContext(ctx, query)
-				}
-				if err != nil {
-					errs.Add(1)
-					ready.Done()
-					return
-				}
-				defer q.Close()
-			}
+			read, done, err := reader(ctx, db, cache, raw)
 			ready.Done()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "native: reader:", err)
+				errs.Add(1)
+				return
+			}
+			defer done()
 			<-start
 			r := rand.New(rand.NewPCG(uint64(i), 1))
-			var v []byte
 			var k int64
 			for !stop.Load() {
-				if err := q.QueryRow(r.Int64N(100000) + 1).Scan(&v); err != nil || len(v) != 100 {
+				if read(r.Int64N(100000)+1) != 100 {
 					errs.Add(1)
 					continue
 				}
@@ -207,4 +195,67 @@ func threads(a []string) error {
 	fmt.Printf("reads/s %.0f writes/s %.0f errors %d\n",
 		float64(reads.Load())/float64(secs), float64(writes.Load())/float64(secs), errs.Load())
 	return nil
+}
+
+const query = `SELECT v FROM t WHERE id = ?`
+
+// reader gives a connection of its own to a reader, with cache_size set as
+// c/threads.c sets it, and read, which reads the row id and says the length
+// of its value (-1 for an error). done gives the connection back.
+func reader(ctx context.Context, db *sql.DB, cache string, raw bool) (read func(id int64) int, done func(), err error) {
+	c, err := db.Conn(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cache != "0" {
+		if _, err := c.ExecContext(ctx, "PRAGMA cache_size="+cache); err != nil {
+			c.Close()
+			return nil, nil, err
+		}
+	}
+	if !raw {
+		var v []byte
+		return func(id int64) int {
+			if err := c.QueryRowContext(ctx, query, id).Scan(&v); err != nil {
+				return -1
+			}
+			return len(v)
+		}, func() { c.Close() }, nil
+	}
+	// The driver's own statement, prepared once, as c/threads.c prepares its
+	// sqlite3_stmt: database/sql only lends the connection.
+	var s driver.Stmt
+	err = c.Raw(func(dc any) error {
+		var err error
+		s, err = dc.(driver.ConnPrepareContext).PrepareContext(ctx, query)
+		return err
+	})
+	if err != nil {
+		c.Close()
+		return nil, nil, err
+	}
+	q := s.(driver.StmtQueryContext)
+	args := []driver.NamedValue{{Ordinal: 1}}
+	dest := make([]driver.Value, 1)
+	return func(id int64) int {
+			args[0].Value = id
+			rows, err := q.QueryContext(ctx, args)
+			if err != nil {
+				return -1
+			}
+			n := -1
+			if rows.Next(dest) == nil {
+				switch v := dest[0].(type) {
+				case string:
+					n = len(v)
+				case []byte:
+					n = len(v)
+				}
+			}
+			rows.Close()
+			return n
+		}, func() {
+			s.Close()
+			c.Close()
+		}, nil
 }

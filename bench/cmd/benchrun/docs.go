@@ -23,17 +23,17 @@ import (
 type lang struct {
 	zh                                    bool
 	us, bench, time, allocs, rates, mean  string
-	c, conn                               string // the columns of a comparison with SQLite in C
+	c, raw                                string // the columns of a comparison with SQLite in C
 	commit, threads, median, load, before string
 }
 
 var (
-	en = &lang{us: "this driver", c: "SQLite in C", conn: "this driver, a `*sql.Conn` each", bench: "Benchmark", time: "Time per op, lower is better:",
+	en = &lang{us: "this driver", c: "SQLite in C", raw: "this driver, called directly", bench: "Benchmark", time: "Time per op, lower is better:",
 		allocs: "Allocations per op, lower is better:", rates: "Rates, higher is better:", mean: "geomean",
 		commit: "Commit", threads: "GOMAXPROCS %s of %s threads",
 		median: "The median of %d runs, ± is its 95%% confidence interval",
 		load:   "Load average (1, 5, 15 minutes) before: %s, after: %s", before: "Load average before: %s"}
-	zh = &lang{zh: true, us: "本驱动", c: "C 版 SQLite", conn: "本驱动，每个一条 `*sql.Conn`", bench: "基准", time: "每次操作的耗时，越低越好：",
+	zh = &lang{zh: true, us: "本驱动", c: "C 版 SQLite", raw: "本驱动，直接调用", bench: "基准", time: "每次操作的耗时，越低越好：",
 		allocs: "每次操作的内存分配次数，越低越好：", rates: "速率，越高越好：", mean: "几何平均",
 		commit: "提交", threads: "GOMAXPROCS %s，共 %s 个线程",
 		median: "取 %d 轮的中位数，± 是它的 95%% 置信区间",
@@ -323,8 +323,8 @@ func driverName(d string, l *lang) string {
 		return l.us
 	case "c":
 		return l.c
-	case "liustack-conn":
-		return l.conn
+	case "liustack-raw":
+		return l.raw
 	}
 	return d
 }
