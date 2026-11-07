@@ -1,4 +1,4 @@
-<h1 align="center">sqlite</h1>
+<h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>The fastest cgo-free SQLite driver for Go's <code>database/sql</code>.<br>It builds with <code>CGO_ENABLED=0</code>, and on most workloads it beats the cgo driver too.</b></p>
 
@@ -152,3 +152,5 @@ To D. Richard Hipp and the SQLite developers for SQLite, and to musl for the str
 ## License
 
 MIT for the code of this repository. SQLite is in the public domain, and musl's code keeps its MIT license. [NOTICE.md](NOTICE.md) says which license covers which path.
+
+SQLite is a registered trademark of Hipp, Wyrick & Company, Inc., and this project is not affiliated with it. The gopher in the banner is a redrawn [Go gopher](https://go.dev/blog/gopher), originally designed by Renee French and used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

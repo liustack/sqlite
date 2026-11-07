@@ -1,0 +1,17 @@
+<!--
+Copyright (c) 2026 The liustack/sqlite Authors.
+SPDX-License-Identifier: MIT
+Use of this source code is governed by the MIT license in LICENSE at the
+root of this repository.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="SQLite">
+  <title>SQLite</title>
+  <g transform="translate(8 -2)">
+    <rect x="22" y="74" width="34" height="10" rx="5" fill="#e8c99b"/>
+    <rect x="10" y="104" width="46" height="10" rx="5" fill="#e8c99b"/>
+    <rect x="28" y="134" width="28" height="10" rx="5" fill="#e8c99b"/>
+    <path d="M70 52v104a52 20 0 0 0 104 0V52z" fill="#00add8"/>
+    <ellipse cx="122" cy="52" rx="52" ry="20" fill="#7fd8ee"/>
+    <path d="M76 92a46 18 0 0 0 92 0M76 126a46 18 0 0 0 92 0" fill="none" stroke="#7fd8ee" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>
