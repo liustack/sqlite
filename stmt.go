@@ -34,10 +34,11 @@ type stmt struct {
 	explain bool
 	// once is a statement of conn.QueryContext: its rows finalize it.
 	once bool
-	// kept is the query a statement of conn.QueryContext is cached for, and
-	// used when it last ran (cache.go).
-	kept string
-	used uint64
+	// kept is the query a statement of conn.QueryContext is cached for, used
+	// when it last ran, and keptAt its Reprepares when it was kept (cache.go).
+	kept   string
+	used   uint64
+	keptAt int
 	// busy says rows of the statement are open.
 	busy bool
 	// cols, decl and isTime describe the columns of its rows. They are read

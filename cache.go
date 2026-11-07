@@ -41,7 +41,7 @@ func (c *conn) queryStmt(query string) (*stmt, error) {
 	if c.queries == nil {
 		c.queries = map[string]*stmt{}
 	}
-	s.once, s.kept, s.used = false, query, c.queryTick
+	s.once, s.kept, s.used, s.keptAt = false, query, c.queryTick, p.Reprepares()
 	c.queries[query] = s
 	return s, nil
 }
@@ -76,9 +76,12 @@ func (c *conn) dropQuery(s *stmt) {
 // keepQuery is what the rows of a kept statement do as they close, after the
 // reset gave err: the statement goes back to the cache with its arguments
 // let go. A statement that failed is finalized instead, so that the next
-// query prepares from nothing.
+// query prepares from nothing, and so is one SQLite prepared again after a
+// change of the schema: what it reads may have changed, and the next query
+// sorts it again (a table may have become a Go table, whose plan is made in
+// Go as SQLite prepares the query).
 func (c *conn) keepQuery(s *stmt, err error) error {
-	if err == nil {
+	if err == nil && s.s.Reprepares() == s.keptAt {
 		err = s.s.ClearBindings()
 		if err == nil {
 			return nil
