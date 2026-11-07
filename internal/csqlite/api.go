@@ -371,6 +371,14 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 		return nil, tail, nil
 	}
 	writes := int32(sqlite3_stmt_readonly(a.top, p)) == 0
+	if int32(sqlite3_stmt_isexplain(a.top, p)) != 0 {
+		// EXPLAIN lists the program of the statement and runs none of it.
+		// goClassify saw the INSERT of an EXPLAIN INSERT, and SQLite counts
+		// it as a write, but it writes nothing: it neither merges nor takes
+		// the write lock.
+		kind &^= writesMain
+		writes = false
+	}
 	return &Stmt{c: c, p: p, kind: kind, writes: writes}, tail, nil
 }
 
@@ -572,8 +580,9 @@ func (s *Stmt) Step() (bool, error) {
 	}
 }
 
-// ReadOnly says whether the statement writes nothing.
-func (s *Stmt) ReadOnly() bool { return int32(sqlite3_stmt_readonly(s.c.sp, s.p)) != 0 }
+// ReadOnly says whether the statement writes nothing: SQLite counts it as
+// read-only, or it is an EXPLAIN.
+func (s *Stmt) ReadOnly() bool { return !s.writes }
 
 // ParamCount is the number of the largest parameter.
 func (s *Stmt) ParamCount() int { return int(int32(sqlite3_bind_parameter_count(s.c.sp, s.p))) }
