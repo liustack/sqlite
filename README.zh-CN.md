@@ -1,4 +1,4 @@
-<h1 align="center">sqlite</h1>
+<h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>最快的 cgo-free SQLite 驱动，给 Go 的 <code>database/sql</code> 用。<br><code>CGO_ENABLED=0</code> 就能构建，大多数场景下连 cgo 驱动也跑不过它。</b></p>
 
@@ -152,3 +152,5 @@ liustack/sqlite 不接受 pull request。这里改一处，可能从 SQLite 的 
 ## 许可
 
 本仓库的代码用 MIT 许可。SQLite 属于公有领域，musl 的代码保留它的 MIT 许可。哪个路径归哪个许可，见 [NOTICE.md](NOTICE.md)。
+
+SQLite 是 Hipp, Wyrick & Company, Inc. 的注册商标，本项目与其没有关联。横幅里的地鼠是重新绘制的 [Go gopher](https://go.dev/blog/gopher)，原作者 Renee French，按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 授权使用。
