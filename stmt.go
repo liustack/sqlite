@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -391,7 +392,9 @@ var (
 	_ driver.RowsColumnTypeDatabaseTypeName = (*rows)(nil)
 )
 
-func (r *rows) Columns() []string { return r.s.cols }
+// Columns gives a copy: database/sql hands the slice to its caller, and the
+// statement keeps its own for its next rows.
+func (r *rows) Columns() []string { return slices.Clone(r.s.cols) }
 
 func (r *rows) ColumnTypeDatabaseTypeName(i int) string { return r.s.decl[i] }
 
