@@ -335,3 +335,41 @@ func TestNeighbors(t *testing.T) {
 		}
 	}
 }
+
+// TestOverflowEdge: within a few units in the last place of the largest
+// float64, a result may be the overflow error or the largest float64, as
+// the package says. Elsewhere it is within that distance of the exact one.
+func TestOverflowEdge(t *testing.T) {
+	db := sqltest.Open(t, stats.Option())
+	const edge = math.MaxFloat64 * (1 - 1e-15)
+	M := math.MaxFloat64
+	a := math.Sqrt(math.MaxFloat64)
+	var alt []any
+	for range 17 {
+		alt = append(alt, a, -a)
+	}
+	for _, c := range []struct {
+		fn   string
+		vals []any
+	}{
+		{"stddev_pop", []any{M, -M, -M, -M, -M, -M, -M, M, M, M, -M, M, M, M}},
+		{"var_pop", alt},
+		{"var_pop", []any{0x1.fffffffffffffp511, -0x1p512}},
+		{"var_samp", []any{0x1.6a09e667f3bbep511, -0x1.6a09e667f3bdbp511}},
+		{"stddev_samp", []any{0x1.6a09e667f3bbep1023, -0x1.6a09e667f3bdbp1023}},
+	} {
+		k := map[string]int{"var_pop": 0, "stddev_pop": 1, "var_samp": 2, "stddev_samp": 3}[c.fn]
+		w := exactMoments(c.vals)[k]
+		q := `SELECT ` + c.fn + `(column1) FROM (VALUES (?)` + strings.Repeat(`, (?)`, len(c.vals)-1) + `)`
+		var got float64
+		err := db.QueryRow(q, c.vals...).Scan(&got)
+		switch {
+		case w < edge && err != nil:
+			t.Errorf("%s of %d values: %v, want %g", c.fn, len(c.vals), err, w)
+		case w < edge && !close(got, w):
+			t.Errorf("%s of %d values = %g, want %g", c.fn, len(c.vals), got, w)
+		case err == nil && got < edge:
+			t.Errorf("%s of %d values = %g, want the error or near %g", c.fn, len(c.vals), got, M)
+		}
+	}
+}
