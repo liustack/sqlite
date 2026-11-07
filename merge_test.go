@@ -1327,3 +1327,55 @@ func TestMergeDiskFull(t *testing.T) {
 	mExec(t, db, `INSERT INTO t VALUES ('after', randomblob(600))`)
 	t.Logf("%d inserts succeeded, %d got SQLITE_FULL, %d merged", len(ok), full, wl.stats.merged.Load()-merged0)
 }
+
+// A statement in the queue gets the lock in its turn, though writers no batch
+// can take keep coming to wait for it: here those of another connector, whose
+// connections never run the queue. Each insert of db ends long before its
+// busy timeout, as the same insert in a transaction does.
+func TestQueuedNotStarved(t *testing.T) {
+	p := mPath(t)
+	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2000)")
+	other := mOpen(t, "file:"+p+"?_pragma=busy_timeout(10000)&_pragma=cache_size(-1000)")
+	other.SetMaxOpenConns(8)
+	mExec(t, db, `CREATE TABLE t(x)`)
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				tx, err := other.Begin()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if _, err := tx.Exec(`INSERT INTO t VALUES (0)`); err != nil {
+					t.Error(err)
+					tx.Rollback()
+					return
+				}
+				time.Sleep(200 * time.Microsecond)
+				if err := tx.Commit(); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+	}
+	defer wg.Wait()
+	defer close(stop)
+	time.Sleep(100 * time.Millisecond)
+	for i := range 10 {
+		start := time.Now()
+		if _, err := db.Exec(`INSERT INTO t VALUES (1)`); err != nil {
+			t.Fatalf("insert %d after %v: %v", i, time.Since(start).Round(time.Millisecond), err)
+		}
+		if d := time.Since(start); d > 500*time.Millisecond {
+			t.Errorf("insert %d waited %v", i, d.Round(time.Millisecond))
+		}
+	}
+}

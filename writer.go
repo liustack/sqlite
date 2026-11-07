@@ -8,6 +8,7 @@
 package sqlite
 
 import (
+	"cmp"
 	"context"
 	"database/sql/driver"
 	"errors"
@@ -41,10 +42,13 @@ import (
 type writeLock struct {
 	mu      sync.Mutex
 	held    bool
-	waiters []chan struct{} // writers that wait for the lock, in order
-	queue   []*request      // statements to merge, in order
-	refs    int             // connections of the file, and 1 while attached
-	file    os.FileInfo     // the file, whatever name it is opened by
+	waiters []waiter   // writers that wait for the lock, in order
+	queue   []*request // statements to merge, in order
+	// seq counts the writers and statements that came to wait, so that the
+	// lock goes to whichever of them came first.
+	seq  uint64
+	refs int         // connections of the file, and 1 while attached
+	file os.FileInfo // the file, whatever name it is opened by
 	// attached says the file is replicated (replhook.Attach). Guarded by
 	// writeLocks.
 	attached bool
@@ -65,8 +69,16 @@ type batchStats struct {
 	commitTime atomic.Int64
 }
 
+// A waiter is a writer that waits for the lock: ch is closed as the lock
+// goes to it. seq is its place in line (writeLock.seq).
+type waiter struct {
+	ch  chan struct{}
+	seq uint64
+}
+
 // A request is one statement of the queue.
 type request struct {
+	seq  uint64 // its place in line (writeLock.seq)
 	ctx  context.Context
 	key  string // the key of the caller's connection
 	sql  string
@@ -167,7 +179,8 @@ func (l *writeLock) acquire(ctx context.Context, timeout time.Duration) error {
 		return errBusy
 	}
 	ch := make(chan struct{})
-	l.waiters = append(l.waiters, ch)
+	l.seq++
+	l.waiters = append(l.waiters, waiter{ch, l.seq})
 	l.mu.Unlock()
 	t := time.NewTimer(timeout)
 	defer t.Stop()
@@ -183,7 +196,7 @@ func (l *writeLock) acquire(ctx context.Context, timeout time.Duration) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for i, w := range l.waiters {
-		if w == ch {
+		if w.ch == ch {
 			l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
 			return err
 		}
@@ -192,9 +205,10 @@ func (l *writeLock) acquire(ctx context.Context, timeout time.Duration) error {
 }
 
 // release gives the lock back from c, nil for the replicator. c first runs
-// one batch of the requests it can run. Then the lock goes to the first writer that waits for
-// it, or else to the first request of the queue, so that neither waits on
-// the other for long.
+// one batch of the requests it can run. Then the lock goes to whichever came
+// first of the first writer that waits for it and the first request of the
+// queue. A request no batch takes, because no connection that runs one can
+// run it, still gets the lock in its turn, however many writers keep coming.
 func (l *writeLock) release(c *conn) {
 	l.mu.Lock()
 	if c != nil && c.canMerge() {
@@ -202,7 +216,7 @@ func (l *writeLock) release(c *conn) {
 			l.mu.Unlock()
 			back := c.runBatch(batch)
 			l.mu.Lock()
-			l.queue = append(back, l.queue...)
+			l.requeue(back)
 		}
 	}
 	if c != nil {
@@ -213,8 +227,8 @@ func (l *writeLock) release(c *conn) {
 		}
 	}
 	switch {
-	case len(l.waiters) > 0:
-		ch := l.waiters[0]
+	case len(l.waiters) > 0 && (len(l.queue) == 0 || l.waiters[0].seq < l.queue[0].seq):
+		ch := l.waiters[0].ch
 		l.waiters = l.waiters[1:]
 		close(ch) // the lock goes to it, still held
 	case len(l.queue) > 0:
@@ -226,6 +240,16 @@ func (l *writeLock) release(c *conn) {
 		l.held = false
 	}
 	l.mu.Unlock()
+}
+
+// requeue puts back requests a batch could not run, in their place in line:
+// the queue stays in the order the requests came. l.mu is held.
+func (l *writeLock) requeue(back []*request) {
+	if len(back) == 0 {
+		return
+	}
+	l.queue = append(back, l.queue...)
+	slices.SortStableFunc(l.queue, func(a, b *request) int { return cmp.Compare(a.seq, b.seq) })
 }
 
 // take moves the requests of the queue that c can run, after batch, into
@@ -282,7 +306,7 @@ func (l *writeLock) lead(c *conn, req *request) bool {
 	}
 	if len(back) > 0 {
 		l.mu.Lock()
-		l.queue = append(back, l.queue...)
+		l.requeue(back)
 		l.mu.Unlock()
 	}
 	return ran
@@ -301,7 +325,8 @@ func (l *writeLock) submit(ctx context.Context, c *conn, s *stmt, args []driver.
 		l.mu.Unlock()
 		return nil, errBusy
 	}
-	req := &request{ctx: ctx, key: c.key, sql: s.sql, args: args, done: make(chan struct{}), lastID: c.c.LastInsertRowID()}
+	l.seq++
+	req := &request{ctx: ctx, key: c.key, sql: s.sql, args: args, done: make(chan struct{}), lastID: c.c.LastInsertRowID(), seq: l.seq}
 	l.queue = append(l.queue, req)
 	l.mu.Unlock()
 	t := time.NewTimer(c.busyTimeout)
