@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,8 +30,15 @@ type stmt struct {
 	// changesConn says the statement changes its connection (a PRAGMA that
 	// sets something, ATTACH, a temporary object).
 	changesConn bool
+	// explain says the statement is an EXPLAIN: see prepareAgain.
+	explain bool
 	// once is a statement of conn.QueryContext: its rows finalize it.
 	once bool
+	// kept is the query a statement of conn.QueryContext is cached for, used
+	// when it last ran, and keptAt its Reprepares when it was kept (cache.go).
+	kept   string
+	used   uint64
+	keptAt int
 	// busy says rows of the statement are open.
 	busy bool
 	// cols, decl and isTime describe the columns of its rows. They are read
@@ -109,6 +117,9 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	if err := c.txEnded(); err != nil {
 		return nil, err
 	}
+	if err := s.prepareAgain(); err != nil {
+		return nil, err
+	}
 	// A connection with a query not done keeps the snapshot it read, which the
 	// connection running a batch would not have.
 	if c.wl != nil && !c.writing && !c.private() && c.c.AutoCommit() && !c.c.InTx() && s.s.Mergeable() {
@@ -123,6 +134,26 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 		c.readBusyTimeout()
 	}
 	return r, err
+}
+
+// prepareAgain prepares an EXPLAIN again before it runs. SQLite runs EXPLAIN
+// without checking the schema, so one prepared before a change of the
+// schema would list the plan of the old schema, and the names of tables it
+// freed.
+func (s *stmt) prepareAgain() error {
+	if !s.explain {
+		return nil
+	}
+	if s.busy {
+		return errors.New("sqlite: the rows of the statement are still open")
+	}
+	p, _, err := s.c.prepareOne(s.sql)
+	if err != nil {
+		return err
+	}
+	s.s.Finalize()
+	s.s, s.cols = p, nil
+	return nil
 }
 
 // readBusyTimeout reads busy_timeout again after a statement that may have
@@ -172,6 +203,9 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, erro
 	}
 	if s.busy {
 		return nil, errors.New("sqlite: the rows of the statement are still open")
+	}
+	if err := s.prepareAgain(); err != nil {
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -363,7 +397,9 @@ var (
 	_ driver.RowsColumnTypeDatabaseTypeName = (*rows)(nil)
 )
 
-func (r *rows) Columns() []string { return r.s.cols }
+// Columns gives a copy: database/sql hands the slice to its caller, and the
+// statement keeps its own for its next rows.
+func (r *rows) Columns() []string { return slices.Clone(r.s.cols) }
 
 func (r *rows) ColumnTypeDatabaseTypeName(i int) string { return r.s.decl[i] }
 
@@ -379,6 +415,10 @@ func (r *rows) Close() error {
 	if r.s.once {
 		if ferr := r.s.Close(); err == nil {
 			err = ferr
+		}
+	} else if r.s.kept != "" {
+		if kerr := r.s.c.keepQuery(r.s, err); err == nil {
+			err = kerr
 		}
 	}
 	if r.done {

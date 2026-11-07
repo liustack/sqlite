@@ -114,3 +114,35 @@ func TestCancel(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func oneConn(t *testing.T) *sql.Conn {
+	t.Helper()
+	db := openDB(t, ":memory:")
+	c, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+func connExec(t *testing.T, c *sql.Conn, q string) {
+	t.Helper()
+	if _, err := c.ExecContext(context.Background(), q); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func drainQuery(c *sql.Conn, q string, args ...any) error {
+	rows, err := c.QueryContext(context.Background(), q, args...)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+	}
+	err = rows.Err()
+	if cerr := rows.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}

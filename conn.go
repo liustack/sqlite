@@ -27,6 +27,8 @@ type conn struct {
 	busyTimeout time.Duration
 	cache       map[string]*stmt // statements of the queue (writer.go)
 	control     map[string]*stmt // BEGIN, SAVEPOINT, COMMIT and the like of a batch (writer.go)
+	queries     map[string]*stmt // statements of QueryContext (cache.go)
+	queryTick   uint64           // counts the calls of queryStmt
 
 	// key is the connector's key: group commit merges only between
 	// connections of one key (writer.go).
@@ -99,18 +101,21 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 }
 
 // prepare prepares the first statement of query. SQLite runs a PRAGMA that
-// sets busy_timeout as it prepares it, so the write lock reads it again then,
-// whether the statement runs, or even prepares without an error, or not.
+// sets something as it prepares it, whether the statement runs, or even
+// prepares without an error, or not. So after a statement that changes the
+// connection, the write lock reads busy_timeout again, and the statements
+// kept for queries go: they were prepared with the settings of before.
 func (c *conn) prepare(query string) (*csqlite.Stmt, string, error) {
 	s, tail, err := c.c.Prepare(query)
 	if c.c.JustChanged() {
 		c.readBusyTimeout()
+		c.dropQueries()
 	}
 	return s, tail, err
 }
 
 func newStmt(c *conn, s *csqlite.Stmt, sql string, once bool) *stmt {
-	return &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), changesConn: s.ChangesConn(), once: once}
+	return &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), changesConn: s.ChangesConn(), explain: s.IsExplain(), once: once}
 }
 
 // private says the connection runs differently from the others of its key,
@@ -129,6 +134,7 @@ func (c *conn) Close() error {
 		c.writing = false
 		c.wl.release(c)
 	}
+	c.dropQueries()
 	for _, s := range c.cache {
 		s.Close()
 	}
@@ -278,7 +284,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 			part[i].Ordinal = i + 1 // its place in this statement
 		}
 		r, err := st.exec(ctx, part)
-		s.Finalize()
+		st.Close() // st.s, which prepareAgain may have replaced
 		if err != nil {
 			return nil, err
 		}
@@ -289,14 +295,17 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 }
 
 func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	s, sql, err := c.prepareOne(query)
+	st, err := c.queryStmt(query)
 	if err != nil {
 		return nil, err
 	}
-	st := newStmt(c, s, sql, true)
 	r, err := st.query(ctx, args)
 	if err != nil {
-		s.Finalize()
+		if st.kept != "" {
+			c.dropQuery(st)
+		} else {
+			st.Close()
+		}
 		return nil, err
 	}
 	return r, nil
