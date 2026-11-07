@@ -90,10 +90,10 @@ It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another
 
 | Column | How it reads |
 | --- | --- |
-| SQLite in C | Each thread opens a connection, prepares the query once and runs `bind`, `step`, `reset` |
-| this driver, without database/sql | Each goroutine takes a `*sql.Conn` and calls the driver's own statement through `Conn.Raw`, prepared once, as the C does |
-| this driver, through database/sql | Each goroutine takes a `*sql.Conn` and calls `QueryRowContext`, as a program would. No `*sql.Stmt`: each query of one takes the mutex of the `*sql.DB` |
-| mattn (cgo), through database/sql | The same, with mattn/go-sqlite3, which runs SQLite's C through cgo |
+| SQLite(C) | Each thread opens a connection, prepares the query once and runs `bind`, `step`, `reset` |
+| liustack/sqlite(direct) | Each goroutine takes a `*sql.Conn` and calls the driver's own statement through `Conn.Raw`, prepared once, as the C does |
+| liustack/sqlite(database/sql) | Each goroutine takes a `*sql.Conn` and calls `QueryRowContext`, as a program would. No `*sql.Stmt`: each query of one takes the mutex of the `*sql.DB` |
+| mattn(database/sql) | The same, with mattn/go-sqlite3, which runs SQLite's C through cgo |
 
 Writers do the same: through database/sql each calls `db.Exec`, and without it each prepares the insert once on a connection of its own. Each round runs every workload in every column, starting with the next column each round, and the engine workloads (C and this driver) must give the same check value, or the run fails.
 

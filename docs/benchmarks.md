@@ -32,7 +32,7 @@ Commit `bc87680`, Go 1.27.2, AMD EPYC 7B13, Linux 7.3.0-1003-gcp x86_64, GOMAXPR
 
 Time per op, lower is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | **18.5 µs** ±2% | 19.5 µs ±3% | 22.9 µs ±4% | 21.0 µs ±4% |
 | InsertTx | **1.30 ms** ±1% | 1.46 ms ±1% | 1.95 ms ±1% | 1.65 ms ±1% |
@@ -61,7 +61,7 @@ Time per op, lower is better:
 
 Rates, higher is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Large/size=50k | 2672 MB/s ±3% | 2775 MB/s ±4% | 2359 MB/s ±1% | 2486 MB/s ±1% |
 | Large/size=200k | 2764 MB/s ±1% | **2955 MB/s** ±3% | 2535 MB/s ±6% | 2562 MB/s ±4% |
@@ -69,7 +69,7 @@ Rates, higher is better:
 
 Allocations per op, lower is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | **5** | 6 | 7 | **5** |
 | InsertTx | 5.50k | 6.51k | 7.50k | **4.76k** |
@@ -106,7 +106,7 @@ Commit `bc87680`, Go 1.27.2, AMD EPYC 7B13, Linux 7.3.0-1003-gcp x86_64, GOMAXPR
 
 Time per op, lower is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | PointParallel | 1.69 µs ±81% | 2.31 µs ±30% | 2.25 µs ±35% | 2.09 µs ±52% |
 | InsertParallel/g=1 | 18.0 µs ±3% | 19.0 µs ±3% | 22.1 µs ±2% | 20.3 µs ±3% |
@@ -123,13 +123,13 @@ Time per op, lower is better:
 
 Rates, higher is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | ReadWrite | 16992 writes/s ±12% | 12806 writes/s ±12% | 7563 writes/s ±22% | **28731 writes/s** ±25% |
 
 Allocations per op, lower is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | PointParallel | **13** | 18 | 30 | 19 |
 | InsertParallel/g=1 | **4** | 5 | 6 | 5 |
@@ -152,7 +152,7 @@ Commit `92ec4bf`, Go 1.27.2, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 
 
 Time per op, lower is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | 6.28 µs ±4% | 5.93 µs ±17% | 7.40 µs ±7% | 6.92 µs ±2% |
 | InsertTx | 479 µs ±22% | 556 µs ±12% | 739 µs ±3% | 570 µs ±8% |
@@ -181,7 +181,7 @@ Time per op, lower is better:
 
 Rates, higher is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Large/size=50k | 6094 MB/s ±8% | 6159 MB/s ±16% | 5562 MB/s ±5% | 5743 MB/s ±9% |
 | Large/size=200k | 5906 MB/s ±6% | 5949 MB/s ±17% | 5365 MB/s ±12% | 5523 MB/s ±4% |
@@ -189,7 +189,7 @@ Rates, higher is better:
 
 Allocations per op, lower is better:
 
-| Benchmark | this driver | mattn | modernc | ncruces |
+| Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
 | Insert | **5** | 6 | 7 | **5** |
 | InsertTx | 5.50k | 6.51k | 7.50k | **4.76k** |
@@ -249,90 +249,90 @@ MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -coun
 
 ## Against SQLite in C
 
-The same SQLite 3.54.1 with the options of `engine/sqlite.c`, built by clang `-O2` into a C program that calls the C API itself. The workloads and the four columns are in [bench/README.md](../bench/README.md#against-sqlite-in-c). In short: C and "this driver, without database/sql" prepare the read once and run it again and again. The two columns "through database/sql" read as a program would, with a `*sql.Conn` for each goroutine and `QueryRowContext`. The jobs inside the engine run on `:memory:` with one connection, and each time is that of the whole job, such as all 1M rows of an insert. The rates use a file in WAL mode with 100k rows, and count the operations of all threads together.
+The same SQLite 3.54.1 with the options of `engine/sqlite.c`, built by clang `-O2` into a C program that calls the C API itself. The workloads and the four columns are in [bench/README.md](../bench/README.md#against-sqlite-in-c). In short: SQLite(C) and liustack/sqlite(direct) prepare each statement once and run it again and again, calling the C API or the driver itself. The two columns (database/sql) read and write as a program would: a `*sql.Conn` for each reader with `QueryRowContext`, and `db.Exec` for each write. mattn runs SQLite's C through cgo.
 
 ### linux/amd64
 
 <!-- bench:native-linux-amd64 -->
-Commit `7fac18a`, Go 1.27.2, Ubuntu clang version 22.1.8 (1ubuntu1), AMD EPYC 7B13, Linux 7.3.0-1003-gcp x86_64, GOMAXPROCS 8 of 8 threads, 2026-11-07. The median of 10 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.06 1.19 1.60, after: 6.78 5.53 4.63.
+Commit `ea5dd2a`, Go 1.27.2, Ubuntu clang version 22.1.8 (1ubuntu1), AMD EPYC 7B13, Linux 7.3.0-1003-gcp x86_64, GOMAXPROCS 8 of 8 threads, 2026-11-07. The median of 10 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.03 1.20 1.35, after: 5.77 5.23 4.58.
 
-Time for the whole job, lower is better:
+**How fast the engine computes.** The time each job takes on one connection to `:memory:`, lower is better. The last column is how much longer liustack/sqlite takes than C:
 
-| Benchmark | SQLite in C | this driver, through database/sql |
-| :-- | --: | --: |
-| Insert 1M rows in one statement | **435 ms** ±2% | 587 ms ±0% |
-| Index 1M texts | **361 ms** ±1% | 461 ms ±0% |
-| Sort 1M texts | **3.43 s** ±1% | 4.03 s ±0% |
-| Average 1M rows in 1000 groups | **286 ms** ±1% | 371 ms ±2% |
-| Join 300k rows to a table of 1M on its key | **61.1 ms** ±1% | 79.2 ms ±1% |
-| Recursive CTE of 2M steps | **412 ms** ±1% | 511 ms ±0% |
-| LIKE and string functions on 1M texts | **77.6 ms** ±1% | 109 ms ±1% |
-| Build and read 300k JSON objects | **386 ms** ±1% | 571 ms ±0% |
-| sqrt, sin, log and pow of 1M numbers | **151 ms** ±1% | 189 ms ±1% |
-| 4 FTS5 searches in 200k documents | **2.68 ms** ±2% | 3.34 ms ±0% |
-| geomean | 185 ms | 240 ms |
+| Benchmark | SQLite(C) | liustack/sqlite | slower than C |
+| :-- | --: | --: | --: |
+| Insert 1M rows in one statement | **427 ms** ±4% | 588 ms ±0% | +38% |
+| Index 1M texts | **358 ms** ±1% | 461 ms ±1% | +29% |
+| Sort 1M texts | **3.41 s** ±1% | 4.03 s ±1% | +18% |
+| Average 1M rows in 1000 groups | **285 ms** ±0% | 370 ms ±0% | +30% |
+| Join 300k rows to a table of 1M on its key | **61.6 ms** ±2% | 78.6 ms ±5% | +28% |
+| Recursive CTE of 2M steps | **412 ms** ±2% | 516 ms ±1% | +25% |
+| LIKE and string functions on 1M texts | **77.5 ms** ±1% | 109 ms ±1% | +40% |
+| Build and read 300k JSON objects | **383 ms** ±1% | 569 ms ±0% | +48% |
+| sqrt, sin, log and pow of 1M numbers | **151 ms** ±4% | 189 ms ±0% | +25% |
+| 4 FTS5 searches in 200k documents | **2.67 ms** ±0% | 3.34 ms ±0% | +25% |
+| geomean | 184 ms | 240 ms | +30% |
 
-Rates, higher is better:
+**Throughput.** Reads or writes done per second by all threads together, on a file of 100k rows in WAL mode, higher is better:
 
-| Benchmark | SQLite in C | this driver, without database/sql | this driver, through database/sql | mattn (cgo), through database/sql |
+| Benchmark | SQLite(C) | liustack/sqlite(direct) | liustack/sqlite(database/sql) | mattn(database/sql) |
 | :-- | --: | --: | --: | --: |
-| Read one row by key, 1 threads | 218k reads/s ±1% | **405k reads/s** ±1% | 314k reads/s ±1% | 115k reads/s ±0% |
-| Read one row by key, 8 threads | **1964k reads/s** ±3% | 1690k reads/s ±1% | 1145k reads/s ±6% | 534k reads/s ±1% |
-| Read one row by key, 64 threads | **1840k reads/s** ±1% | 1650k reads/s ±3% | 1125k reads/s ±2% | 542k reads/s ±3% |
-| Read one row by key, whole file in cache, 1 threads | 278k reads/s ±1% | **802k reads/s** ±3% | 537k reads/s ±3% | 133k reads/s ±1% |
-| Read one row by key, whole file in cache, 8 threads | **2652k reads/s** ±5% | 2544k reads/s ±1% | 1547k reads/s ±4% | 477k reads/s ±2% |
-| Read one row by key, whole file in cache, 64 threads | **2410k reads/s** ±2% | 2183k reads/s ±11% | 1422k reads/s ±6% | 388k reads/s ±3% |
-| 8 readers next to 8 writers: the reads | **1435k reads/s** ±10% |  | 441k reads/s ±4% | 243k reads/s ±1% |
-| 8 readers next to 8 writers: the writes | 6510 writes/s ±13% |  | **14986 writes/s** ±23% | 9008 writes/s ±2% |
-| Insert one row, `synchronous=FULL`, 64 threads | 1308 writes/s ±4% |  | **69825 writes/s** ±2% | 1265 writes/s ±6% |
+| 1 thread, each reads one row by key | 218k reads/s ±1% | **408k reads/s** ±1% | 314k reads/s ±1% | 116k reads/s ±0% |
+| 8 threads, each reads one row by key | **1933k reads/s** ±4% | 1715k reads/s ±1% | 1161k reads/s ±1% | 546k reads/s ±9% |
+| 64 threads, each reads one row by key | **1841k reads/s** ±8% | 1647k reads/s ±11% | 1127k reads/s ±3% | 551k reads/s ±1% |
+| 1 thread, each reads one row by key, whole file in cache | 276k reads/s ±0% | **810k reads/s** ±1% | 542k reads/s ±2% | 135k reads/s ±1% |
+| 8 threads, each reads one row by key, whole file in cache | 2525k reads/s ±9% | 2555k reads/s ±1% | 1541k reads/s ±1% | 489k reads/s ±2% |
+| 64 threads, each reads one row by key, whole file in cache | **2401k reads/s** ±1% | 2196k reads/s ±1% | 1422k reads/s ±3% | 389k reads/s ±3% |
+| 8 threads read as above while 8 others write | **1492k reads/s** ±8% | 563k reads/s ±1% | 452k reads/s ±4% | 242k reads/s ±2% |
+| 8 threads, each inserts one row, while 8 others read | 6352 writes/s ±13% | 10039 writes/s ±34% | 13468 writes/s ±23% | 9029 writes/s ±1% |
+| 64 threads, each inserts one row, `synchronous=FULL` | 1268 writes/s ±2% | 71316 writes/s ±2% | 70712 writes/s ±2% | 1237 writes/s ±7% |
 
 <!-- /bench:native-linux-amd64 -->
 
 ### darwin/arm64
 
 <!-- bench:native-darwin-arm64 -->
-Commit `7fac18a`, Go 1.27.2, Homebrew clang version 22.1.8, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 threads, 2026-11-07. The median of 10 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 1.75 1.90 2.53, after: 8.17 8.27 6.96. The M4 has 4 performance and 6 efficiency cores, and the rates of 8 and 64 threads change with the cores they get, by up to a third: read those rows on linux.
+Commit `ea5dd2a`, Go 1.27.2, Homebrew clang version 22.1.8, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 threads, 2026-11-07. The median of 10 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 3.38 3.81 3.88, after: 8.80 8.29 7.21. The M4 has 4 performance and 6 efficiency cores, and the rates of 8 and 64 threads change with the cores they get, by up to a third: read those rows on linux.
 
-Time for the whole job, lower is better:
+**How fast the engine computes.** The time each job takes on one connection to `:memory:`, lower is better. The last column is how much longer liustack/sqlite takes than C:
 
-| Benchmark | SQLite in C | this driver, through database/sql |
-| :-- | --: | --: |
-| Insert 1M rows in one statement | **190 ms** ±2% | 264 ms ±3% |
-| Index 1M texts | **202 ms** ±4% | 258 ms ±6% |
-| Sort 1M texts | **1.58 s** ±3% | 1.80 s ±3% |
-| Average 1M rows in 1000 groups | **148 ms** ±3% | 207 ms ±2% |
-| Join 300k rows to a table of 1M on its key | **36.0 ms** ±1% | 48.1 ms ±1% |
-| Recursive CTE of 2M steps | **201 ms** ±2% | 269 ms ±0% |
-| LIKE and string functions on 1M texts | **46.8 ms** ±1% | 54.7 ms ±2% |
-| Build and read 300k JSON objects | **212 ms** ±1% | 257 ms ±0% |
-| sqrt, sin, log and pow of 1M numbers | **67.6 ms** ±1% | 107 ms ±1% |
-| 4 FTS5 searches in 200k documents | **1.26 ms** ±2% | 1.86 ms ±3% |
-| geomean | 94.2 ms | 125 ms |
+| Benchmark | SQLite(C) | liustack/sqlite | slower than C |
+| :-- | --: | --: | --: |
+| Insert 1M rows in one statement | **191 ms** ±4% | 263 ms ±1% | +38% |
+| Index 1M texts | **213 ms** ±8% | 260 ms ±2% | +22% |
+| Sort 1M texts | **1.62 s** ±3% | 1.83 s ±2% | +13% |
+| Average 1M rows in 1000 groups | **147 ms** ±6% | 208 ms ±3% | +41% |
+| Join 300k rows to a table of 1M on its key | **36.0 ms** ±0% | 48.0 ms ±1% | +34% |
+| Recursive CTE of 2M steps | **199 ms** ±1% | 269 ms ±1% | +35% |
+| LIKE and string functions on 1M texts | **46.6 ms** ±2% | 54.7 ms ±1% | +17% |
+| Build and read 300k JSON objects | **211 ms** ±1% | 257 ms ±0% | +22% |
+| sqrt, sin, log and pow of 1M numbers | **67.3 ms** ±1% | 107 ms ±2% | +59% |
+| 4 FTS5 searches in 200k documents | **1.25 ms** ±1% | 1.84 ms ±1% | +47% |
+| geomean | 94.6 ms | 125 ms | +32% |
 
-Rates, higher is better:
+**Throughput.** Reads or writes done per second by all threads together, on a file of 100k rows in WAL mode, higher is better:
 
-| Benchmark | SQLite in C | this driver, without database/sql | this driver, through database/sql | mattn (cgo), through database/sql |
+| Benchmark | SQLite(C) | liustack/sqlite(direct) | liustack/sqlite(database/sql) | mattn(database/sql) |
 | :-- | --: | --: | --: | --: |
-| Read one row by key, 1 threads | 659k reads/s ±2% | **993k reads/s** ±5% | 756k reads/s ±11% | 325k reads/s ±4% |
-| Read one row by key, 8 threads | 897k reads/s ±5% | 1615k reads/s ±10% | 1369k reads/s ±8% | 691k reads/s ±13% |
-| Read one row by key, 64 threads | 792k reads/s ±5% | **1520k reads/s** ±6% | 1295k reads/s ±6% | 612k reads/s ±5% |
-| Read one row by key, whole file in cache, 1 threads | 878k reads/s ±1% | **1837k reads/s** ±3% | 1329k reads/s ±4% | 391k reads/s ±2% |
-| Read one row by key, whole file in cache, 8 threads | 1381k reads/s ±12% | **2805k reads/s** ±12% | 2142k reads/s ±16% | 790k reads/s ±10% |
-| Read one row by key, whole file in cache, 64 threads | 1179k reads/s ±4% | 2243k reads/s ±11% | 1768k reads/s ±13% | 658k reads/s ±14% |
-| 8 readers next to 8 writers: the reads | 516k reads/s ±11% |  | 543k reads/s ±10% | 272k reads/s ±12% |
-| 8 readers next to 8 writers: the writes | 16704 writes/s ±8% |  | **57648 writes/s** ±7% | 16526 writes/s ±8% |
-| Insert one row, `synchronous=FULL`, 64 threads | 28192 writes/s ±17% |  | **526k writes/s** ±23% | 41843 writes/s ±39% |
+| 1 thread, each reads one row by key | 661k reads/s ±5% | **981k reads/s** ±3% | 743k reads/s ±5% | 319k reads/s ±2% |
+| 8 threads, each reads one row by key | 826k reads/s ±16% | 1388k reads/s ±13% | 1157k reads/s ±19% | 546k reads/s ±36% |
+| 64 threads, each reads one row by key | 745k reads/s ±6% | 1213k reads/s ±11% | 1101k reads/s ±14% | 498k reads/s ±19% |
+| 1 thread, each reads one row by key, whole file in cache | 868k reads/s ±4% | **1817k reads/s** ±3% | 1286k reads/s ±3% | 383k reads/s ±3% |
+| 8 threads, each reads one row by key, whole file in cache | 1103k reads/s ±20% | 2353k reads/s ±29% | 1820k reads/s ±32% | 617k reads/s ±30% |
+| 64 threads, each reads one row by key, whole file in cache | 1105k reads/s ±10% | **1862k reads/s** ±10% | 1516k reads/s ±11% | 551k reads/s ±10% |
+| 8 threads read as above while 8 others write | 419k reads/s ±13% | 502k reads/s ±15% | 421k reads/s ±11% | 216k reads/s ±9% |
+| 8 threads, each inserts one row, while 8 others read | 14902 writes/s ±10% | 52404 writes/s ±11% | 48105 writes/s ±8% | 14005 writes/s ±8% |
+| 64 threads, each inserts one row, `synchronous=FULL` | 18040 writes/s ±21% | 521k writes/s ±7% | 433k writes/s ±21% | 40402 writes/s ±18% |
 
 <!-- /bench:native-darwin-arm64 -->
 
 What the tables show:
 
-- **Work inside the engine** takes 1.14 to 1.58 times as long as in C, about 1.3 times in the geometric mean on both machines: the Go assembly the C becomes is close to, but not as good as, what clang makes for the machine. The engine also uses musl's string and math functions, the math ones built without fused multiply-add so that every target gives the same bits, where the C program uses the system's.
-- **One reader** is faster than in C: 1.5 to 2.9 times as fast without database/sql. In C each read takes the WAL read lock with `fcntl` and gives it back with another, unless another connection of the process holds it. This driver keeps the lock about a millisecond after the last reader leaves, so the next read makes no system call (see `internal/vfs`). A system call costs most on the linux VM.
-- **Many readers** on linux are faster in C, whose readers share the lock without system calls too. Without database/sql, this driver reaches 86 to 96% of C. On darwin it stays ahead of C.
-- **Through `database/sql`** a read takes a quarter to a half more time than without it: that is the work of `database/sql` itself, and with 8 readers or more on linux it brings the driver to about 60% of C. mattn pays the same and a cgo call on top. The connection keeps the statement of a read query, so the query is not prepared again each time (see [docs/architecture.md](architecture.md#statements-kept-for-queries)). A `*sql.Stmt` would take the lock of the `*sql.DB` on every query, even one prepared on a `*sql.Conn`, which is why the benchmark uses none.
-- **Readers next to writers** (PointInsert) on linux get 31% of the reads of C, while the driver's writers do 2.3 times as many writes. On darwin the reads are even.
-- **Writes** are where group commit shows: one commit carries many inserts, so the driver writes 2.3 to 3.5 times as fast as C next to readers, and 19 to 53 times as fast with 64 writers and `synchronous=FULL`, where each of C's writers waits for its own fsync.
+- **Work inside the engine** takes 13 to 59% longer than in C, about 30% in the geometric mean on both machines: the Go assembly the C becomes is close to, but not as good as, what clang makes for the machine. The engine also uses musl's string and math functions, the math ones built without fused multiply-add so that every target gives the same bits, where the C program uses the system's.
+- **One reader** is faster than in C: liustack/sqlite(direct) reads 1.5 to 2.9 times as many rows a second. In C each read takes the WAL read lock with `fcntl` and gives it back with another, unless another connection of the process holds it. liustack/sqlite keeps the lock about a millisecond after the last reader leaves, so the next read makes no system call (see `internal/vfs`). A system call costs most on the linux VM.
+- **Many readers** on linux are faster in C, whose readers share the lock without system calls too: liustack/sqlite(direct) reaches 89 to 101% of C. On darwin it stays ahead of C: there C's readers spend about half their time waiting on the pthread mutex that guards the WAL locks of the process, which macOS puts to sleep in the kernel when threads contend for it. liustack/sqlite's locks are Go mutexes.
+- **Through `database/sql`** a read takes 30 to 50% more time than liustack/sqlite(direct): that is the work of `database/sql` itself, and with 8 readers or more on linux it brings liustack/sqlite to about 60% of C. mattn pays the same and a cgo call on top. The connection keeps the statement of a read query, so the query is not prepared again each time (see [docs/architecture.md](architecture.md#statements-kept-for-queries)). A `*sql.Stmt` would take the lock of the `*sql.DB` on every query, even one prepared on a `*sql.Conn`, which is why the benchmark uses none.
+- **Readers next to writers** on linux read 30 to 38% of the rows C reads, while liustack/sqlite's writers insert 1.6 to 2.1 times as many. On darwin the readers read as many as C's, or more.
+- **Writes** are where group commit shows: one commit carries many inserts, so liustack/sqlite inserts 1.6 to 3.5 times as many rows as C next to readers, and 24 to 56 times as many with 64 writers and `synchronous=FULL`, where each of C's writers waits for its own fsync.
 
 ## What the numbers say
 
@@ -343,7 +343,7 @@ What the tables show:
 - **Join and group** (Aggregate), which is all work inside the engine, is 10% (linux) to 18% (darwin) slower than with cgo: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
 - **Large text values** are read 7% slower than with mattn on linux (100 rows of 200 KB in 7.23 ms against 6.77 ms) and faster than with modernc and ncruces. On darwin the four are even.
 - **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`, Go 1.27), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
-- **Against SQLite in C**, work inside the engine takes about 1.3 times as long. One reader is faster than C, as a read makes no system call for its lock. Many readers on linux reach 86 to 96% of C without `database/sql` and about 60% through `database/sql`. Writers go 2 to 53 times as fast with group commit. Readers next to writers on linux get a third of C's reads.
+- **Against SQLite in C**, work inside the engine takes about 30% longer. One reader is faster than C, as a read makes no system call for its lock. Many readers on linux reach about 90% of C calling liustack/sqlite directly and about 60% through `database/sql`. Writers insert 1.6 to 56 times as many rows with group commit. Readers next to writers on linux read a third of what C's do.
 - **Point on linux** includes one `fstat` per query, for every driver: when the WAL is empty, as it is in a fresh copy of the fixture, SQLite reads the size of the database file at the start of each read. A system call costs about 0.8 µs on this VM, which is most of the gap between linux and darwin in that row.
 
 ## Running them again

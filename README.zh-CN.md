@@ -35,7 +35,7 @@
 <!-- bench:readme-linux-amd64 -->
 **linux/amd64**（AMD EPYC 7B13，Go 1.27.2，提交 `bc87680`）：
 
-| 场景 | 本驱动 | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
+| 场景 | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
 | 插入一行 | **18.5 µs** | 19.5 µs | 22.9 µs | 21.0 µs |
 | 一个事务插入 1000 行 | **1.30 ms** | 1.46 ms | 1.95 ms | 1.65 ms |
@@ -53,7 +53,7 @@
 <!-- bench:readme-darwin-arm64 -->
 **darwin/arm64**（Apple M4，Go 1.27.2，提交 `92ec4bf`，测的时候机器上还有别的任务，30% 以内的差别当噪声看）：
 
-| 场景 | 本驱动 | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
+| 场景 | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
 | 插入一行 | 6.28 µs | 5.93 µs | 7.40 µs | 6.92 µs |
 | 一个事务插入 1000 行 | 479 µs | 556 µs | 739 µs | 570 µs |
