@@ -469,6 +469,9 @@ func (s *Stmt) classify() int32 {
 // trigger.
 func (s *Stmt) ChangesConn() bool { return s.kind&changesConn != 0 }
 
+// IsExplain says the statement is an EXPLAIN or EXPLAIN QUERY PLAN.
+func (s *Stmt) IsExplain() bool { return int32(sqlite3_stmt_isexplain(s.c.sp, s.p)) != 0 }
+
 // ChangedItself says a statement that changes the connection was prepared on
 // it, run or not.
 func (c *Conn) ChangedItself() bool { return c.changed }

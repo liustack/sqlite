@@ -110,7 +110,7 @@ func (c *conn) prepare(query string) (*csqlite.Stmt, string, error) {
 }
 
 func newStmt(c *conn, s *csqlite.Stmt, sql string, once bool) *stmt {
-	return &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), changesConn: s.ChangesConn(), once: once}
+	return &stmt{c: c, s: s, sql: sql, nparams: s.ParamCount(), readOnly: s.ReadOnly(), changesConn: s.ChangesConn(), explain: s.IsExplain(), once: once}
 }
 
 // private says the connection runs differently from the others of its key,
@@ -278,7 +278,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 			part[i].Ordinal = i + 1 // its place in this statement
 		}
 		r, err := st.exec(ctx, part)
-		s.Finalize()
+		st.Close() // st.s, which prepareAgain may have replaced
 		if err != nil {
 			return nil, err
 		}
