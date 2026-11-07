@@ -621,7 +621,7 @@ func (c *Capturer) passive() error {
 // busy says whether err is SQLITE_BUSY.
 func busy(err error) bool {
 	var e *csqlite.Error
-	return errors.As(err, &e) && e.Primary() == 5
+	return errors.As(err, &e) && e.Code() == 5
 }
 
 // checkpoint stages the WAL to its end under the driver's write lock of the

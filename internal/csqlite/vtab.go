@@ -145,15 +145,15 @@ func (c *Conn) CreateModule(name string, m Module, flags int) error {
 		return err
 	}
 	if len(name) > maxName {
-		return &Error{Code: 21, Msg: "module name too long"}
+		return &Error{code: 21, msg: "module name too long"}
 	}
 	if flags&ModDirectOnly != 0 && flags&ModInnocuous != 0 {
 		// SQLite keeps one risk level per table: the second would undo the
 		// first.
-		return &Error{Code: 21, Msg: "a module cannot be both DirectOnly and Innocuous"}
+		return &Error{code: 21, msg: "a module cannot be both DirectOnly and Innocuous"}
 	}
 	if flags&ModEponymousOnly != 0 && flags&ModWritable != 0 {
-		return &Error{Code: 21, Msg: "a module cannot be both EponymousOnly and writable"}
+		return &Error{code: 21, msg: "a module cannot be both EponymousOnly and writable"}
 	}
 	h := modules.add(&moduleEntry{m, flags})
 	a := c.args()

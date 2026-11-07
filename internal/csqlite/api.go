@@ -49,21 +49,32 @@ const (
 
 // Error is a result code of SQLite with its message.
 type Error struct {
-	Code int // the extended result code
-	Msg  string
-	err  error // ErrCollationPanic, or nil
+	code int // the extended result code
+	msg  string
+	err  error // what is under it, or nil
 }
 
-func (e *Error) Error() string { return fmt.Sprintf("sqlite: %s (%d)", e.Msg, e.Code) }
+// NewError is an error of the extended result code code with the message
+// msg, and cause under it (nil for none).
+func NewError(code int, msg string, cause error) *Error {
+	return &Error{code: code, msg: msg, err: cause}
+}
 
+func (e *Error) Error() string { return fmt.Sprintf("sqlite: %s (%d)", e.msg, e.code) }
+
+// Unwrap is what is under the error: the error that made it, or nil.
 func (e *Error) Unwrap() error { return e.err }
+
+// Code is the primary result code, as SQLITE_CONSTRAINT.
+func (e *Error) Code() int { return e.code & 0xff }
+
+// ExtendedCode is the extended result code, as SQLITE_CONSTRAINT_UNIQUE. For
+// an error that has no extended code it is the primary code.
+func (e *Error) ExtendedCode() int { return e.code }
 
 // ErrCollationPanic is under the error of a statement in which a Go collation
 // panicked.
 var ErrCollationPanic = errors.New("panic in a Go collation")
-
-// Primary is the primary result code.
-func (e *Error) Primary() int { return e.Code & 0xff }
 
 var initOnce sync.Once
 var initErr error
@@ -77,7 +88,7 @@ func start() error {
 		}
 		defer s.free()
 		if r := int32(go_init(s.sp())); r != OK {
-			initErr = &Error{Code: int(r), Msg: errstr(s.sp(), int(r))}
+			initErr = &Error{code: int(r), msg: errstr(s.sp(), int(r))}
 		}
 	})
 	return initErr
@@ -165,10 +176,10 @@ const maxName = 1 << 16
 // of SQLite could not tell them apart.
 func Open(name string, flags int, vfs string) (*Conn, error) {
 	if flags&OpenFullMutex != 0 {
-		return nil, &Error{Code: 21, Msg: "OpenFullMutex is not supported: a connection is used by one goroutine at a time"}
+		return nil, &Error{code: 21, msg: "OpenFullMutex is not supported: a connection is used by one goroutine at a time"}
 	}
 	if len(name) > maxName || len(vfs) > maxName {
-		return nil, &Error{Code: 18, Msg: "file name too long"}
+		return nil, &Error{code: 18, msg: "file name too long"}
 	}
 	if err := start(); err != nil {
 		return nil, err
@@ -256,15 +267,15 @@ func (c *Conn) err(r int) error {
 			// connection can be trusted any more.
 			poison(c.st.base, "a Go collation panicked and SQLite went on: "+msg)
 		}
-		return &Error{Code: r, Msg: "panic in a Go collation: " + msg, err: ErrCollationPanic}
+		return &Error{code: r, msg: "panic in a Go collation: " + msg, err: ErrCollationPanic}
 	}
 	if r == OK || r == Row || r == Done {
 		return nil
 	}
 	if c.db == 0 {
-		return &Error{Code: r, Msg: errstr(c.sp, r)}
+		return &Error{code: r, msg: errstr(c.sp, r)}
 	}
-	return &Error{Code: r, Msg: cstring(sqlite3_errmsg(c.sp, c.db))}
+	return &Error{code: r, msg: cstring(sqlite3_errmsg(c.sp, c.db))}
 }
 
 // Close closes the connection. Its statements must be finalized first: with
@@ -601,7 +612,7 @@ func (s *Stmt) BindText(i int, v string) error {
 		return err
 	}
 	if len(v) > math.MaxInt32 {
-		return &Error{Code: 18, Msg: "string or blob too big"}
+		return &Error{code: 18, msg: "string or blob too big"}
 	}
 	z, done, err := s.c.stage(unsafe.StringData(v), len(v))
 	if err != nil {
@@ -616,7 +627,7 @@ func (s *Stmt) BindBlob(i int, v []byte) error {
 		return err
 	}
 	if len(v) > math.MaxInt32 {
-		return &Error{Code: 18, Msg: "string or blob too big"}
+		return &Error{code: 18, msg: "string or blob too big"}
 	}
 	if v == nil {
 		v = []byte{}
@@ -653,7 +664,7 @@ func stageAt(sp uintptr, b *byte, n int) (uintptr, func(), error) {
 // shadow stack. It is a variable so that a test can make it fail.
 var stageAlloc = alloc
 
-func errNoMem() error { return &Error{Code: sqliteNoMem, Msg: "out of memory"} }
+func errNoMem() error { return &Error{code: sqliteNoMem, msg: "out of memory"} }
 
 // stageRoom is the shadow stack stage takes for n bytes.
 func stageRoom(n int) uintptr {

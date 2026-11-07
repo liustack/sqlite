@@ -102,7 +102,7 @@ func TestBindAndError(t *testing.T) {
 	s.BindNull(1)
 	_, err = s.Step()
 	var e *Error
-	if !errors.As(err, &e) || e.Primary() != 19 || !strings.Contains(e.Msg, "NOT NULL") {
+	if !errors.As(err, &e) || e.Code() != 19 || !strings.Contains(e.Error(), "NOT NULL") {
 		t.Fatalf("NULL into NOT NULL: %v", err)
 	}
 	s.Reset()

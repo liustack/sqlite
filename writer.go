@@ -163,11 +163,11 @@ func closeWriteLock(l *writeLock) {
 
 // errBusy is what a writer gets when the lock stays taken past the busy
 // timeout, as SQLite would answer.
-var errBusy = &csqlite.Error{Code: 5, Msg: "database is locked"}
+var errBusy = csqlite.NewError(5, "database is locked", nil)
 
 // errForeignKey is what a merged statement that leaves a deferred foreign
 // key unresolved gets: the error its own COMMIT would have given.
-var errForeignKey = &csqlite.Error{Code: 787, Msg: "FOREIGN KEY constraint failed"}
+var errForeignKey = csqlite.NewError(787, "FOREIGN KEY constraint failed", nil)
 
 // acquire takes the lock, waiting up to timeout.
 func (l *writeLock) acquire(ctx context.Context, timeout time.Duration) error {

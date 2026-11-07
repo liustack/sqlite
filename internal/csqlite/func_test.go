@@ -179,7 +179,7 @@ func TestFunctionError(t *testing.T) {
 	}
 	_, err := one(t, c, "SELECT fail()")
 	var e *Error
-	if !errors.As(err, &e) || e.Msg != "no luck" {
+	if !errors.As(err, &e) || !strings.Contains(e.Error(), "no luck") {
 		t.Fatalf("error %v", err)
 	}
 	if v := mustOne(t, c, "SELECT 'still here'"); v != "still here" {

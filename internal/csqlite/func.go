@@ -106,7 +106,7 @@ func (c *Conn) createFunc(name string, nArg, flags int, e funcEntry, create func
 		return err
 	}
 	if len(name) > maxName {
-		return &Error{Code: 21, Msg: "function name too long"}
+		return &Error{code: 21, msg: "function name too long"}
 	}
 	e.effects = flags&FuncInnocuous == 0
 	h := funcs.add(&e)
@@ -123,7 +123,7 @@ func (c *Conn) CreateCollation(name string, cmp func(a, b string) int) error {
 		return err
 	}
 	if len(name) > maxName {
-		return &Error{Code: 21, Msg: "collation name too long"}
+		return &Error{code: 21, msg: "collation name too long"}
 	}
 	h := collations.add(&cmp)
 	a := c.args()
