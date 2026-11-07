@@ -67,7 +67,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 
 ## 查询的语句留着复用
 
-不经过 `*sql.Stmt` 的查询（`Query`、`QueryRow`）会把它编译好的语句留在自己的连接上，每条连接最多 64 条。同一条连接上再来同样的 SQL，就直接再跑这条语句，不再编译（`cache.go`）。语句的结果集还开着时不共用：这时同样的 SQL 另外编译一条。只留只读主库的语句。写语句每次都重新编译：SQLite 编译写语句时会把 `foreign_keys`、`defer_foreign_keys` 这类设置编进去，设置变了也不一定让它重新编译，留着的写语句就可能跳过外键检查。PRAGMA、`ATTACH`、`EXPLAIN`、读其他 schema 的语句也每次重新编译。连接一旦编译了会改变自己的语句（设置某项的 PRAGMA、`ATTACH`、临时对象），不管执行没有，留着的语句全部丢掉。schema 变了以后，SQLite 会自己重新编译留着的语句。
+不经过 `*sql.Stmt` 的查询（`Query`、`QueryRow`）会把它编译好的语句留在自己的连接上，每条连接最多 64 条。同一条连接上再来同样的 SQL，就直接再跑这条语句，不再编译（`cache.go`）。语句的结果集还开着时不共用：这时同样的 SQL 另外编译一条。只留只读主库的语句。写语句每次都重新编译：SQLite 编译写语句时会把 `foreign_keys`、`defer_foreign_keys` 这类设置编进去，设置变了也不一定让它重新编译，留着的写语句就可能跳过外键检查。PRAGMA、`ATTACH`、`EXPLAIN`、读其他 schema 的语句也每次重新编译。连接一旦编译了会改变自己的语句（设置某项的 PRAGMA、`ATTACH`、临时对象），不管执行没有，留着的语句全部丢掉。schema 变了以后，SQLite 会自己重新编译留着的语句。全部规则见 [query-cache.zh-CN.md](query-cache.zh-CN.md)。
 
 很多读者能跑快靠的就是这个。`*sql.Stmt` 每次查询都要拿它所属 `*sql.DB` 的互斥锁，在 `*sql.Conn` 上编译的也一样，读者一多，限住速度的就是这把锁，不是 SQLite。在 `*sql.Conn` 上不用 `Stmt` 查询，不碰读者之间共用的锁，语句又留着，也不用再编译。
 
