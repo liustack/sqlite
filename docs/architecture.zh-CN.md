@@ -153,6 +153,18 @@ sequenceDiagram
 
 **有意不做的。** 客户端加密（`litestream restore` 会读不了副本）。S3 以外的存储。同步复制，即提交要等进了存储才返回：驱动本来就在每个写入方交回写锁时调用复制器，以后可以加，代价按每批合并提交摊一次。把第二台机器挡在外面的围栏：S3 没有这个机制，见 [replication.zh-CN.md](replication.zh-CN.md#一个副本只能有一个复制器)。
 
+## 让引擎更快
+
+引擎比 clang 编出来的同一份 C 慢：在 Apple M4 上，引擎内部的计算要用 1.16 到 1.57 倍的时间（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#和-c-版-sqlite-比)）。其中一部分是这条路线本身的代价。liustack/quickjs 用同样的方式编译它的 C，量过同一份 C、同样的选项下差 11% 到 13%，来自经过 Go 栈的参数和结果、放在影子栈上的取过地址的局部变量，以及每次调用多出来的几条指令。想要赢回一些时，照 quickjs 试过又放弃的那些路得出的规矩做：
+
+- **不用 Go 的私有实现。** 不用 `go:linkname` 接进 runtime，不依赖 Go 怎么用某个寄存器，不依赖 Go 团队可能在某个版本里改掉的东西。否则每个 Go 版本都要重新核对，哪一版都可能让驱动坏掉。
+- **引擎留在 goroutine 的栈上。** 像 cgo、wazero、purego 那样让它跑在自己的栈上，C 里的一次出错就会结束整个进程，而不是让这一次调用 panic。
+- **收益低于噪声的不做。** 一个改动省下的时间，如果比不上代码恰好落在内存哪里造成的波动（2% 到 3%），再干净也不要。
+- **每个平台得到同样的位。** 数学函数继续不用融合乘加，每个平台算出同样的结果。
+- **SQLite 的 C 保持发布时的样子。** 改动放在生成器、`engine/libc` 或 Go host 里。
+
+试一个想法之前，先查 quickjs 试过但没做的清单：[performance.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/performance.zh-CN.md#试过但没做的) 和 [history.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/history.zh-CN.md#在旧引擎上试过但没做的)。
+
 ## 没有走的路
 
 - **cgo**（mattn/go-sqlite3）：每次构建、每个目标平台都要 C 编译器，交叉编译也难。免去这些正是这个项目存在的原因。

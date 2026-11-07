@@ -1,5 +1,5 @@
 ---
-summary: 'How the driver is built: the layers from the SQLite C to database/sql, how the C becomes Go assembly, what the Go host gives SQLite, group commit, how replication follows the database, and the routes that were left out and why'
+summary: 'How the driver is built: the layers from the SQLite C to database/sql, how the C becomes Go assembly, what the Go host gives SQLite, group commit, how replication follows the database, the rules for making the engine faster, and the routes that were left out and why'
 read_when:
   - Starting work in this repository
   - Changing the generator, the C tree or the compile options of SQLite
@@ -161,6 +161,18 @@ The `replica` package copies a database to S3-compatible storage as it changes. 
 **Litestream's format.** The replica is LTX files (github.com/superfly/ltx) in Litestream's layout, so `litestream restore` is a second way back, and the tests check that it gives the same bytes. LTX files carry a checksum of the whole database before and after them, which Litestream leaves off and this replicator turns on: a restore checks the database after every file it applies, not only after the last.
 
 **Left out on purpose.** Client-side encryption (`litestream restore` could not read the replica). Other storage than S3. Synchronous replication, where a commit returns once it is in the store: the driver already calls the replicator each time a writer gives the lock back, so it can come later, paid once per group commit batch. A fence that keeps a second machine out: S3 has none, see [replication.md](replication.md#one-replicator-per-replica).
+
+## Making the engine faster
+
+The engine is slower than the same C built by clang: on an Apple M4, work inside the engine takes 1.16 to 1.57 times as long (see [benchmarks.md](benchmarks.md#against-sqlite-in-c)). Part of it is the price of the route itself. liustack/quickjs, which compiles its C the same way, measured 11 to 13% for the same C with the same options, from arguments and results passed on the Go stack, address-taken locals on the shadow stack, and a few more instructions per call. Work to win some of it back follows what quickjs learned from the many routes it tried and left:
+
+- **Nothing private to Go.** No `go:linkname` into the runtime, no reliance on how Go uses a register, nothing the Go team may change in a release. Each Go version would have to be checked again, and one could break the driver.
+- **The engine stays on the goroutine stack.** Running it on a stack of its own, as cgo, wazero and purego do, would turn a fault in the C into the end of the whole process instead of a panic of one call.
+- **No gain below the noise.** A change that saves less than where the code happens to land in memory moves a run (2 to 3%) is not taken, however clean.
+- **The same bits on every target.** The math functions stay without fused multiply-add, so every platform gives the same result.
+- **SQLite's C stays as released.** Changes go in the generator, `engine/libc` or the Go host.
+
+Before trying an idea, check the lists of what quickjs tried and did not do: [performance.md](https://github.com/liustack/quickjs/blob/main/docs/performance.md#what-was-tried-and-not-done) and [history.md](https://github.com/liustack/quickjs/blob/main/docs/history.md#what-was-tried-and-not-done-on-the-old-engine).
 
 ## Routes left out
 
