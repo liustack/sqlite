@@ -341,6 +341,9 @@ func (f *File) ReadAt(p []byte, off int64) int {
 
 // WriteAt writes p at off. A full disk is SQLITE_FULL.
 func (f *File) WriteAt(p []byte, off int64) int {
+	if rc := f.faultOf(OpWrite); rc != OK {
+		return rc
+	}
 	for len(p) > 0 {
 		n, err := unix.Pwrite(f.fd, p, off)
 		if err == unix.EINTR {
@@ -361,6 +364,9 @@ func (f *File) WriteAt(p []byte, off int64) int {
 // Truncate sets the size of the file, rounded up to whole chunks when
 // SetChunkSize was called.
 func (f *File) Truncate(size int64) int {
+	if rc := f.faultOf(OpTruncate); rc != OK {
+		return rc
+	}
 	if f.chunk > 0 {
 		size = (size + f.chunk - 1) / f.chunk * f.chunk
 	}
@@ -373,6 +379,9 @@ func (f *File) Truncate(size int64) int {
 // Sync writes the file to disk, and the directory entry of a new journal
 // the first time. See fullFsync for what each system does.
 func (f *File) Sync(flags int) int {
+	if rc := f.faultOf(OpSync); rc != OK {
+		return rc
+	}
 	if err := fullFsync(f.fd, flags&0x0F == SyncFull); err != nil {
 		return IOErrFsync
 	}
