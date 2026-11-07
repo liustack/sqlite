@@ -1,6 +1,6 @@
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
-<p align="center"><b>The fastest cgo-free SQLite driver for Go's <code>database/sql</code>.<br>It builds with <code>CGO_ENABLED=0</code>, and on most workloads it beats the cgo driver too.</b></p>
+<p align="center"><b>The fastest cgo-free SQLite driver out there, fully compatible with Go's <code>database/sql</code>.<br>Real-time backup to Cloudflare R2 built in keeps your app stable and reliable on a single VPS.</b></p>
 
 <p align="center">
   English · <a href="README.zh-CN.md">简体中文</a> ·

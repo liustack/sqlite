@@ -1,6 +1,6 @@
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
-<p align="center"><b>最快的 cgo-free SQLite 驱动，给 Go 的 <code>database/sql</code> 用。<br><code>CGO_ENABLED=0</code> 就能构建，大多数场景下连 cgo 驱动也跑不过它。</b></p>
+<p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。</b></p>
 
 <p align="center">
   <a href="README.md">English</a> · 简体中文 ·
