@@ -104,6 +104,10 @@ int go_create_collation(sqlite3 *db, const char *name, long h) {
 typedef struct GoVtab {
   sqlite3_vtab base;
   long h;
+  /* schema and name say where the table is, for goVtabBestIndex. They are
+     kept in the same allocation, after the struct. */
+  const char *schema;
+  const char *name;
 } GoVtab;
 
 typedef struct GoVcursor {
@@ -148,6 +152,7 @@ static int goVtabConnect(sqlite3 *db, void *module, int argc, const char *const 
                          char **pzErr) {
   struct host_vtab_connect_args a;
   GoVtab *t;
+  size_t ns, nn;
   int rc;
   memset(&a, 0, sizeof(a));
   a.db = db;
@@ -161,19 +166,33 @@ static int goVtabConnect(sqlite3 *db, void *module, int argc, const char *const 
   }
   if (a.config & GO_VTAB_DIRECTONLY) sqlite3_vtab_config(db, SQLITE_VTAB_DIRECTONLY);
   if (a.config & GO_VTAB_INNOCUOUS) sqlite3_vtab_config(db, SQLITE_VTAB_INNOCUOUS);
-  t = sqlite3_malloc(sizeof(*t));
+  ns = strlen(argv[1]) + 1;
+  nn = strlen(argv[2]) + 1;
+  t = sqlite3_malloc64(sizeof(*t) + ns + nn);
   if (!t) {
     host_vtab_disconnect(a.table);
     return SQLITE_NOMEM;
   }
   memset(t, 0, sizeof(*t));
   t->h = a.table;
+  t->schema = memcpy((char *)(t + 1), argv[1], ns);
+  t->name = memcpy((char *)(t + 1) + ns, argv[2], nn);
   *pp = &t->base;
   return SQLITE_OK;
 }
 
+/* SQLite asks the authorizer about each column a statement reads, but not
+   about the columns it compares for USING or NATURAL JOIN: a table named
+   only there is read with no call of goClassify. SQLite plans every virtual
+   table a statement reads, also as it prepares the statement again after a
+   change of the schema, so the read is told to the authorizer here, in the
+   Parse of the statement (HiddenIndexInfo, SQLite's own, follows info). When
+   it refuses, the prepare fails and the plan does not matter. */
 static int goVtabBestIndex(sqlite3_vtab *v, sqlite3_index_info *info) {
-  return host_vtab_best_index(v, ((GoVtab *)v)->h, info);
+  GoVtab *t = (GoVtab *)v;
+  Parse *p = ((HiddenIndexInfo *)&info[1])->pParse;
+  if (sqlite3AuthCheck(p, SQLITE_READ, t->name, "", t->schema) != SQLITE_OK) return SQLITE_OK;
+  return host_vtab_best_index(v, t->h, info);
 }
 
 static int goVtabDisconnect(sqlite3_vtab *v) {

@@ -1725,3 +1725,46 @@ func TestCancelBetweenBindAndStep(t *testing.T) {
 		t.Fatalf("Exec wrote %d rows after its context had ended", n)
 	}
 }
+
+// A Go table named only in USING or NATURAL JOIN is read too, though
+// SQLite asks the authorizer about no column of it: a write that reads it
+// never merges, and a query that reads it is not kept.
+func TestGoTableOnlyInJoin(t *testing.T) {
+	c := batchConn(t, withUpto(nil))
+	mustExec(t, c, `CREATE TABLE m(value); CREATE TABLE d(value)`)
+	for _, q := range []string{
+		`INSERT INTO d SELECT value FROM m JOIN upto(3) USING (value)`,
+		`INSERT INTO d SELECT m.value FROM m NATURAL JOIN upto(3)`,
+		`INSERT INTO d SELECT 1 FROM upto(3) JOIN m USING (value)`,
+		`SELECT value FROM m JOIN upto(3) USING (value)`,
+	} {
+		p, _, err := c.c.Prepare(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Mergeable() || !p.Private() {
+			t.Errorf("%s: mergeable %v, private %v", q, p.Mergeable(), p.Private())
+		}
+		p.Finalize()
+	}
+}
+
+// A merged statement that SQLite prepares again after a table of its USING
+// became a Go table is refused, and runs on its caller's connection.
+func TestMergeTableOnlyInJoinBecomesGoTable(t *testing.T) {
+	var connects atomic.Int64
+	c := batchConn(t, withWords(&connects))
+	mustExec(t, c, `CREATE TABLE m(word); CREATE TABLE x(word); CREATE TABLE d(word); INSERT INTO m VALUES ('a'); INSERT INTO x VALUES ('a')`)
+	const q = `INSERT INTO d SELECT word FROM m JOIN x USING (word)`
+	if back := c.runBatch([]*request{batchReq(q)}); len(back) != 0 {
+		t.Fatalf("%d back before the change", len(back))
+	}
+	mustExec(t, c, `DROP TABLE x; CREATE VIRTUAL TABLE x USING words(a)`)
+	r := batchReq(q)
+	if back := c.runBatch([]*request{r}); len(back) != 1 || back[0] != r {
+		t.Fatalf("back %v after x became a Go table, err %v", back, r.err)
+	}
+	if n := batchCount(t, c, `SELECT count(*) FROM d`); n != 1 {
+		t.Fatalf("%d rows in d, want 1: the refused statement ran", n)
+	}
+}
