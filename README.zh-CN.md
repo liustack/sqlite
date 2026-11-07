@@ -1,6 +1,6 @@
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
-<p align="center"><b>最快的 cgo-free SQLite 驱动，给 Go 的 <code>database/sql</code> 用。<br><code>CGO_ENABLED=0</code> 就能构建，大多数场景下连 cgo 驱动也跑不过它。</b></p>
+<p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。</b></p>
 
 <p align="center">
   <a href="README.md">English</a> · 简体中文 ·
@@ -69,6 +69,37 @@
 
 别的驱动还赢的地方：全在 SQLite 内部算的活（连表），本驱动跑的是同一份 C，只是变成了 Go 汇编，还有读大文本。读和多写为什么更快、各驱动的版本、怎么自己再跑一遍，见 [docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md)。
 
+## 实时备份到 S3
+
+打开数据库之前先启动复制器，之后每次提交约一秒就传到 S3、Cloudflare R2 或 MinIO：
+
+```go
+cfg := replica.Config{
+	URL: "s3://my-bucket/app.db?endpoint=https://<account>.r2.cloudflarestorage.com&region=auto",
+}
+r, err := replica.New(ctx, "app.db", cfg)
+if err != nil {
+	return err
+}
+defer r.Close()
+
+db, err := sql.Open("sqlite", "app.db")
+```
+
+换一台机器，一个调用就把数据库恢复回来，可以是最新的样子，也可以是之前某个时间的样子，默认至少能回到一天前：
+
+```go
+txid, err := replica.Restore(ctx, "app.db", cfg, replica.RestoreOptions{})
+```
+
+- **写入从不等上传。** 存储慢了或者连不上，写入不会变慢，也不会失败。改动先存在数据库旁边的磁盘上，存储一恢复就传上去。
+- **不用多部署任何东西。** 它就是你程序里的一个包，部署的还是那一个二进制，旁边不用再跑 Litestream。
+- **恢复时每个文件都核对**，再跑一遍 `PRAGMA integrity_check`，已经在那里的数据库从不被覆盖。
+- **Litestream 也能读同一份副本。** 布局和 Litestream 一样，测试里让 `litestream restore` 在每个恢复点重建一遍，核对逐字节相同。
+- **`r.Sync(ctx)` 会等到已提交的内容进了存储**，给那些必须先存好再往下走的写入用。
+
+怎么配置、副本落后多少、有哪些限制：[复制](docs/replication.zh-CN.md)。
+
 ## 安装
 
 ```sh
@@ -120,7 +151,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 - **多个写入方不再互相等。** 几个 goroutine 同时写时，驱动把它们自动提交的 `INSERT`、`UPDATE`、`DELETE` 放进一个事务，只提交一次。每次调用照样拿到自己的错误、`LastInsertId` 和 `RowsAffected`，并且提交完才返回，持久性一点不打折。你自己开的事务从不合并。[原理](docs/architecture.zh-CN.md#合并提交)
 - **写入方排队，不再动不动报 `database is locked`。** 驱动里同一个文件同一时刻只有你程序的一个连接在写，其余的排队等（最多等 `busy_timeout`），不在 SQLite 的忙等里睡。先读后写的事务，如果中间有别人写过，还是会失败，这种事务用 `_txlock=immediate` 开。别的进程照样遵守 SQLite 自己的锁。
 - **读更省。** 调 SQLite 就是一次普通的 Go 函数调用，在 Go 1.27 上把数字读进你的变量不分配内存（字符串只分配它自己那一次）。
-- **机器丢了，数据库还在。** `replica.New` 在你的程序里把每次提交约一秒后复制到 S3、R2 或 MinIO，不用旁边再跑一个 Litestream 进程。`replica.Restore` 在另一台机器上把它恢复出来，逐个文件核对，`litestream restore` 也能读同一份副本。[怎么用](docs/replication.zh-CN.md)
+- **自带实时备份。** 每次提交约一秒后就到了 S3、R2 或 MinIO，在你的程序里完成。见[实时备份到 S3](#实时备份到-s3)。
 
 ## 凭什么信它
 
