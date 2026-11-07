@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -179,5 +180,98 @@ func TestQueryCacheSkipsWrites(t *testing.T) {
 	queryOne(t, c, `INSERT INTO t VALUES (1) RETURNING a`)
 	if n := len(c.queries); n != 0 {
 		t.Errorf("%d statements cached", n)
+	}
+}
+
+// A read of the temp database or of an attached one is not kept: what such a
+// name means belongs to the connection.
+func TestQueryCacheSkipsOtherSchemas(t *testing.T) {
+	c := memConn(t)
+	mustExec(t, c, `ATTACH ':memory:' AS aux; CREATE TABLE aux.u(x); CREATE TEMP TABLE tt(x); CREATE TABLE m(x)`)
+	for _, q := range []string{`SELECT x FROM aux.u`, `SELECT x FROM tt`, `SELECT x FROM temp.tt`} {
+		queryOne(t, c, q)
+		if c.queries[q] != nil {
+			t.Errorf("%s was kept", q)
+		}
+	}
+	queryOne(t, c, `SELECT x FROM m`)
+	if len(c.queries) != 1 {
+		t.Errorf("%d statements kept, want only the read of main", len(c.queries))
+	}
+}
+
+// A statement that fails is not kept, whether it fails at its first step or
+// after rows, and the next query of the same SQL prepares a new one.
+func TestQueryCacheDropsFailed(t *testing.T) {
+	c := memConn(t)
+	const first = `SELECT abs(?)`
+	if _, err := c.QueryContext(context.Background(), first, []driver.NamedValue{{Ordinal: 1, Value: int64(math.MinInt64)}}); err == nil {
+		t.Fatal("abs of the least int64 gave no error")
+	}
+	if c.queries[first] != nil {
+		t.Error("a statement that failed at its first step was kept")
+	}
+	if got := queryOne(t, c, first, int64(-2)); fmt.Sprint(got) != "[2]" {
+		t.Fatalf("got %v", got)
+	}
+	const later = `SELECT abs(x) FROM (SELECT 1 AS x UNION ALL SELECT ?)`
+	r := openRows(t, c, later, int64(math.MinInt64))
+	dest := make([]driver.Value, 1)
+	if err := r.Next(dest); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Next(dest); err == nil {
+		t.Fatal("abs of the least int64 gave no error")
+	}
+	r.Close()
+	if c.queries[later] != nil {
+		t.Error("a statement that failed after a row was kept")
+	}
+}
+
+// When every statement kept has open rows, a new one is not kept and the
+// open ones stay. Once rows close, their statement is the one let go.
+func TestQueryCacheFullOfOpenRows(t *testing.T) {
+	c := memConn(t)
+	open := make([]*rows, maxQueries)
+	for i := range open {
+		open[i] = openRows(t, c, fmt.Sprintf("SELECT %d UNION ALL SELECT 0", i))
+	}
+	if got := queryOne(t, c, `SELECT 'new'`); fmt.Sprint(got) != "[new]" {
+		t.Fatalf("got %v", got)
+	}
+	if c.queries[`SELECT 'new'`] != nil || len(c.queries) != maxQueries {
+		t.Fatalf("a statement was kept with every one in use: %d kept", len(c.queries))
+	}
+	open[5].Close()
+	queryOne(t, c, `SELECT 'new'`)
+	if c.queries[`SELECT 'new'`] == nil || c.queries[`SELECT 5 UNION ALL SELECT 0`] != nil {
+		t.Fatal("the statement with closed rows was not the one let go")
+	}
+	for i, r := range open {
+		if i == 5 {
+			continue
+		}
+		if got := drain(t, r); fmt.Sprint(got) != fmt.Sprintf("[%d 0]", i) {
+			t.Fatalf("rows %d gave %v", i, got)
+		}
+		r.Close()
+	}
+}
+
+// SQLite asks the authorizer about no column of a table named only in USING,
+// so a read of an attached database there is kept. That is safe: ATTACH and
+// DETACH empty the cache, so a kept statement never reads a database that
+// another one replaced.
+func TestQueryCacheJoinOfAttached(t *testing.T) {
+	c := memConn(t)
+	mustExec(t, c, `CREATE TABLE m(x); INSERT INTO m VALUES (1), (2); ATTACH ':memory:' AS aux; CREATE TABLE aux.u(x); INSERT INTO aux.u VALUES (1)`)
+	const q = `SELECT x FROM m JOIN aux.u USING (x)`
+	if got := queryOne(t, c, q); fmt.Sprint(got) != "[1]" {
+		t.Fatalf("got %v", got)
+	}
+	mustExec(t, c, `DETACH aux; ATTACH ':memory:' AS aux; CREATE TABLE aux.u(x); INSERT INTO aux.u VALUES (2)`)
+	if got := queryOne(t, c, q); fmt.Sprint(got) != "[2]" {
+		t.Fatalf("got %v after aux was attached again", got)
 	}
 }

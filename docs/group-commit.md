@@ -25,6 +25,8 @@ The driver decides this for its callers, who do not know they were merged. The r
    - no reads or writes of a Go virtual table (SQLite cannot undo the state of Go code, and each connection may have another instance of the table)
    - no `last_insert_rowid()`, `changes()` or `total_changes()` (they read counts of the connection)
 
+   SQLite does not call the authorizer for the columns a `USING` or `NATURAL JOIN` compares, so a table named only there is not seen. A Go table is reported by the `xBestIndex` of the Go module, which SQLite calls for every virtual table it plans, also as it prepares a statement again. The temp database and attached ones are missed there, but a connection that uses them has changed itself (rule 6) and never merges.
+
    The statements SQLite prepares while it prepares this one (for example those of the shadow tables R*Tree prepares when a connection first uses it) pass through the authorizer too. They may make the outer statement unmergeable, but never make it a write of the main database.
 4. **After a change of the schema, a statement may stop being mergeable.** SQLite prepares it again at the start of `sqlite3_step`, before it has done anything. When that happens on a connection that runs a batch for others and the statement is no longer mergeable, `goClassify` makes that prepare fail, and the statement runs on its caller's connection, sorted again. A refusal that falls on a statement prepared inside that prepare (one a virtual table prepares as it connects) is put on the Parse of the outer statement, so that its prepare fails. Why: a virtual table may swallow the error of its own statement and go on (R*Tree with auxiliary columns does), and the refused statement would then really run.
 
