@@ -8,10 +8,12 @@
 package sqlite
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -201,6 +203,76 @@ func TestStoppedWALPoolRecovers(t *testing.T) {
 	if vfs.WALsStopped() {
 		t.Fatal("the WAL is still stopped")
 	}
+	var ic string
+	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+		t.Fatalf("integrity_check %q %v", ic, err)
+	}
+}
+
+// While another process has the -shm open, a stopped WAL does not open
+// again, and the database stays sound: the WAL index there still counts
+// the frames cut. Once that process is gone, writes go on.
+func TestStoppedWALOtherProcess(t *testing.T) {
+	path := mPath(t)
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)"
+	db := mOpen(t, dsn)
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(k INTEGER PRIMARY KEY, v BLOB); CREATE TABLE u(k INTEGER PRIMARY KEY, v BLOB)`)
+	mExec(t, db, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	// In frames that the failure cuts, only the page of t: the file does
+	// not grow.
+	for k := range 5 {
+		mExec(t, db, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe)
+	cmd.Env = append(os.Environ(), "SQLITE_TEST_READER_DB="+dsn)
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Wait()
+	defer in.Close()
+	if line, _ := bufio.NewReader(out).ReadString('\n'); line != "ready\n" {
+		t.Fatalf("the reader says %q", line)
+	}
+
+	failed := loseOnFailedSync(t, "-wal", 1)
+	if _, err := db.Exec(`PRAGMA wal_checkpoint`); err == nil || !failed() {
+		t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
+	}
+	// u is all in the database file: a writer that trusted the index of
+	// the -shm would write past the frames cut.
+	for k := 100; k < 110; k++ {
+		if _, err := db.Exec(`INSERT INTO u VALUES (?, randomblob(10))`, k); err == nil {
+			t.Fatalf("insert %d went on while the other process has the -shm open", k)
+		}
+	}
+	in.Close()
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	tries := 0
+	for k := 200; ; k++ {
+		tries++
+		if _, err := db.Exec(`INSERT INTO u VALUES (?, randomblob(10))`, k); err == nil {
+			break
+		} else if tries == 20 {
+			t.Fatalf("writes do not go on: %v", err)
+		}
+	}
+	mExec(t, db, `PRAGMA wal_checkpoint(TRUNCATE)`)
 	var ic string
 	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
 		t.Fatalf("integrity_check %q %v", ic, err)

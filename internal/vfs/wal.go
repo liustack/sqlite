@@ -10,10 +10,9 @@ package vfs
 import "sync/atomic"
 
 // stoppedWALs counts the WALs of the process that a failed sync stopped and
-// that a File still has open.
+// that have not opened again.
 var stoppedWALs atomic.Int64
 
-// WALsStopped says a failed sync stopped a WAL that a File of the process
-// still has open. It opens again only once all of them are closed: see
-// wal_unix.go.
+// WALsStopped says a failed sync stopped a WAL of the process that has not
+// opened again: see wal_unix.go.
 func WALsStopped() bool { return stoppedWALs.Load() > 0 }

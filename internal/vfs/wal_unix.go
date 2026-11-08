@@ -9,6 +9,7 @@ package vfs
 
 import (
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -25,14 +26,16 @@ import (
 // So the first failed sync of a WAL stops it in the process: the WAL is cut
 // at the first byte written since its last good sync, which drops the frames
 // that may not be on disk, from the page cache too. Every File of the WAL then
-// fails each read, write, truncate and sync, and no new File of it opens,
-// until all of them are closed. A connection opened again finds the WAL
-// index left by no one and rebuilds it from the frames on disk. Under
-// synchronous=FULL a failed commit never made its frames part of the WAL, and
-// the cut drops only them.
+// fails each read, write, truncate and sync, and no new File of it opens.
+// Under synchronous=FULL a failed commit never made its frames part of the
+// WAL, and the cut drops only them.
 //
-// This holds for the Files of one process. Another process that has the
-// database open does not know the WAL stopped.
+// The WAL opens again once no File of the process has it open and no other
+// process has the -shm open: the next connection then finds the WAL index
+// left by no one, and SQLite rebuilds it from the frames on disk. While
+// another process has the -shm open, the index there still counts the frames
+// cut, and a writer would go on past them. When the cut itself fails, nothing
+// can make the WAL sound, and it never opens again in the process.
 
 // wal is a WAL file of one or more Files of the process.
 type wal struct {
@@ -40,23 +43,31 @@ type wal struct {
 	name string // the name the first File opened it by
 	nRef int    // Files of the WAL, under wals
 
+	// io is held shared by each write and truncate, from its check that the
+	// WAL is not stopped to its end, and alone by each sync. So a sync knows
+	// every byte written before it, and no write lands after a cut.
+	io sync.RWMutex
 	// dirty is the first byte written since the last good sync, clean when
 	// none was.
-	dirty  atomic.Int64
-	failed atomic.Bool // set under wals
+	dirty atomic.Int64
+	// failed says a sync failed. It is set with io held alone, under wals.
+	failed atomic.Bool
+	// cut says the WAL was cut on disk after the failure. Under wals.
+	cut bool
 }
 
 const clean = math.MaxInt64
 
-// wals are the WALs open in the process. The mutex is held to find, make,
-// count and drop them.
+// wals are the WALs open in the process, and those a failed sync stopped
+// until they open again. The mutex is held to find, make, count and drop
+// them.
 var wals struct {
 	sync.Mutex
 	m map[fileID]*wal
 }
 
 // attachWAL gives f, a WAL just opened, the wal of its file. A WAL that a
-// failed sync stopped does not open.
+// failed sync stopped opens only when it can again.
 func (f *File) attachWAL() int {
 	if err := unix.Fstat(f.fd, &f.st); err != nil {
 		return IOErrFstat
@@ -65,6 +76,14 @@ func (f *File) attachWAL() int {
 	wals.Lock()
 	defer wals.Unlock()
 	w := wals.m[id]
+	if w != nil && w.failed.Load() {
+		if w.nRef > 0 || !w.cut || shmInUse(f.path) {
+			return IOErr
+		}
+		delete(wals.m, id)
+		stoppedWALs.Add(-1)
+		w = nil
+	}
 	if w == nil {
 		w = &wal{id: id, name: f.path}
 		w.dirty.Store(clean)
@@ -72,16 +91,32 @@ func (f *File) attachWAL() int {
 			wals.m = make(map[fileID]*wal)
 		}
 		wals.m[id] = w
-	} else if w.failed.Load() {
-		return IOErr
 	}
 	w.nRef++
 	f.wal = w
 	return OK
 }
 
+// shmInUse says another process may have the -shm of the WAL name open: it
+// holds the DMS lock (see lockDMS). This process holds it only while a File
+// of the database maps the -shm, and SQLite unmaps it before it closes the
+// WAL.
+func shmInUse(name string) bool {
+	fd, err := openFD(strings.TrimSuffix(name, "-wal")+"-shm", unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err == unix.ENOENT {
+		return false
+	}
+	if err != nil {
+		return true
+	}
+	defer unix.Close(fd)
+	var fl unix.Flock_t
+	typ, err := testLock(fd, &fl, shmDMS, 1)
+	return err != nil || typ != unix.F_UNLCK
+}
+
 // WALStopped says a failed sync stopped the WAL of the database name, the
-// name SQLite opened it by, and a File of the process still has it open.
+// name SQLite opened it by, and it does not open yet.
 func WALStopped(name string) bool {
 	if !WALsStopped() {
 		return false
@@ -96,23 +131,21 @@ func WALStopped(name string) bool {
 	return false
 }
 
-// detachWAL drops f from its wal. The last File to go lets the WAL open
-// again.
+// detachWAL drops f from its wal. A WAL a failed sync stopped stays, for
+// attachWAL to tell whether it opens again.
 func (f *File) detachWAL() {
 	w := f.wal
 	f.wal = nil
 	wals.Lock()
 	defer wals.Unlock()
 	w.nRef--
-	if w.nRef == 0 {
+	if w.nRef == 0 && !w.failed.Load() {
 		delete(wals.m, w.id)
-		if w.failed.Load() {
-			stoppedWALs.Add(-1)
-		}
 	}
 }
 
-// wrote notes that bytes from off on are about to be written.
+// wrote notes that bytes from off on are about to be written. w.io is held
+// shared.
 func (w *wal) wrote(off int64) {
 	for {
 		d := w.dirty.Load()
@@ -122,25 +155,19 @@ func (w *wal) wrote(off int64) {
 	}
 }
 
-// fail stops the WAL after a sync of f failed, dirty being what the sync
-// was to write from, and cuts it at the first byte not known to be on disk.
+// fail stops the WAL after a sync of f failed, dirty being the first byte
+// written since the last good sync, and cuts it there. w.io is held alone.
 func (w *wal) fail(f *File, dirty int64) {
-	w.wrote(dirty)
 	wals.Lock()
-	first := !w.failed.Swap(true)
-	if first {
-		stoppedWALs.Add(1)
-	}
+	w.failed.Store(true)
+	stoppedWALs.Add(1)
 	wals.Unlock()
-	if !first {
-		return
+	cut := dirty == clean
+	if !cut && f.faultOf(OpTruncate) == OK {
+		// As the sync that failed, the cut may not reach the disk.
+		cut = retry(func() error { return unix.Ftruncate(f.fd, dirty) }) == nil && fullFsync(f.fd, true) == nil
 	}
-	if cut := w.dirty.Load(); cut != clean {
-		// As the sync that failed, the cut may not reach the disk. Then
-		// nothing can make the WAL sound, but the frames past the cut no
-		// longer show from the page cache.
-		if retry(func() error { return unix.Ftruncate(f.fd, cut) }) == nil {
-			fullFsync(f.fd, false)
-		}
-	}
+	wals.Lock()
+	w.cut = cut
+	wals.Unlock()
 }

@@ -354,11 +354,13 @@ func (f *File) ReadAt(p []byte, off int64) int {
 
 // WriteAt writes p at off. A full disk is SQLITE_FULL.
 func (f *File) WriteAt(p []byte, off int64) int {
-	if f.wal != nil {
-		if f.wal.failed.Load() {
+	if w := f.wal; w != nil {
+		w.io.RLock()
+		defer w.io.RUnlock()
+		if w.failed.Load() {
 			return IOErrWrite
 		}
-		f.wal.wrote(off)
+		w.wrote(off)
 	}
 	if rc := f.faultOf(OpWrite); rc != OK {
 		return rc
@@ -383,8 +385,12 @@ func (f *File) WriteAt(p []byte, off int64) int {
 // Truncate sets the size of the file, rounded up to whole chunks when
 // SetChunkSize was called.
 func (f *File) Truncate(size int64) int {
-	if f.wal != nil && f.wal.failed.Load() {
-		return IOErrTruncate
+	if w := f.wal; w != nil {
+		w.io.RLock()
+		defer w.io.RUnlock()
+		if w.failed.Load() {
+			return IOErrTruncate
+		}
 	}
 	if rc := f.faultOf(OpTruncate); rc != OK {
 		return rc
@@ -402,16 +408,19 @@ func (f *File) Truncate(size int64) int {
 // the first time. See fullFsync for what each system does. A failed sync of
 // a WAL stops the WAL: see wal_unix.go.
 func (f *File) Sync(flags int) int {
-	if f.wal == nil {
+	w := f.wal
+	if w == nil {
 		return f.sync(flags)
 	}
-	if f.wal.failed.Load() {
+	w.io.Lock()
+	defer w.io.Unlock()
+	if w.failed.Load() {
 		return IOErrFsync
 	}
-	dirty := f.wal.dirty.Swap(clean)
+	dirty := w.dirty.Swap(clean)
 	rc := f.sync(flags)
 	if rc != OK {
-		f.wal.fail(f, dirty)
+		w.fail(f, dirty)
 	}
 	return rc
 }
