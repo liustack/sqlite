@@ -723,6 +723,11 @@ func (c *conn) cached(sql string) (*stmt, error) {
 	return s, nil
 }
 
+// controlFault is nil but in tests (fault_test.go), which set it to make a
+// statement of execCached fail as one could: a ROLLBACK the connection could
+// not prepare for want of memory leaves the transaction open.
+var controlFault func(c *conn, sql string) error
+
 // maxCached is the most statements a connection keeps for the queue.
 const maxCached = 64
 
@@ -732,6 +737,11 @@ const maxCached = 64
 // request then never closes a statement in use, such as the request's own
 // before its SAVEPOINT.
 func (c *conn) execCached(sql string) error {
+	if controlFault != nil {
+		if err := controlFault(c, sql); err != nil {
+			return err
+		}
+	}
 	s := c.control[sql]
 	if s == nil {
 		p, tail, err := c.c.Prepare(sql)
