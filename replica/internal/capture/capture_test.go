@@ -1201,8 +1201,11 @@ func TestCheckpointUnderWrites(t *testing.T) {
 			}
 		}()
 	}
+	// At least 2 seconds, and until the WAL started over twice: on a loaded
+	// machine, with the race detector, 2 seconds may hold fewer than 50
+	// writes, and so no checkpoint.
 	gens := map[[8]byte]bool{}
-	for start := time.Now(); time.Since(start) < 2*time.Second; {
+	for start := time.Now(); time.Since(start) < 2*time.Second || len(gens) < 3 && time.Since(start) < 30*time.Second; {
 		step(t, c)
 		gens[genOf(c)] = true
 	}
