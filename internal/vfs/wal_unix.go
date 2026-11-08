@@ -77,14 +77,21 @@ func (f *File) attachWAL() int {
 	defer wals.Unlock()
 	w := wals.m[id]
 	if w != nil && w.failed.Load() {
-		if w.nRef > 0 || !w.cut || shmInUse(f.path) {
+		if !w.lift() {
 			return IOErr
 		}
-		delete(wals.m, id)
-		stoppedWALs.Add(-1)
 		w = nil
 	}
 	if w == nil {
+		// A stopped WAL that is no longer the file of this name was deleted:
+		// SQLite does that once no connection of any process has the
+		// database open, and then no one reads its frames again.
+		for old, w := range wals.m {
+			if w.name == f.path && w.nRef == 0 && w.failed.Load() {
+				delete(wals.m, old)
+				stoppedWALs.Add(-1)
+			}
+		}
 		w = &wal{id: id, name: f.path}
 		w.dirty.Store(clean)
 		if wals.m == nil {
@@ -116,7 +123,7 @@ func shmInUse(name string) bool {
 }
 
 // WALStopped says a failed sync stopped the WAL of the database name, the
-// name SQLite opened it by, and it does not open yet.
+// name SQLite opened it by, and it cannot open yet.
 func WALStopped(name string) bool {
 	if !WALsStopped() {
 		return false
@@ -131,15 +138,31 @@ func WALStopped(name string) bool {
 	return false
 }
 
-// detachWAL drops f from its wal. A WAL a failed sync stopped stays, for
-// attachWAL to tell whether it opens again.
+// lift lets the stopped WAL w open again when it can: no File of the process
+// has it open, the cut reached the disk, and no other process maps the
+// -shm. Under wals.
+func (w *wal) lift() bool {
+	if w.nRef > 0 || !w.cut || shmInUse(w.name) {
+		return false
+	}
+	delete(wals.m, w.id)
+	stoppedWALs.Add(-1)
+	return true
+}
+
+// detachWAL drops f from its wal. A WAL a failed sync stopped stays until
+// it can open again: see lift.
 func (f *File) detachWAL() {
 	w := f.wal
 	f.wal = nil
 	wals.Lock()
 	defer wals.Unlock()
 	w.nRef--
-	if w.nRef == 0 && !w.failed.Load() {
+	switch {
+	case w.nRef > 0:
+	case w.failed.Load():
+		w.lift()
+	default:
 		delete(wals.m, w.id)
 	}
 }

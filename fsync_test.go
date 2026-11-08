@@ -330,3 +330,37 @@ func TestStoppedWALOtherProcess(t *testing.T) {
 		t.Fatalf("integrity_check %q %v", ic, err)
 	}
 }
+
+// A WAL that a failed sync of its header cut to nothing is deleted when the
+// last connection closes, as SQLite has nothing to checkpoint. The next
+// WAL is a new file, and the database goes on.
+func TestStoppedWALDeleted(t *testing.T) {
+	path := mPath(t)
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=wal_autocheckpoint(0)"
+	db := mOpen(t, dsn)
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(x)`)
+	mExec(t, db, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	// The next commit starts the WAL over and syncs its header first.
+	failed := loseOnFailedSync(t, "-wal", 1)
+	if _, err := db.Exec(`INSERT INTO t VALUES (1)`); err == nil || !failed() {
+		t.Fatalf("insert: %v, sync failed %v", err, failed())
+	}
+	tries := 0
+	for {
+		tries++
+		if _, err := db.Exec(`INSERT INTO t VALUES (2)`); err == nil {
+			break
+		} else if tries == 20 {
+			t.Fatalf("writes do not go on: %v", err)
+		}
+	}
+	// SQLite names the file with symbolic links resolved.
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vfs.WALStopped(real) {
+		t.Fatal("the WAL is still stopped")
+	}
+}

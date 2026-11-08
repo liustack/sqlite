@@ -91,8 +91,8 @@ func TestWALStops(t *testing.T) {
 		t.Fatalf("Open while a File has the WAL open = %d", rc)
 	}
 	b.Close()
-	if !WALStopped(strings.TrimSuffix(name, "-wal")) {
-		t.Fatal("the WAL is not stopped until it opens again")
+	if WALsStopped() {
+		t.Fatal("the WAL is still stopped with no File open")
 	}
 	c, rc := openWAL(t, name)
 	if rc != OK {
@@ -169,22 +169,25 @@ func TestWALWriteDuringSync(t *testing.T) {
 	}
 }
 
-// A WAL whose cut failed never opens again in the process.
+// A WAL whose cut failed does not open again, until it is deleted: a new
+// WAL of that name opens.
 func TestWALCutFails(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "test.db-wal")
 	stopWAL(t, name, true).Close()
 	if _, rc := openWAL(t, name); rc != IOErr {
 		t.Fatalf("Open = %d", rc)
 	}
-	// For the tests that follow only: nothing else lets it go.
-	wals.Lock()
-	for id, w := range wals.m {
-		if w.name == name {
-			delete(wals.m, id)
-			stoppedWALs.Add(-1)
-		}
+	if err := os.Remove(name); err != nil {
+		t.Fatal(err)
 	}
-	wals.Unlock()
+	f, rc := openWAL(t, name)
+	if rc != OK {
+		t.Fatalf("Open of a new WAL = %d", rc)
+	}
+	f.Close()
+	if WALsStopped() {
+		t.Fatal("the deleted WAL is still stopped")
+	}
 }
 
 // A stopped WAL does not open while another process has the -shm open: the
