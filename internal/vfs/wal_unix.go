@@ -37,7 +37,8 @@ import (
 // wal is a WAL file of one or more Files of the process.
 type wal struct {
 	id   fileID
-	nRef int // Files of the WAL, under wals
+	name string // the name the first File opened it by
+	nRef int    // Files of the WAL, under wals
 
 	// dirty is the first byte written since the last good sync, clean when
 	// none was.
@@ -65,7 +66,7 @@ func (f *File) attachWAL() int {
 	defer wals.Unlock()
 	w := wals.m[id]
 	if w == nil {
-		w = &wal{id: id}
+		w = &wal{id: id, name: f.path}
 		w.dirty.Store(clean)
 		if wals.m == nil {
 			wals.m = make(map[fileID]*wal)
@@ -77,6 +78,22 @@ func (f *File) attachWAL() int {
 	w.nRef++
 	f.wal = w
 	return OK
+}
+
+// WALStopped says a failed sync stopped the WAL of the database name, the
+// name SQLite opened it by, and a File of the process still has it open.
+func WALStopped(name string) bool {
+	if !WALsStopped() {
+		return false
+	}
+	wals.Lock()
+	defer wals.Unlock()
+	for _, w := range wals.m {
+		if w.name == name+"-wal" && w.failed.Load() {
+			return true
+		}
+	}
+	return false
 }
 
 // detachWAL drops f from its wal. The last File to go lets the WAL open
