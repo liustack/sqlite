@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -24,13 +25,21 @@ func BenchmarkGroupCommit(b *testing.B) {
 	for _, sync := range []string{"NORMAL", "FULL"} {
 		for _, g := range []int{1, 8, 64} {
 			b.Run(fmt.Sprintf("sync=%s/g=%d", sync, g), func(b *testing.B) {
-				groupCommit(b, sync, g)
+				groupCommit(b, sync, g, false)
 			})
 		}
+		// One write in 100 of each writer is slow: p50 and p99 are those of
+		// the fast ones.
+		b.Run(fmt.Sprintf("sync=%s/g=8/slow", sync), func(b *testing.B) {
+			groupCommit(b, sync, 8, true)
+		})
 	}
 }
 
-func groupCommit(b *testing.B, synchronous string, g int) {
+// slowInsert takes a few milliseconds to run.
+const slowInsert = `INSERT INTO t(name, x, n) SELECT 'slow', 0, count(*) FROM (WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM r LIMIT 20000) SELECT i FROM r)`
+
+func groupCommit(b *testing.B, synchronous string, g int, slow bool) {
 	path := filepath.Join(b.TempDir(), "bench.db")
 	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous("+synchronous+")")
 	if err != nil {
@@ -60,8 +69,10 @@ func groupCommit(b *testing.B, synchronous string, g int) {
 	n := b.N
 	var next sync.Mutex
 	errs := make(chan error, g)
+	// took holds how long each write took, for p50 and p99.
+	took := make([][]time.Duration, g)
 	b.ResetTimer()
-	for range g {
+	for i := range g {
 		go func() {
 			for {
 				next.Lock()
@@ -71,11 +82,21 @@ func groupCommit(b *testing.B, synchronous string, g int) {
 					return
 				}
 				n--
+				k := n
 				next.Unlock()
+				if slow && k%100 == 0 {
+					if _, err := db.Exec(slowInsert); err != nil {
+						errs <- err
+						return
+					}
+					continue
+				}
+				start := time.Now()
 				if _, err := st.Exec("name-0123456789abcd", 1.5, 1); err != nil {
 					errs <- err
 					return
 				}
+				took[i] = append(took[i], time.Since(start))
 			}
 		}()
 	}
@@ -96,5 +117,11 @@ func groupCommit(b *testing.B, synchronous string, g int) {
 	}
 	if batches > 0 {
 		b.ReportMetric(float64(full)/float64(batches), "full/batch")
+	}
+	all := slices.Concat(took...)
+	slices.Sort(all)
+	if len(all) > 0 {
+		b.ReportMetric(float64(all[len(all)/2].Microseconds()), "p50-µs")
+		b.ReportMetric(float64(all[len(all)*99/100].Microseconds()), "p99-µs")
 	}
 }
