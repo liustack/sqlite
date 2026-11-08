@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -29,7 +30,31 @@ func TestMain(m *testing.M) {
 	if name := os.Getenv(crashEnv); name != "" {
 		os.Exit(crashHelper(name))
 	}
+	if name := os.Getenv(readerEnv); name != "" {
+		os.Exit(readerHelper(name))
+	}
 	os.Exit(m.Run())
+}
+
+// The reader helper opens the database named in its environment, reads it
+// once, says "ready", and keeps its connection, and so the -shm, open until
+// its standard input closes.
+const readerEnv = "SQLITE_TEST_READER_DB"
+
+func readerHelper(dsn string) int {
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		fmt.Println(err)
+		return 1
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_schema`).Scan(&n); err != nil {
+		fmt.Println(err)
+		return 1
+	}
+	fmt.Println("ready")
+	io.Copy(io.Discard, os.Stdin)
+	return 0
 }
 
 func crashHelper(dsn string) int {

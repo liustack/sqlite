@@ -61,6 +61,7 @@ type File struct {
 	dev      uint64 // device and inode when opened, for HasMoved
 	ino      uint64
 	inode    *inode // the locks of the main database, shared in the process
+	wal      *wal   // a WAL: what it shares with the other Files of the WAL
 	shm      *shm
 
 	// Space for the argument of fstat, so that the calls made for every
@@ -151,6 +152,12 @@ func OpenWith(name string, flags int, o OpenOptions) (f *File, outFlags int, rc 
 		f.dev, f.ino = uint64(f.st.Dev), uint64(f.st.Ino)
 		f.readOnly = flags&OpenReadOnly != 0
 		if rc := f.attachInode(fileName); rc != OK {
+			unix.Close(fd)
+			return nil, 0, rc
+		}
+	}
+	if eType == OpenWAL {
+		if rc := f.attachWAL(); rc != OK {
 			unix.Close(fd)
 			return nil, 0, rc
 		}
@@ -307,6 +314,9 @@ func (f *File) Close() int {
 		f.Unlock(LockNone)
 		f.detachInode()
 	}
+	if f.wal != nil {
+		f.detachWAL()
+	}
 	if f.fd >= 0 {
 		// As os_unix, a failed close is not an error for SQLite.
 		unix.Close(f.fd)
@@ -318,6 +328,9 @@ func (f *File) Close() int {
 // ReadAt reads len(p) bytes at off. When the file ends first, the rest of p
 // is zeroed and the result is SQLITE_IOERR_SHORT_READ.
 func (f *File) ReadAt(p []byte, off int64) int {
+	if f.wal != nil && f.wal.failed.Load() {
+		return IOErrRead
+	}
 	got := 0
 	for got < len(p) {
 		n, err := unix.Pread(f.fd, p[got:], off+int64(got))
@@ -341,6 +354,14 @@ func (f *File) ReadAt(p []byte, off int64) int {
 
 // WriteAt writes p at off. A full disk is SQLITE_FULL.
 func (f *File) WriteAt(p []byte, off int64) int {
+	if w := f.wal; w != nil {
+		w.io.RLock()
+		defer w.io.RUnlock()
+		if w.failed.Load() {
+			return IOErrWrite
+		}
+		w.wrote(off)
+	}
 	if rc := f.faultOf(OpWrite); rc != OK {
 		return rc
 	}
@@ -364,6 +385,13 @@ func (f *File) WriteAt(p []byte, off int64) int {
 // Truncate sets the size of the file, rounded up to whole chunks when
 // SetChunkSize was called.
 func (f *File) Truncate(size int64) int {
+	if w := f.wal; w != nil {
+		w.io.RLock()
+		defer w.io.RUnlock()
+		if w.failed.Load() {
+			return IOErrTruncate
+		}
+	}
 	if rc := f.faultOf(OpTruncate); rc != OK {
 		return rc
 	}
@@ -377,8 +405,28 @@ func (f *File) Truncate(size int64) int {
 }
 
 // Sync writes the file to disk, and the directory entry of a new journal
-// the first time. See fullFsync for what each system does.
+// the first time. See fullFsync for what each system does. A failed sync of
+// a WAL stops the WAL: see wal_unix.go.
 func (f *File) Sync(flags int) int {
+	w := f.wal
+	if w == nil {
+		return f.sync(flags)
+	}
+	w.io.Lock()
+	defer w.io.Unlock()
+	if w.failed.Load() {
+		return IOErrFsync
+	}
+	dirty := w.dirty.Swap(clean)
+	rc := f.sync(flags)
+	if rc != OK {
+		w.fail(f, dirty)
+	}
+	return rc
+}
+
+// sync is Sync without what a WAL needs.
+func (f *File) sync(flags int) int {
 	if rc := f.faultOf(OpSync); rc != OK {
 		return rc
 	}

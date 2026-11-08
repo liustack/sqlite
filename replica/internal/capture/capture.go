@@ -56,6 +56,7 @@ import (
 	_ "github.com/liustack/sqlite"
 	"github.com/liustack/sqlite/internal/csqlite"
 	"github.com/liustack/sqlite/internal/replhook"
+	"github.com/liustack/sqlite/internal/vfs"
 )
 
 // Options are the options of Open.
@@ -483,6 +484,11 @@ func (c *Capturer) Dir() string { return c.dir }
 // checkpoints when the WAL is long enough. Past the limit it stops staging
 // and only checkpoints, until nothing staged is pending.
 func (c *Capturer) step(ctx context.Context) error {
+	if vfs.WALStopped(c.path) {
+		if err := c.walStopped(); err != nil {
+			return err
+		}
+	}
 	// A staged file whose folder did not sync is not uploaded until it does.
 	if err := c.syncNames(); err != nil {
 		return err
@@ -500,6 +506,44 @@ func (c *Capturer) step(ctx context.Context) error {
 		return c.copyLost()
 	}
 	return c.stageAndCheckpoint(ctx)
+}
+
+// errWALStopped is why the WAL is lost after a failed sync stopped it.
+var errWALStopped = errors.New("a sync of the WAL failed: the frames it may not have written were cut from it")
+
+// walStopped closes the connections of the capturer after a failed sync
+// stopped the WAL of the database: the WAL opens again only once every
+// connection that has it open is closed (internal/vfs). The frames cut from
+// it may have been staged, and the database no longer has them, so a full
+// copy follows. A snapshot under way keeps its connection until a step
+// after it.
+func (c *Capturer) walStopped() error {
+	c.lose(errWALStopped)
+	if c.wal != nil {
+		c.wal.Close()
+		c.wal = nil
+	}
+	if c.snapMu.TryLock() {
+		if c.snap != nil {
+			c.snap.Close()
+			c.snap = nil
+		}
+		c.snapMu.Unlock()
+	}
+	// A new connection does not open the WAL before it reads.
+	conn, err := csqlite.Open(c.path, csqlite.OpenReadWrite|csqlite.OpenNoMutex, "")
+	if err != nil {
+		return err
+	}
+	if err := conn.BusyTimeout(0); err != nil {
+		conn.Close()
+		return err
+	}
+	// The old connection goes even when it closes with an error: it may
+	// be closed all the same, and c.conn is never a closed connection.
+	err = c.conn.Close()
+	c.conn = conn
+	return err
 }
 
 // over says whether the staged files not uploaded passed Options.Limit.

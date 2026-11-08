@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/liustack/sqlite/internal/csqlite"
+	"github.com/liustack/sqlite/internal/vfs"
 )
 
 type conn struct {
@@ -333,7 +334,24 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-func (c *conn) IsValid() bool { return !c.closed && !c.bad && !c.c.Broken() }
+func (c *conn) IsValid() bool {
+	return !c.closed && !c.bad && !c.c.Broken() && !c.walStopped()
+}
+
+// walStopped says a failed sync stopped the WAL of a database of c. The WAL
+// opens again only once every connection that has it open is closed, and
+// c cannot use the database meanwhile: database/sql must drop c.
+func (c *conn) walStopped() bool {
+	if !vfs.WALsStopped() {
+		return false
+	}
+	for _, name := range c.c.Filenames() {
+		if vfs.WALStopped(name) {
+			return true
+		}
+	}
+	return false
+}
 
 func (c *conn) CheckNamedValue(v *driver.NamedValue) error {
 	var err error

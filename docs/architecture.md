@@ -86,6 +86,21 @@ Inside the driver, a connection takes its file's write lock before a statement t
 
 Readers still meet SQLite's locks in the default rollback journal mode: while a COMMIT holds the file locked, which lasts as long as its fsyncs, no connection can start a read, and SQLite's busy handler can miss every gap between commits that come back to back. With writes going on and a slow disk, a read, or the first statement of a new connection, can then wait the whole busy timeout and get `SQLITE_BUSY`. mattn/go-sqlite3 and modernc.org/sqlite do the same. In WAL mode readers never wait for writers: use it when a program reads while it writes.
 
+## When a sync of the WAL fails
+
+When an fsync fails, Linux marks the pages it could not write clean. They still read back from memory and the next fsync succeeds, but once the kernel drops them they read back as the disk holds them. With `synchronous=NORMAL`, SQLite syncs the WAL only when it checkpoints, so after that sync fails, the next checkpoint copies frames that may not be on disk into the database. SQLite's own VFS lets it, and the database is damaged once the pages are dropped.
+
+So on linux and darwin, the first failed sync of a WAL stops it in the process:
+
+- The WAL is cut at the first byte written since its last good sync. This removes the frames that may not be on disk, from the file and from memory. Writes and syncs of one WAL never overlap, so the cut never takes a commit another sync already made durable.
+- Every read, write and sync of the WAL then fails, and no connection can open it.
+- `database/sql` drops each connection of that database (main or attached) when it takes it from its pool or gives it back (`IsValid`). Connections of other databases are not touched.
+- The WAL opens again once no connection of the process has it open and no other process has the database open. The next connection then rebuilds the WAL index from the frames on disk. While another process has it open, the index it shares still counts the frames cut, and a writer would write past them, so the WAL stays stopped.
+- When the cut itself fails, nothing can make the WAL sound, and it stays stopped until the process ends.
+- The replicator closes its connections at its next step and stages a full copy.
+
+The cost: with `synchronous=NORMAL`, what was committed since the last good sync of the WAL is lost, as on a power loss. With `synchronous=FULL` nothing told committed is lost, since a commit whose sync failed never joined the WAL. Until the WAL opens again, every call on the database fails. A connection that no one takes keeps it stopped: a `sql.Conn` or `sql.Tx` the program keeps open, or the idle connections of another `sql.DB` of the same file that gets no calls. `SetConnMaxIdleTime` lets `database/sql` close such idle connections. Another process is not stopped, and on windows SQLite's own behavior is kept.
+
 ## Group commit
 
 Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver takes the autocommit DML of many callers, runs it as one transaction and commits once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
