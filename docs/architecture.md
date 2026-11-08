@@ -92,12 +92,14 @@ When an fsync fails, Linux marks the pages it could not write clean. They still 
 
 So on linux and darwin, the first failed sync of a WAL stops it in the process:
 
-- The WAL is cut at the first byte written since its last good sync. This removes the frames that may not be on disk, from the file and from memory.
-- Every read, write and sync of the WAL then fails, and no connection can open it, until every connection that has it open is closed.
-- While a WAL is stopped, `database/sql` drops every connection of the driver, of any database, that it takes from its pool or gives back to it (`IsValid`). So the database works again after a few failed calls, and the next connection rebuilds the WAL index from the frames on disk.
+- The WAL is cut at the first byte written since its last good sync. This removes the frames that may not be on disk, from the file and from memory. Writes and syncs of one WAL never overlap, so the cut never takes a commit another sync already made durable.
+- Every read, write and sync of the WAL then fails, and no connection can open it.
+- `database/sql` drops each connection of that database (main or attached) when it takes it from its pool or gives it back (`IsValid`). Connections of other databases are not touched.
+- The WAL opens again once no connection of the process has it open and no other process has the database open. The next connection then rebuilds the WAL index from the frames on disk. While another process has it open, the index it shares still counts the frames cut, and a writer would write past them, so the WAL stays stopped.
+- When the cut itself fails, nothing can make the WAL sound, and it stays stopped until the process ends.
 - The replicator closes its connections at its next step and stages a full copy.
 
-The cost: with `synchronous=NORMAL`, what was committed since the last good sync of the WAL is lost, as on a power loss. With `synchronous=FULL` nothing told committed is lost, since a commit whose sync failed never joined the WAL. A `sql.Conn` or `sql.Tx` that the program keeps open keeps the WAL stopped until it is closed. Another process that has the database open is not stopped, and windows keeps SQLite's behavior.
+The cost: with `synchronous=NORMAL`, what was committed since the last good sync of the WAL is lost, as on a power loss. With `synchronous=FULL` nothing told committed is lost, since a commit whose sync failed never joined the WAL. Until the WAL opens again, every call on the database fails. A connection that no one takes keeps it stopped: a `sql.Conn` or `sql.Tx` the program keeps open, or the idle connections of another `sql.DB` of the same file that gets no calls. `SetConnMaxIdleTime` lets `database/sql` close such idle connections. Another process is not stopped, and on windows SQLite's own behavior is kept.
 
 ## Group commit
 
