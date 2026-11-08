@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/liustack/sqlite/internal/csqlite"
+	"github.com/liustack/sqlite/internal/vfs"
 )
 
 type conn struct {
@@ -333,7 +334,13 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
-func (c *conn) IsValid() bool { return !c.closed && !c.bad && !c.c.Broken() }
+func (c *conn) IsValid() bool {
+	// A WAL a failed sync stopped opens again only once every connection
+	// that has it open is closed. Which connections have it open is not
+	// known, and the database of each connection opened since cannot be
+	// used: database/sql must drop them all.
+	return !c.closed && !c.bad && !c.c.Broken() && !vfs.WALsStopped()
+}
 
 func (c *conn) CheckNamedValue(v *driver.NamedValue) error {
 	var err error
