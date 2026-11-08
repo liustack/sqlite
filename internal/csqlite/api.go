@@ -760,6 +760,25 @@ func (c *Conn) Interrupt() error {
 	return nil
 }
 
+// Filenames are the absolute names of the files of the databases of the
+// connection, main and attached, without memory and temporary ones.
+func (c *Conn) Filenames() []string {
+	if c.brokenErr() != nil {
+		return nil
+	}
+	var names []string
+	for i := 0; ; i++ {
+		a := c.args()
+		z := sqlite3_db_name(a.top, c.db, uintptr(i))
+		if z == 0 {
+			return names
+		}
+		if name := cstring(sqlite3_db_filename(a.top, c.db, z)); name != "" {
+			names = append(names, name)
+		}
+	}
+}
+
 // Filename is the absolute name of the file of database schema ("main"), or
 // "" for a memory or temporary database.
 func (c *Conn) Filename(schema string) string {

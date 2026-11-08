@@ -11,11 +11,14 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/liustack/sqlite/internal/vfs"
@@ -207,6 +210,55 @@ func TestStoppedWALPoolRecovers(t *testing.T) {
 	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
 		t.Fatalf("integrity_check %q %v", ic, err)
 	}
+}
+
+// A stopped WAL drops the connections of its database only.
+func TestStoppedWALOtherDatabase(t *testing.T) {
+	dsn := "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)"
+	db := mOpen(t, "file:"+mPath(t)+dsn)
+	cn, err := NewConnector("file:" + filepath.Join(t.TempDir(), "other.db") + dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counted := &countConnects{Connector: cn}
+	other := sql.OpenDB(counted)
+	t.Cleanup(func() { other.Close() })
+	mExec(t, db, `CREATE TABLE t(x)`)
+	mExec(t, other, `CREATE TABLE t(x)`)
+	mExec(t, db, `INSERT INTO t VALUES (1)`)
+	// A connection the program keeps holds the WAL stopped.
+	kept, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kept.Close()
+	if _, err := kept.ExecContext(context.Background(), `SELECT * FROM t`); err != nil {
+		t.Fatal(err)
+	}
+	failed := loseOnFailedSync(t, "m.db-wal", 1)
+	if _, err := db.Exec(`PRAGMA wal_checkpoint`); err == nil || !failed() {
+		t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
+	}
+	if !vfs.WALsStopped() {
+		t.Fatal("the WAL is not stopped")
+	}
+	for range 10 {
+		mExec(t, other, `INSERT INTO t VALUES (1)`)
+	}
+	if n := counted.n.Load(); n != 1 {
+		t.Fatalf("the other database opened %d connections", n)
+	}
+}
+
+// countConnects counts the connections a Connector opens.
+type countConnects struct {
+	*Connector
+	n atomic.Int64
+}
+
+func (c *countConnects) Connect(ctx context.Context) (driver.Conn, error) {
+	c.n.Add(1)
+	return c.Connector.Connect(ctx)
 }
 
 // While another process has the -shm open, a stopped WAL does not open
