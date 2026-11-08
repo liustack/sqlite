@@ -45,7 +45,7 @@ The driver decides this for its callers, who do not know they were merged. The r
 9. **Scheduling:**
    - When the lock is free, a statement takes it and runs at once, without waiting for a batch to fill. One writer pays nothing.
    - When the lock is held, the statement joins the queue with its place in line.
-   - Before the connection that holds the lock gives it back, it takes the statements of its key from the queue (up to 256) and runs them on itself: `BEGIN IMMEDIATE`, each statement between a `SAVEPOINT` and a `RELEASE` of its own, then `COMMIT`.
+   - Before the connection that holds the lock gives it back, it takes the statements of its key from the queue (up to 256) and runs them on itself: `BEGIN IMMEDIATE`, each statement between a `SAVEPOINT` and a `RELEASE` of its own, then `COMMIT`. The call that gave the lock back (a write, or the `Commit` of a transaction) returns only once this batch is over, though its own work committed before. Why: this is the price of batching, and handing the batch to a request of the queue instead was measured slower (one more wake up and switch of connection per batch).
    - Then it calls the committed callback of replication (whatever became of the batch: the holder's own transaction before may not have been reported yet), and hands the lock to whichever came first of the writers that wait for it and the first statement of the queue.
    - A statement of the queue handed the lock leads a batch on its own connection: it comes first, followed by statements of its key. As it gives the lock back it may run one more batch before the lock goes on.
 
