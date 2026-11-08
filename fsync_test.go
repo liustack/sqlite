@@ -315,6 +315,19 @@ func TestStoppedWALOtherProcess(t *testing.T) {
 	if err := cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
+	// A program that only pings to see the database back gets it back, also
+	// with no PRAGMA that reads the database as a connection opens.
+	plain := mOpen(t, "file:"+path)
+	pinged := false
+	for range 20 {
+		if plain.Ping() == nil {
+			pinged = true
+			break
+		}
+	}
+	if !pinged {
+		t.Fatal("Ping fails once the other process is gone")
+	}
 	tries := 0
 	for k := 200; ; k++ {
 		tries++

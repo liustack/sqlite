@@ -123,7 +123,9 @@ func shmInUse(name string) bool {
 }
 
 // WALStopped says a failed sync stopped the WAL of the database name, the
-// name SQLite opened it by, and it cannot open yet.
+// name SQLite opened it by, and it cannot open yet. It lets the WAL go when
+// it can: a connection that is only asked whether it is valid, or pinged,
+// would otherwise never open the WAL, which is where it goes.
 func WALStopped(name string) bool {
 	if !WALsStopped() {
 		return false
@@ -131,7 +133,7 @@ func WALStopped(name string) bool {
 	wals.Lock()
 	defer wals.Unlock()
 	for _, w := range wals.m {
-		if w.name == name+"-wal" && w.failed.Load() {
+		if w.name == name+"-wal" && w.failed.Load() && !w.lift() {
 			return true
 		}
 	}
