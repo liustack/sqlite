@@ -515,7 +515,8 @@ var errWALStopped = errors.New("a sync of the WAL failed: the frames it may not 
 // stopped the WAL of the database: the WAL opens again only once every
 // connection that has it open is closed (internal/vfs). The frames cut from
 // it may have been staged, and the database no longer has them, so a full
-// copy follows. A snapshot under way closes its connection itself.
+// copy follows. A snapshot under way keeps its connection until a step
+// after it.
 func (c *Capturer) walStopped() error {
 	c.lose(errWALStopped)
 	if c.wal != nil {
@@ -538,12 +539,11 @@ func (c *Capturer) walStopped() error {
 		conn.Close()
 		return err
 	}
-	if err := c.conn.Close(); err != nil {
-		conn.Close()
-		return err
-	}
+	// The old connection goes even when it closes with an error: it may
+	// be closed all the same, and c.conn is never a closed connection.
+	err = c.conn.Close()
 	c.conn = conn
-	return nil
+	return err
 }
 
 // over says whether the staged files not uploaded passed Options.Limit.
