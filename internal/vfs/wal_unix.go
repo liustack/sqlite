@@ -54,6 +54,10 @@ type wal struct {
 	failed atomic.Bool
 	// cut says the WAL was cut on disk after the failure. Under wals.
 	cut bool
+	// held is a descriptor of the stopped WAL, -1 when none, so that its
+	// inode, which names it in wals, is not given to a new file while it
+	// stays there. Under wals.
+	held int
 }
 
 const clean = math.MaxInt64
@@ -86,13 +90,12 @@ func (f *File) attachWAL() int {
 		// A stopped WAL that is no longer the file of this name was deleted:
 		// SQLite does that once no connection of any process has the
 		// database open, and then no one reads its frames again.
-		for old, w := range wals.m {
+		for _, w := range wals.m {
 			if w.name == f.path && w.nRef == 0 && w.failed.Load() {
-				delete(wals.m, old)
-				stoppedWALs.Add(-1)
+				w.drop()
 			}
 		}
-		w = &wal{id: id, name: f.path}
+		w = &wal{id: id, name: f.path, held: -1}
 		w.dirty.Store(clean)
 		if wals.m == nil {
 			wals.m = make(map[fileID]*wal)
@@ -147,9 +150,18 @@ func (w *wal) lift() bool {
 	if w.nRef > 0 || !w.cut || shmInUse(w.name) {
 		return false
 	}
+	w.drop()
+	return true
+}
+
+// drop lets the stopped WAL w go. Under wals.
+func (w *wal) drop() {
 	delete(wals.m, w.id)
 	stoppedWALs.Add(-1)
-	return true
+	if w.held >= 0 {
+		unix.Close(w.held)
+		w.held = -1
+	}
 }
 
 // detachWAL drops f from its wal. A WAL a failed sync stopped stays until
@@ -186,6 +198,9 @@ func (w *wal) fail(f *File, dirty int64) {
 	wals.Lock()
 	w.failed.Store(true)
 	stoppedWALs.Add(1)
+	if fd, err := unix.FcntlInt(uintptr(f.fd), unix.F_DUPFD_CLOEXEC, 3); err == nil {
+		w.held = fd
+	}
 	wals.Unlock()
 	cut := dirty == clean
 	if !cut && f.faultOf(OpTruncate) == OK {

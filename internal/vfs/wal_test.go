@@ -180,6 +180,20 @@ func TestWALCutFails(t *testing.T) {
 	if err := os.Remove(name); err != nil {
 		t.Fatal(err)
 	}
+	// The stopped WAL keeps its inode, so a new file cannot be given it
+	// and be taken for the stopped one.
+	var old *wal
+	wals.Lock()
+	for _, w := range wals.m {
+		if w.name == name {
+			old = w
+		}
+	}
+	wals.Unlock()
+	var st unix.Stat_t
+	if old == nil || unix.Fstat(old.held, &st) != nil || (fileID{uint64(st.Dev), uint64(st.Ino)}) != old.id {
+		t.Fatal("the stopped WAL does not hold its inode")
+	}
 	f, rc := openWAL(t, name)
 	if rc != OK {
 		t.Fatalf("Open of a new WAL = %d", rc)
