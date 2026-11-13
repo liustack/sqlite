@@ -9,6 +9,7 @@ package sqlite
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -19,48 +20,116 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/liustack/sqlite/internal/vfs"
 )
 
-// loseOnFailedSync fails the n-th sync of the file whose name ends with
+// A syncFault is a sync that loseOnFailedSyncOf fails.
+type syncFault struct {
+	mu   sync.Mutex
+	done bool
+	last bool
+}
+
+// failed says the sync failed.
+func (s *syncFault) failed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.done
+}
+
+// ended says the sync that failed, of a rollback journal, was the one that
+// ends a commit: the journal was empty, or the database was synced since the
+// journal was last synced or started over.
+func (s *syncFault) ended() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.last
+}
+
+// loseOnFailedSync fails the n-th sync of the files whose names end with
 // suffix, and then has the file read as the disk holds it once the kernel
 // dropped the pages the failed sync could not write (Linux marks them clean
-// and may evict them): every byte written since the last good sync reads
-// back as zero.
+// and may evict them): every byte written since the last good sync of the
+// file reads back as it was then, or as zero past its end then. What a
+// file held when the hook first saw it is taken as synced, a new file, such
+// as a journal made again, starts empty, and a truncate holds though the
+// sync after it fails.
 func loseOnFailedSync(t *testing.T, suffix string, n int) (failed func() bool) {
-	var (
-		mu     sync.Mutex
-		seen   int
+	return loseOnFailedSyncOf(t, suffix, n).failed
+}
+
+func loseOnFailedSyncOf(t *testing.T, suffix string, n int) *syncFault {
+	type file struct {
+		ino    uint64
 		synced []byte
-		done   bool
+		// The syncs of the database, the file without the suffix, when
+		// this file was last synced or started over.
+		dbSyncs int
+	}
+	var (
+		s     syncFault
+		seen  int
+		files = map[string]*file{}
+		syncs = map[string]int{} // of the other files
 	)
 	vfs.SetFault(func(path string, op vfs.Op) int {
-		if op != vfs.OpSync || !strings.HasSuffix(path, suffix) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if !strings.HasSuffix(path, suffix) {
+			if op == vfs.OpSync {
+				syncs[path]++
+			}
 			return vfs.OK
 		}
-		mu.Lock()
-		defer mu.Unlock()
+		if op == vfs.OpTruncate {
+			return vfs.OK
+		}
+		var st syscall.Stat_t
+		if err := syscall.Stat(path, &st); err != nil {
+			t.Errorf("stat %s: %v", path, err)
+			return vfs.OK
+		}
 		cur, err := os.ReadFile(path)
 		if err != nil {
 			t.Errorf("read %s: %v", path, err)
 			return vfs.OK
 		}
+		dbSyncs := syncs[strings.TrimSuffix(path, suffix)]
+		f := files[path]
+		if f == nil || f.ino != uint64(st.Ino) {
+			f = &file{ino: uint64(st.Ino), synced: cur, dbSyncs: dbSyncs}
+			files[path] = f
+		}
+		// The hook runs before each write, and only a write makes the file
+		// longer: a file shorter than what was synced was truncated.
+		if len(cur) < len(f.synced) {
+			f.synced = f.synced[:len(cur)]
+		}
+		if op != vfs.OpSync {
+			if len(cur) == 0 {
+				f.dbSyncs = dbSyncs
+			}
+			return vfs.OK
+		}
+		last := len(cur) == 0 || dbSyncs != f.dbSyncs
+		f.dbSyncs = dbSyncs
 		if seen++; seen != n {
-			synced = cur
+			f.synced = cur
 			return vfs.OK
 		}
 		lost := make([]byte, len(cur))
-		copy(lost, synced)
+		copy(lost, f.synced)
 		if err := os.WriteFile(path, lost, 0o644); err != nil {
 			t.Errorf("write %s: %v", path, err)
 		}
-		done = true
+		s.done, s.last = true, last
 		return vfs.IOErrFsync
 	})
 	t.Cleanup(func() { vfs.SetFault(nil) })
-	return func() bool { mu.Lock(); defer mu.Unlock(); return done }
+	return &s
 }
 
 // A sync that fails while the kernel drops the pages it could not write
@@ -376,4 +445,276 @@ func TestStoppedWALDeleted(t *testing.T) {
 	if vfs.WALStopped(real) {
 		t.Fatal("the WAL is still stopped")
 	}
+}
+
+// In the rollback journal modes, a failed sync of the journal whose pages the
+// kernel then drops leaves the database sound, now and when opened again:
+// the write that failed is not there, every write told committed is, and
+// writes go on. SQLite rolls back from the journal it reads back, so a
+// journal that no longer holds what was written would leave the pages of the
+// failed write in the cache, for the next commit to write.
+//
+// The one write that may be there though it was told failed is one whose
+// last sync failed, that of the journal already truncated or with its header
+// zeroed: the database was written and synced before it.
+func TestJournalSyncLosesPages(t *testing.T) {
+	for _, mode := range []string{"DELETE", "TRUNCATE", "PERSIST"} {
+		for _, sync := range []string{"NORMAL", "FULL"} {
+			for _, locking := range []string{"NORMAL", "EXCLUSIVE"} {
+				t.Run(mode+"/"+sync+"/"+locking, func(t *testing.T) {
+					// A commit syncs the journal up to three times.
+					for nth := 1; nth <= 12; nth++ {
+						t.Run(fmt.Sprint(nth), func(t *testing.T) { journalSyncLosesPages(t, mode, sync, locking, nth) })
+					}
+				})
+			}
+		}
+	}
+}
+
+// journalMagic starts a rollback journal that is in use.
+var journalMagic = []byte{0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7}
+
+func journalSyncLosesPages(t *testing.T, mode, sync, locking string, nth int) {
+	dsn := "file:" + mPath(t) + "?_pragma=locking_mode(" + locking + ")&_pragma=journal_mode(" + mode + ")&_pragma=synchronous(" + sync + ")"
+	db := mOpen(t, dsn)
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(k INTEGER PRIMARY KEY, v TEXT)`)
+	const steps = 12
+	for k := range steps {
+		mExec(t, db, `INSERT INTO t VALUES (?, 'old')`, k)
+	}
+	fault := loseOnFailedSyncOf(t, "-journal", nth)
+
+	// Each step changes a row of its own, which leaves the file as long as
+	// it is, and adds a row that makes it longer.
+	updated := func(k int) string { return fmt.Sprint("new", k) }
+	added := func(k int) string { return strings.Repeat(fmt.Sprint(k%10), 5000) }
+	want := map[int]string{}
+	told := map[int]string{} // told failed: the value that must not be there
+	nFailed := 0
+	for i := range steps {
+		want[i] = "old"
+		if _, err := db.Exec(`UPDATE t SET v = ? WHERE k = ?`, updated(i), i); err == nil {
+			want[i] = updated(i)
+		} else {
+			told[i] = updated(i)
+			nFailed++
+		}
+		if _, err := db.Exec(`INSERT INTO t VALUES (?, ?)`, 100+i, added(i)); err == nil {
+			want[100+i] = added(i)
+		} else {
+			told[100+i] = added(i)
+			nFailed++
+		}
+	}
+	if !fault.failed() {
+		t.Skip("fewer syncs")
+	}
+	if nFailed != 1 {
+		t.Errorf("%d writes failed, want the one whose sync failed", nFailed)
+	}
+
+	check := func(db *sql.DB, when string) {
+		t.Helper()
+		var ic string
+		if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+			t.Fatalf("%s: integrity_check %q %v", when, ic, err)
+		}
+		rows, err := db.Query(`SELECT k, v FROM t`)
+		if err != nil {
+			t.Fatalf("%s: %v", when, err)
+		}
+		defer rows.Close()
+		have := map[int]string{}
+		for rows.Next() {
+			var k int
+			var v string
+			if err := rows.Scan(&k, &v); err != nil {
+				t.Fatalf("%s: %v", when, err)
+			}
+			have[k] = v
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("%s: %v", when, err)
+		}
+		for k, v := range told {
+			if have[k] != v {
+				continue
+			}
+			if !fault.ended() {
+				t.Errorf("%s: the write of row %d, told failed, is there", when, k)
+			}
+			want[k] = v
+		}
+		for k, v := range want {
+			if got, ok := have[k]; !ok {
+				t.Errorf("%s: row %d is missing", when, k)
+			} else if got != v {
+				t.Errorf("%s: row %d has a wrong value", when, k)
+			}
+		}
+		if len(have) != len(want) {
+			t.Errorf("%s: %d rows, want %d", when, len(have), len(want))
+		}
+	}
+	check(db, "after the failure")
+	db.Close()
+	check(mOpen(t, dsn), "opened again")
+}
+
+// A journal that persists keeps the journal of an earlier transaction past
+// the end of the one in it, and SQLite zeroes the first byte of the old
+// header there. A failed sync that loses only that byte leaves the
+// transactions committed before it as they are: a rollback that went on into
+// the old journal would undo their pages. So it is when the cut of the
+// journal fails as well, and is made when the journal next opens.
+func TestJournalSyncLosesZeroedHeader(t *testing.T) {
+	for _, cutFails := range []bool{false, true} {
+		t.Run(fmt.Sprint("cutFails=", cutFails), func(t *testing.T) { journalSyncLosesZeroedHeader(t, cutFails) })
+	}
+}
+
+func journalSyncLosesZeroedHeader(t *testing.T, cutFails bool) {
+	hits := 0
+	// The rows the failed write changes: its journal must end where an old
+	// header starts.
+	for rows := 1; rows <= 30; rows++ {
+		t.Run(fmt.Sprint(rows), func(t *testing.T) {
+			// Small pages and a small cache: the first update spills, and
+			// leaves a journal of many parts, each with a header.
+			dsn := "file:" + mPath(t) + "?_pragma=page_size(512)&_pragma=journal_mode(PERSIST)&_pragma=synchronous(NORMAL)&_pragma=cache_size(10)"
+			db := mOpen(t, dsn)
+			db.SetMaxOpenConns(1)
+			mExec(t, db, `CREATE TABLE t(k INTEGER PRIMARY KEY, v TEXT)`)
+			mExec(t, db, `WITH RECURSIVE n(x) AS (VALUES (1) UNION ALL SELECT x+1 FROM n WHERE x < 100) INSERT INTO t SELECT x, ? FROM n`, strings.Repeat("a", 400))
+			mExec(t, db, `UPDATE t SET v = ?`, strings.Repeat("b", 400))
+
+			failed := false
+			vfs.SetFault(func(path string, op vfs.Op) int {
+				if !strings.HasSuffix(path, "-journal") {
+					return vfs.OK
+				}
+				if op == vfs.OpTruncate && cutFails {
+					return vfs.IOErrTruncate
+				}
+				if op != vfs.OpSync || failed {
+					return vfs.OK
+				}
+				cur, err := os.ReadFile(path)
+				if err != nil {
+					t.Errorf("read %s: %v", path, err)
+					return vfs.OK
+				}
+				for off := 512; off+8 <= len(cur); off += 512 {
+					if cur[off] != 0 || !bytes.Equal(cur[off+1:off+8], journalMagic[1:]) {
+						continue
+					}
+					cur[off] = journalMagic[0]
+					if err := os.WriteFile(path, cur, 0o644); err != nil {
+						t.Errorf("write %s: %v", path, err)
+					}
+					failed = true
+					return vfs.IOErrFsync
+				}
+				return vfs.OK
+			})
+			t.Cleanup(func() { vfs.SetFault(nil) })
+			_, err := db.Exec(`UPDATE t SET v = ? WHERE k <= ?`, strings.Repeat("c", 400), rows)
+			vfs.SetFault(nil)
+			if !failed {
+				t.Skip("no old header where the journal ends")
+			}
+			hits++
+			if err == nil {
+				t.Fatal("the write whose sync failed returned no error")
+			}
+			check := func(db *sql.DB, when string) {
+				t.Helper()
+				var ic string
+				if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+					t.Fatalf("%s: integrity_check %q %v", when, ic, err)
+				}
+				var a, b, c int
+				if err := db.QueryRow(`SELECT sum(v LIKE 'a%'), sum(v LIKE 'b%'), sum(v LIKE 'c%') FROM t`).Scan(&a, &b, &c); err != nil {
+					t.Fatalf("%s: %v", when, err)
+				}
+				if a != 0 || b != 100 || c != 0 {
+					t.Errorf("%s: %d rows as before the committed update, %d as after it, %d as the failed one wrote", when, a, b, c)
+				}
+			}
+			check(db, "after the failure")
+			db.Close()
+			check(mOpen(t, dsn), "opened again")
+		})
+	}
+	if hits == 0 {
+		t.Fatal("no write ended its journal at an old header")
+	}
+}
+
+// A transaction larger than the cache writes pages to the database before
+// it commits, each after a sync of the journal that holds it. When a later
+// sync of the journal fails, the cut keeps the parts synced before, and the
+// rollback undoes every page written: the transaction is there whole or not
+// at all.
+func TestJournalSyncLosesPagesAfterSpill(t *testing.T) {
+	for _, mode := range []string{"DELETE", "TRUNCATE", "PERSIST"} {
+		for _, sync := range []string{"NORMAL", "FULL"} {
+			for _, locking := range []string{"NORMAL", "EXCLUSIVE"} {
+				t.Run(mode+"/"+sync+"/"+locking, func(t *testing.T) {
+					// The update syncs the journal about 25 times, twice
+					// that under FULL, and once more where a commit ends
+					// with a sync.
+					for _, nth := range []int{1, 2, 13, 25, 26, 50, 51, 52} {
+						t.Run(fmt.Sprint(nth), func(t *testing.T) { journalSyncLosesPagesAfterSpill(t, mode, sync, locking, nth) })
+					}
+				})
+			}
+		}
+	}
+}
+
+func journalSyncLosesPagesAfterSpill(t *testing.T, mode, sync, locking string, nth int) {
+	dsn := "file:" + mPath(t) + "?_pragma=page_size(1024)&_pragma=locking_mode(" + locking + ")&_pragma=journal_mode(" + mode + ")&_pragma=synchronous(" + sync + ")&_pragma=cache_size(10)"
+	db := mOpen(t, dsn)
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(k INTEGER PRIMARY KEY, v TEXT, w INT)`)
+	mExec(t, db, `WITH RECURSIVE n(x) AS (VALUES (1) UNION ALL SELECT x+1 FROM n WHERE x < 300) INSERT INTO t SELECT x, ?, 0 FROM n`, strings.Repeat("a", 400))
+
+	fault := loseOnFailedSyncOf(t, "-journal", nth)
+	_, err := db.Exec(`UPDATE t SET v = ?`, strings.Repeat("b", 400))
+	if !fault.failed() {
+		t.Skip("fewer syncs")
+	}
+	if err == nil {
+		t.Fatal("the write whose sync failed returned no error")
+	}
+	// The sync that ends a commit comes after the database was written
+	// and synced: the write is there.
+	want := "a"
+	if fault.ended() {
+		want = "b"
+	}
+	// A page the rollback missed would stay as the failed write left it.
+	if _, err := db.Exec(`UPDATE t SET w = 1`); err != nil {
+		t.Fatalf("the write after the failure: %v", err)
+	}
+	check := func(db *sql.DB, when string) {
+		t.Helper()
+		var ic string
+		if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+			t.Fatalf("%s: integrity_check %q %v", when, ic, err)
+		}
+		var a, b, w int
+		if err := db.QueryRow(`SELECT sum(v LIKE 'a%'), sum(v LIKE 'b%'), sum(w) FROM t`).Scan(&a, &b, &w); err != nil {
+			t.Fatalf("%s: %v", when, err)
+		}
+		if n := map[string]int{"a": a, "b": b}[want]; n != 300 || a+b != 300 || w != 300 {
+			t.Errorf("%s: %d rows as before the failed write, %d as after it, want all %q, and %d with the write after it", when, a, b, want, w)
+		}
+	}
+	check(db, "after the failure")
+	db.Close()
+	check(mOpen(t, dsn), "opened again")
 }

@@ -62,6 +62,9 @@ type File struct {
 	ino      uint64
 	inode    *inode // the locks of the main database, shared in the process
 	wal      *wal   // a WAL: what it shares with the other Files of the WAL
+	journal  bool   // a rollback journal
+	dirty    int64  // a rollback journal: the first byte written since its last good sync
+	stopped  bool   // a rollback journal whose sync failed: see journal_unix.go
 	shm      *shm
 
 	// Space for the argument of fstat, so that the calls made for every
@@ -161,6 +164,13 @@ func OpenWith(name string, flags int, o OpenOptions) (f *File, outFlags int, rc 
 			unix.Close(fd)
 			return nil, 0, rc
 		}
+	}
+	if eType == OpenMainJournal {
+		if rc := f.openJournal(); rc != OK {
+			unix.Close(fd)
+			return nil, 0, rc
+		}
+		f.journal, f.dirty = true, clean
 	}
 	f.dirSync = isNewJrnl
 	return f, flags, OK
@@ -317,6 +327,9 @@ func (f *File) Close() int {
 	if f.wal != nil {
 		f.detachWAL()
 	}
+	if f.stopped {
+		f.closeJournal()
+	}
 	if f.fd >= 0 {
 		// As os_unix, a failed close is not an error for SQLite.
 		unix.Close(f.fd)
@@ -328,7 +341,7 @@ func (f *File) Close() int {
 // ReadAt reads len(p) bytes at off. When the file ends first, the rest of p
 // is zeroed and the result is SQLITE_IOERR_SHORT_READ.
 func (f *File) ReadAt(p []byte, off int64) int {
-	if f.wal != nil && f.wal.failed.Load() {
+	if f.stopped || f.wal != nil && f.wal.failed.Load() {
 		return IOErrRead
 	}
 	got := 0
@@ -354,6 +367,12 @@ func (f *File) ReadAt(p []byte, off int64) int {
 
 // WriteAt writes p at off. A full disk is SQLITE_FULL.
 func (f *File) WriteAt(p []byte, off int64) int {
+	if f.stopped {
+		return IOErrWrite
+	}
+	if f.journal && off < f.dirty {
+		f.dirty = off
+	}
 	if w := f.wal; w != nil {
 		w.io.RLock()
 		defer w.io.RUnlock()
@@ -385,6 +404,9 @@ func (f *File) WriteAt(p []byte, off int64) int {
 // Truncate sets the size of the file, rounded up to whole chunks when
 // SetChunkSize was called.
 func (f *File) Truncate(size int64) int {
+	if f.stopped {
+		return IOErrTruncate
+	}
 	if w := f.wal; w != nil {
 		w.io.RLock()
 		defer w.io.RUnlock()
@@ -401,16 +423,31 @@ func (f *File) Truncate(size int64) int {
 	if err := retry(func() error { return unix.Ftruncate(f.fd, size) }); err != nil {
 		return IOErrTruncate
 	}
+	if f.journal && size < f.dirty {
+		f.dirty = size
+	}
 	return OK
 }
 
 // Sync writes the file to disk, and the directory entry of a new journal
 // the first time. See fullFsync for what each system does. A failed sync of
-// a WAL stops the WAL: see wal_unix.go.
+// a WAL stops the WAL: see wal_unix.go. A failed sync of a rollback journal
+// stops the File: see journal_unix.go.
 func (f *File) Sync(flags int) int {
 	w := f.wal
 	if w == nil {
-		return f.sync(flags)
+		if f.stopped {
+			return IOErrFsync
+		}
+		rc := f.sync(flags)
+		switch {
+		case !f.journal:
+		case rc == OK:
+			f.dirty = clean
+		default:
+			f.stopJournal()
+		}
+		return rc
 	}
 	w.io.Lock()
 	defer w.io.Unlock()
@@ -460,6 +497,9 @@ func openDirectory(name string) (int, error) {
 // work around for the msdos file system of OS X, kept so that SQLite sees
 // the same sizes it would see with os_unix.
 func (f *File) Size() (int64, int) {
+	if f.stopped {
+		return 0, IOErrFstat
+	}
 	if err := unix.Fstat(f.fd, &f.st); err != nil {
 		return 0, IOErrFstat
 	}
