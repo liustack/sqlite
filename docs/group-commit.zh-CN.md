@@ -46,7 +46,7 @@ read_when:
    - 锁空闲时，语句拿锁直接执行，不等着凑批。只有一个写入者时没有额外开销。
    - 锁被占着时，语句进队列，记下它的序号。
    - 持锁的连接还锁之前，从队列里取出和自己同一 key 的语句（一批最多 256 条），在自己身上跑：`BEGIN IMMEDIATE`，每条语句各套一个 `SAVEPOINT` 和 `RELEASE`，最后 `COMMIT`。还锁的那次调用（一次写入，或一个事务的 `Commit`）要等这一批跑完才返回，尽管它自己的工作早已提交。原因：这是批的代价，改成把这一批交给排队的请求去领，实测更慢（每批多一次唤醒和换连接）。
-   - 然后调用复制的 committed 回调（不管这一批成没成功，持锁者自己之前提交的事务可能还没通知），再把锁交给等锁的写者和队首语句里序号最小的那个。
+   - 然后调用复制的 committed 回调（不管这一批成没成功，持锁者自己之前提交的事务可能还没通知），没开复制的文件则在 WAL 超过 `_wal_limit` 时让它从头开始（见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-长度的上限)），再把锁交给等锁的写者和队首语句里序号最小的那个。
    - 锁交给一条排队的语句时，它在自己的连接上领一批：自己排第一，再捎上同一 key 的语句。它还锁时还可能再取一批，然后才交出去。
    
    序号保证的是排队位置和交锁时的先后，不保证所有 SQL 按全局到达顺序执行：取批时会捎上同一 key 里比某个等锁写者晚到的语句。原因：只按 key 取批是合并能快的前提，按序号交锁是为了没有谁会一直轮不到。
@@ -114,5 +114,5 @@ if errors.As(err, &e) && e.ExtendedCode() == sqlite.ABORT_ROLLBACK {
 - **每个请求只结束一次**，`done` 只关闭一次。调用方因 context 结束而离开，和驱动开始执行这条语句或把锁交给调用方，这两件事谁先发生只判定一次（`request.state`）。调用方已经离开的请求不会执行，它的参数不再被读，锁也不会交给它：轮到把锁交给它时，它就在那里结束。领头请求的路径和放回队列的路径都要保证锁最终交出去，复制的 committed 回调在交锁之前调用。
 - **新加一种语句能合并之前**，先在 `goClassify` 里证明它不碰连接自己的东西，再加测试。拿不准就不合并，只会慢，不会错。
 - **新加一种 Go 回调**（函数、虚表方法等），要说清楚它在批里出错、有副作用、被调用多次时会发生什么，以及它算不算第 10 条的标记。
-- **每条规则都要有测试守着。** 相关测试在 `merge_test.go`、`fault_test.go`、`functions_test.go`、`builtin_test.go`、`vtab_test.go`、`group_test.go`、`replhook_test.go`、`readtx_test.go` 和 `internal/csqlite` 里。测试要按错误类型断言每个请求的结局和最终的行，不能只数成功的行。
+- **每条规则都要有测试守着。** 相关测试在 `merge_test.go`、`fault_test.go`、`wallimit_test.go`、`functions_test.go`、`builtin_test.go`、`vtab_test.go`、`group_test.go`、`replhook_test.go`、`readtx_test.go` 和 `internal/csqlite` 里。测试要按错误类型断言每个请求的结局和最终的行，不能只数成功的行。
 - **改规则时同步改**：这份文档的中英两版、[AGENTS.md](../AGENTS.md) 的硬约束、[architecture.zh-CN.md](architecture.zh-CN.md) 的摘要、`functions.go` 等公开文档，以及受影响的测试。
