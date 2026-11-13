@@ -97,7 +97,20 @@ type request struct {
 	// effects says the statement called a Go function that may have side
 	// effects (one not marked Innocuous): its batch commits after it.
 	effects bool
+	// state says which came first once the request left the queue: the
+	// driver, which starts the statement or hands the lock to the caller
+	// (reqTaken), or the caller, which leaves as its context ends (reqLeft).
+	// A caller that left gets nothing more, and its statement never runs. A
+	// caller that came second waits for its answer.
+	state atomic.Int32
 }
+
+// The states of a request.
+const (
+	reqWaiting int32 = iota // in the queue, or in a batch before its turn
+	reqTaken                // its statement started, or the lock was handed to its caller
+	reqLeft                 // its caller left
+)
 
 // maxBatch is the most statements one transaction of the queue takes.
 const maxBatch = 256
@@ -212,6 +225,7 @@ func (l *writeLock) acquire(ctx context.Context, timeout time.Duration) error {
 // first of the first writer that waits for it and the first request of the
 // queue. A request no batch takes, because no connection that runs one can
 // run it, still gets the lock in its turn, however many writers keep coming.
+// A request whose caller left is dropped there: no one would take the lock.
 func (l *writeLock) release(c *conn) {
 	l.mu.Lock()
 	if c != nil && c.canMerge() {
@@ -236,18 +250,25 @@ func (l *writeLock) release(c *conn) {
 			l.mu.Lock()
 		}
 	}
-	switch {
-	case len(l.waiters) > 0 && (len(l.queue) == 0 || l.waiters[0].seq < l.queue[0].seq):
-		ch := l.waiters[0].ch
-		l.waiters = l.waiters[1:]
-		close(ch) // the lock goes to it, still held
-	case len(l.queue) > 0:
-		r := l.queue[0]
-		l.queue = l.queue[1:]
-		r.handed = true
-		close(r.done)
-	default:
-		l.held = false
+	for {
+		switch {
+		case len(l.waiters) > 0 && (len(l.queue) == 0 || l.waiters[0].seq < l.queue[0].seq):
+			ch := l.waiters[0].ch
+			l.waiters = l.waiters[1:]
+			close(ch) // the lock goes to it, still held
+		case len(l.queue) > 0:
+			r := l.queue[0]
+			l.queue = l.queue[1:]
+			if !r.state.CompareAndSwap(reqWaiting, reqTaken) {
+				close(r.done) // its caller left: it ends here
+				continue
+			}
+			r.handed = true
+			close(r.done)
+		default:
+			l.held = false
+		}
+		break
 	}
 	l.mu.Unlock()
 }
@@ -302,6 +323,7 @@ func (l *writeLock) take(c *conn, batch []*request) []*request {
 func (l *writeLock) lead(c *conn, req *request) bool {
 	req.handed = false
 	req.done = make(chan struct{}) // runBatch closes it again
+	req.state.Store(reqWaiting)    // and starts it
 	l.mu.Lock()
 	batch := l.take(c, []*request{req})
 	l.mu.Unlock()
@@ -342,13 +364,14 @@ func (l *writeLock) submit(ctx context.Context, c *conn, s *stmt, args []driver.
 	t := time.NewTimer(c.busyTimeout)
 	defer t.Stop()
 	var err error
+	ended := false // the context
 	select {
 	case <-req.done:
 		return c.answered(ctx, s, req)
 	case <-t.C:
 		err = errBusy
 	case <-ctx.Done():
-		err = ctx.Err()
+		err, ended = ctx.Err(), true
 	}
 	l.mu.Lock()
 	for i, q := range l.queue {
@@ -359,7 +382,21 @@ func (l *writeLock) submit(ctx context.Context, c *conn, s *stmt, args []driver.
 		}
 	}
 	l.mu.Unlock()
-	<-req.done // taken already: a writer runs it, or it has the lock
+	// Taken already: a batch has it, or it has the lock. The busy timeout
+	// no longer counts, as the wait for the lock is over. The context does
+	// until the statement starts: the caller then leaves, and the statement
+	// never runs. Once it started, the caller waits for what became of it.
+	if !ended {
+		select {
+		case <-req.done:
+			return c.answered(ctx, s, req)
+		case <-ctx.Done():
+		}
+	}
+	if req.state.CompareAndSwap(reqWaiting, reqLeft) {
+		return nil, ctx.Err()
+	}
+	<-req.done
 	return c.answered(ctx, s, req)
 }
 
@@ -571,6 +608,12 @@ func (c *conn) runOne(r *request) (outcome, error) {
 	if !s.s.Mergeable() {
 		return notHere, nil
 	}
+	// From here the statement has started: its caller no longer leaves. The
+	// arguments of a caller that left are not the request's any more.
+	if !r.state.CompareAndSwap(reqWaiting, reqTaken) {
+		r.err = context.Canceled // its caller left as its context ended
+		return skipped, nil
+	}
 	if r.err = s.bind(r.args); r.err != nil {
 		return skipped, nil
 	}
@@ -596,6 +639,8 @@ func (c *conn) runOne(r *request) (outcome, error) {
 			r.err = c.abandon(e)
 			return ended, r.err
 		}
+		// It waits again: it did nothing, and its caller still waits.
+		r.state.Store(reqWaiting)
 		return notHere, nil
 	}
 	if !stepped {
