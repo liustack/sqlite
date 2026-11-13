@@ -367,7 +367,7 @@ func (f *File) ReadAt(p []byte, off int64) int {
 
 // WriteAt writes p at off. A full disk is SQLITE_FULL.
 func (f *File) WriteAt(p []byte, off int64) int {
-	if f.stopped {
+	if f.stopped || f.shm != nil && !f.shm.node.copies() {
 		return IOErrWrite
 	}
 	if f.journal && off < f.dirty {
@@ -404,7 +404,7 @@ func (f *File) WriteAt(p []byte, off int64) int {
 // Truncate sets the size of the file, rounded up to whole chunks when
 // SetChunkSize was called.
 func (f *File) Truncate(size int64) int {
-	if f.stopped {
+	if f.stopped || f.shm != nil && !f.shm.node.copies() {
 		return IOErrTruncate
 	}
 	if w := f.wal; w != nil {
