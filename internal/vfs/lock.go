@@ -223,6 +223,9 @@ func (f *File) Lock(level int) int {
 	}
 	f.lock = level
 	node.lock = level
+	if level == LockExclusive && f.shm != nil {
+		f.shm.node.exclusive(true)
+	}
 	return OK
 }
 
@@ -237,6 +240,10 @@ func (f *File) Unlock(level int) int {
 	defer node.mu.Unlock()
 
 	if f.lock > LockShared {
+		if f.shm != nil {
+			// Before the lock goes: from then another process may come.
+			f.shm.node.exclusive(false)
+		}
 		if level == LockShared {
 			// Turn the write lock on the shared range back into a read
 			// lock. This cannot conflict: another owner that does is not

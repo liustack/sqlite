@@ -8,8 +8,10 @@
 package vfs
 
 import (
+	"encoding/binary"
 	"math/bits"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 	"unsafe"
@@ -46,6 +48,28 @@ type shmNode struct {
 	timer    *time.Timer   // releases the idle slots
 	armed    bool          // timer is set to run
 	closed   bool          // the descriptor is closed: the timer does nothing
+	// alone says the process took the DMS lock for writing after a sync of
+	// the WAL failed, and keeps it: see wal_unix.go. The -shm is emptied as
+	// the node closes.
+	alone bool
+	// stopped says a sync of the WAL failed: the process no longer writes
+	// the database. See copies.
+	stopped bool
+	// excl says a File of the process holds EXCLUSIVE on the database. It is
+	// then the only connection of any process, and SQLite takes no slot for
+	// its checkpoints: the one it makes as it closes, and those under a
+	// locking_mode=EXCLUSIVE set once the WAL was open. It is set by Lock,
+	// and by ShmMap for a File that took the lock first.
+	excl bool
+	// ckpt is the WAL the index was of, and the most frames it said a
+	// checkpoint had set out to copy, at the times that was not the mark of
+	// a checkpoint that has copied nothing yet: see noteCkpt. ok is false
+	// when it could not be read.
+	ckpt struct {
+		ok        bool
+		salts     [8]byte
+		attempted uint32
+	}
 }
 
 type fileID struct{ dev, ino uint64 }
@@ -102,6 +126,12 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 	rc := OK
 	if len(node.regions) < want {
 		rc = node.mapRegions(want, size, perMap, extend)
+	}
+	if f.lock >= LockExclusive && !node.excl && len(node.maps) > 0 {
+		// The File took EXCLUSIVE before it opened the WAL index, as a
+		// connection that leaves WAL mode without having read the WAL.
+		node.excl = true
+		node.noteCkpt()
 	}
 	var addr uintptr
 	if n < len(node.regions) {
@@ -327,10 +357,77 @@ func (f *File) ShmLock(offset, n, flags int) int {
 			node.idle &^= mask
 			node.idleExcl &^= mask
 			s.excl |= mask
+			if mask&(1<<shmCkptSlot) != 0 {
+				node.noteCkpt()
+			}
 		}
 	}
 	node.mu.Unlock()
 	return rc
+}
+
+// shmCkptSlot is WAL_CKPT_LOCK, the slot a checkpoint holds for writing.
+const shmCkptSlot = 1
+
+// noteCkpt takes down what the WAL index says the last checkpoint set out to
+// copy. A checkpoint writes that mark before it syncs the WAL, so when the
+// sync fails the mark may be of a checkpoint of the process that has copied
+// nothing, and learn in wal_unix.go takes what was noted in its place. It
+// is noted when a connection of the process takes the checkpoint lock or
+// EXCLUSIVE on the database, before a checkpoint of it writes its own mark,
+// and when a checkpoint of the process copies a page, as its mark counts
+// from then on. node.mu is held.
+func (node *shmNode) noteCkpt() {
+	was := node.ckpt
+	node.ckpt.ok = false
+	if len(node.maps) == 0 || node.maps[0].size < 132 {
+		return
+	}
+	// The salts are bytes 32 to 39 of each copy of the header, and
+	// nBackfillAttempted is at byte 128. Only a checkpoint writes it, and a
+	// writer that starts the WAL over, after the salts.
+	idx := (*[132]byte)(node.maps[0].addr)
+	for range 100 {
+		salts := [8]byte(idx[32:40])
+		attempted := binary.NativeEndian.Uint32(idx[128:])
+		if salts == [8]byte(idx[80:88]) && salts == [8]byte(idx[32:40]) {
+			if was.ok && was.salts == salts {
+				// Each mark noted is of a checkpoint that may have copied.
+				attempted = max(attempted, was.attempted)
+			}
+			node.ckpt.salts, node.ckpt.attempted, node.ckpt.ok = salts, attempted, true
+			return
+		}
+		// A writer is starting the WAL over, and has written one copy.
+		runtime.Gosched()
+	}
+}
+
+// exclusive notes that a File of the process holds EXCLUSIVE on the
+// database, or no longer does.
+func (node *shmNode) exclusive(held bool) {
+	node.mu.Lock()
+	node.excl = held
+	if held {
+		node.noteCkpt()
+	}
+	node.mu.Unlock()
+}
+
+// copies is called before a File that has the WAL index open writes the
+// database or sets its size, which in WAL mode a checkpoint does. It says
+// whether it may. Once a sync of the WAL failed it may not: a checkpoint
+// that had read a frame would copy it after the frame was cut. Before that,
+// the mark of the checkpoint is noted, under the mutex that learn holds, so
+// that the cut keeps every frame the checkpoint copies.
+func (node *shmNode) copies() bool {
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if node.stopped {
+		return false
+	}
+	node.noteCkpt()
+	return true
 }
 
 // unlock releases the slots of mask, n from offset, that s holds. A shared
@@ -504,11 +601,14 @@ func (f *File) ShmUnmap(remove bool) int {
 	}
 	f.shm = nil
 	node := s.node
+	node.mu.Lock()
 	if held := s.shared | s.excl; held != 0 {
-		node.mu.Lock()
 		s.unlock(0, ShmNLock, held)
-		node.mu.Unlock()
 	}
+	if f.lock >= LockExclusive {
+		node.excl = false
+	}
+	node.mu.Unlock()
 
 	shmNodes.Lock()
 	defer shmNodes.Unlock()
@@ -526,6 +626,16 @@ func (f *File) ShmUnmap(remove bool) int {
 	node.mu.Unlock()
 	for _, m := range node.maps {
 		unix.MunmapPtr(m.addr, m.size)
+	}
+	if node.alone {
+		// To 3 bytes, as the first process to open it does (see lockDMS):
+		// a process that was about to take the DMS lock for reading, having
+		// seen this process hold it, would otherwise use the index as it is.
+		if faultOn(node.path, OpTruncate) != OK || retry(func() error { return unix.Ftruncate(node.fd, 3) }) != nil {
+			// A header of zeros is not that of an index that was built, so
+			// SQLite builds it again all the same.
+			unix.Pwrite(node.fd, make([]byte, 136), 0)
+		}
 	}
 	if remove {
 		unix.Unlink(node.path)

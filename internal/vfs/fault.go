@@ -36,8 +36,14 @@ func SetFault(f func(path string, op Op) int) {
 // faultOf is the result SetFault's function gives for op on f, OK when none
 // is set.
 func (f *File) faultOf(op Op) int {
+	return faultOn(f.path, op)
+}
+
+// faultOn is the result SetFault's function gives for op on the file opened
+// by the name path, OK when none is set.
+func faultOn(path string, op Op) int {
 	if p := fault.Load(); p != nil {
-		return (*p)(f.path, op)
+		return (*p)(path, op)
 	}
 	return OK
 }

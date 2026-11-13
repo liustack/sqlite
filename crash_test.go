@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/liustack/sqlite"
 )
 
 // The crash helper writes transactions of crashBatch rows to the database
@@ -32,6 +34,9 @@ func TestMain(m *testing.M) {
 	}
 	if name := os.Getenv(readerEnv); name != "" {
 		os.Exit(readerHelper(name))
+	}
+	if name := os.Getenv(sqlite.PeerEnv); name != "" {
+		os.Exit(sqlite.PeerHelper(name))
 	}
 	os.Exit(m.Run())
 }

@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/liustack/sqlite/internal/vfs"
 )
@@ -717,4 +718,292 @@ func journalSyncLosesPagesAfterSpill(t *testing.T, mode, sync, locking string, n
 	check(db, "after the failure")
 	db.Close()
 	check(mOpen(t, dsn), "opened again")
+}
+
+// failSyncOnce fails the next sync of a file whose name ends with suffix,
+// and loses nothing: what was written still reads back.
+func failSyncOnce(t *testing.T, suffix string) (failed func() bool) {
+	var done atomic.Bool
+	vfs.SetFault(func(path string, op vfs.Op) int {
+		if op == vfs.OpSync && strings.HasSuffix(path, suffix) && done.CompareAndSwap(false, true) {
+			return vfs.IOErrFsync
+		}
+		return vfs.OK
+	})
+	t.Cleanup(func() { vfs.SetFault(nil) })
+	return done.Load
+}
+
+// writesGoOn runs q until it works, as the pool drops the connections that
+// saw the WAL stop.
+func writesGoOn(t *testing.T, db *sql.DB, q string) {
+	t.Helper()
+	var err error
+	for range 20 {
+		if _, err = db.Exec(q); err == nil {
+			return
+		}
+	}
+	t.Fatalf("%s: writes do not go on: %v", q, err)
+}
+
+// A WAL whose sync failed is not cut while another process has the database
+// open. The WAL index they share counts the frames: that process would
+// write past the cut, and read the hole it left as pages of zeros.
+func TestStoppedWALOtherProcessWrites(t *testing.T) {
+	for _, kind := range peerKinds() {
+		t.Run(kind, func(t *testing.T) {
+			path := mPath(t)
+			db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)")
+			db.SetMaxOpenConns(1)
+			mExec(t, db, `CREATE TABLE t(k INTEGER PRIMARY KEY, v BLOB); CREATE TABLE u(k INTEGER PRIMARY KEY, v BLOB)`)
+			for k := range 5 {
+				mExec(t, db, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+			}
+			mExec(t, db, `PRAGMA wal_checkpoint(TRUNCATE)`)
+			for k := 5; k < 10; k++ {
+				mExec(t, db, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+			}
+			p := startPeer(t, kind, path)
+			p.want(`PRAGMA wal_autocheckpoint=0`, "0")
+			p.want(`SELECT count(*) FROM t`, "10")
+
+			failed := failSyncOnce(t, "-wal")
+			if _, err := db.Exec(`PRAGMA wal_checkpoint`); err == nil || !failed() {
+				t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
+			}
+			p.want(`SELECT count(*) FROM t`, "10")
+			p.want(`INSERT INTO u VALUES (1, 'x')`, "")
+			p.want(`SELECT count(*) FROM t`, "10")
+			p.want(`PRAGMA integrity_check`, "ok")
+			p.stop()
+
+			writesGoOn(t, db, `INSERT INTO u VALUES (2, 'y')`)
+			if n := mCount(t, db, `SELECT count(*) FROM t`); n != 10 {
+				t.Errorf("%d rows in t, want 10", n)
+			}
+			if n := mCount(t, db, `SELECT count(*) FROM u`); n != 2 {
+				t.Errorf("%d rows in u, want 2", n)
+			}
+			var ic string
+			if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+				t.Fatalf("integrity_check %q %v", ic, err)
+			}
+		})
+	}
+}
+
+// The cut of a stopped WAL keeps the frames that a checkpoint of another
+// process copied into the database, though this process never synced them:
+// that process did. Without them, the older frames left in the WAL would
+// read in place of the newer pages of the database.
+func TestStoppedWALBackfilledByOtherProcess(t *testing.T) {
+	for _, kind := range peerKinds() {
+		t.Run(kind, func(t *testing.T) {
+			path := mPath(t)
+			db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)")
+			db.SetMaxOpenConns(1)
+			mExec(t, db, `CREATE TABLE t(v); CREATE TABLE u(v); INSERT INTO t VALUES (0); INSERT INTO u VALUES (0)`)
+			mExec(t, db, `PRAGMA wal_checkpoint(TRUNCATE)`)
+			// The last good sync of the WAL in this process: one frame, of t.
+			mExec(t, db, `PRAGMA synchronous=FULL`)
+			mExec(t, db, `UPDATE t SET v = 1`)
+			mExec(t, db, `PRAGMA synchronous=NORMAL`)
+			mExec(t, db, `BEGIN; UPDATE t SET v = 2; UPDATE u SET v = 2; COMMIT`)
+
+			// A reader keeps the WAL from starting over, and another process
+			// copies the frames into the database.
+			reader := startPeer(t, kind, path)
+			reader.want(`BEGIN`, "")
+			reader.want(`SELECT v FROM t`, "2")
+			p := startPeer(t, kind, path)
+			p.want(`PRAGMA wal_checkpoint`, "0|3|3")
+			p.stop()
+			mExec(t, db, `UPDATE t SET v = 3`)
+			reader.want(`COMMIT`, "")
+			reader.stop()
+
+			failed := failSyncOnce(t, "-wal")
+			if _, err := db.Exec(`PRAGMA wal_checkpoint`); err == nil || !failed() {
+				t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
+			}
+			db.Close()
+
+			db = mOpen(t, "file:"+path)
+			var tv, uv int
+			if err := db.QueryRow(`SELECT (SELECT v FROM t), (SELECT v FROM u)`).Scan(&tv, &uv); err != nil {
+				t.Fatal(err)
+			}
+			if uv != 2 || tv != 2 && tv != 3 {
+				t.Fatalf("t is %d and u is %d: no commit left them so", tv, uv)
+			}
+		})
+	}
+}
+
+// While a stopped WAL is still open in this process, a process that opens
+// the database waits: the WAL index it would find counts the frames cut.
+func TestStoppedWALProcessOpensLater(t *testing.T) {
+	for _, kind := range peerKinds() {
+		t.Run(kind, func(t *testing.T) {
+			ctx := context.Background()
+			path := mPath(t)
+			db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)")
+			db.SetMaxOpenConns(1)
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mExec(t, conn, `CREATE TABLE t(k INTEGER PRIMARY KEY, v BLOB); CREATE TABLE u(k INTEGER PRIMARY KEY, v BLOB)`)
+			for k := range 5 {
+				mExec(t, conn, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+			}
+			mExec(t, conn, `PRAGMA wal_checkpoint(TRUNCATE)`)
+			for k := 5; k < 10; k++ {
+				mExec(t, conn, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+			}
+			failed := failSyncOnce(t, "-wal")
+			if _, err := conn.ExecContext(ctx, `PRAGMA wal_checkpoint`); err == nil || !failed() {
+				t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
+			}
+
+			// The connection that saw the failure stays open for a while.
+			p := startPeer(t, kind, path)
+			got := make(chan string)
+			go func() { got <- p.do(`SELECT count(*) FROM t`) }()
+			time.Sleep(100 * time.Millisecond)
+			conn.Close()
+			if n := <-got; n != "5" {
+				t.Fatalf("the process that opened later counts %q rows in t, want 5", n)
+			}
+			p.want(`INSERT INTO u VALUES (1, 'x')`, "")
+			writesGoOn(t, db, `INSERT INTO u VALUES (2, 'y')`)
+			p.want(`SELECT count(*) FROM t`, "5")
+			p.want(`SELECT count(*) FROM u`, "2")
+			p.want(`PRAGMA integrity_check`, "ok")
+			p.stop()
+			var ic string
+			if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+				t.Fatalf("integrity_check %q %v", ic, err)
+			}
+		})
+	}
+}
+
+// A commit whose sync failed is not there when the process ends at once and
+// the database opens again, also when it was the first commit of a new WAL:
+// the WAL index then does not know that WAL yet.
+func TestStoppedWALFirstCommit(t *testing.T) {
+	for nth := 1; nth <= 4; nth++ {
+		t.Run(fmt.Sprint(nth), func(t *testing.T) {
+			ctx := context.Background()
+			path := mPath(t)
+			db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=wal_autocheckpoint(0)")
+			db.SetMaxOpenConns(1)
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			var seen atomic.Int32
+			vfs.SetFault(func(path string, op vfs.Op) int {
+				if op == vfs.OpSync && strings.HasSuffix(path, "-wal") && int(seen.Add(1)) == nth {
+					return vfs.IOErrFsync
+				}
+				return vfs.OK
+			})
+			t.Cleanup(func() { vfs.SetFault(nil) })
+			_, err = conn.ExecContext(ctx, `CREATE TABLE t(v)`)
+			vfs.SetFault(nil)
+			if err == nil {
+				t.Skip("fewer syncs")
+			}
+			// The files as the process would leave them if it ended now.
+			left := filepath.Join(t.TempDir(), "left.db")
+			for _, suffix := range []string{"", "-wal"} {
+				b, err := os.ReadFile(path + suffix)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(left+suffix, b, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if n := mCount(t, mOpen(t, "file:"+left), `SELECT count(*) FROM sqlite_schema`); n != 0 {
+				t.Fatalf("the table of the commit that failed is there")
+			}
+		})
+	}
+}
+
+// The checkpoint that SQLite makes as the last connection closes, and each
+// one under a locking_mode=EXCLUSIVE set once the WAL is open, takes no lock
+// on the WAL index. When its sync of the WAL fails, the WAL is cut as after
+// any other checkpoint.
+func TestStoppedWALCutAtClose(t *testing.T) {
+	for _, exclusive := range []bool{false, true} {
+		t.Run(fmt.Sprint("exclusive=", exclusive), func(t *testing.T) {
+			path := mPath(t)
+			db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)")
+			db.SetMaxOpenConns(1)
+			mExec(t, db, `CREATE TABLE t(v)`)
+			mExec(t, db, `PRAGMA wal_checkpoint(TRUNCATE)`)
+			mExec(t, db, `PRAGMA synchronous=FULL`)
+			mExec(t, db, `INSERT INTO t VALUES (1)`)
+			mExec(t, db, `PRAGMA synchronous=NORMAL`)
+			st, err := os.Stat(path + "-wal")
+			if err != nil {
+				t.Fatal(err)
+			}
+			synced := st.Size()
+			if exclusive {
+				mExec(t, db, `PRAGMA locking_mode=EXCLUSIVE`)
+			}
+			for range 5 {
+				mExec(t, db, `INSERT INTO t VALUES (randomblob(3000))`)
+			}
+			failed := failSyncOnce(t, "-wal")
+			if exclusive {
+				if _, err := db.Exec(`PRAGMA wal_checkpoint`); err == nil {
+					t.Fatal("the checkpoint whose sync failed worked")
+				}
+			}
+			db.Close()
+			if !failed() {
+				t.Fatal("no sync failed")
+			}
+			if st, err := os.Stat(path + "-wal"); err != nil || st.Size() != synced {
+				t.Fatalf("the WAL is %d bytes, %v: want the %d that were synced", st.Size(), err, synced)
+			}
+			db = mOpen(t, "file:"+path)
+			if n := mCount(t, db, `SELECT count(*) FROM t`); n != 1 {
+				t.Fatalf("%d rows, want the one that was synced", n)
+			}
+		})
+	}
+}
+
+// A checkpoint whose sync of the WAL failed has marked the frames it set
+// out to copy, and copied none: they are cut all the same.
+func TestStoppedWALCutAtCheckpoint(t *testing.T) {
+	path := mPath(t)
+	db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)")
+	db.SetMaxOpenConns(1)
+	mExec(t, db, `CREATE TABLE t(k INTEGER PRIMARY KEY, v BLOB)`)
+	mExec(t, db, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	for k := range 5 {
+		mExec(t, db, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+	}
+	failed := failSyncOnce(t, "-wal")
+	if _, err := db.Exec(`PRAGMA wal_checkpoint`); err == nil || !failed() {
+		t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
+	}
+	// The header of the WAL was synced as it was written.
+	if st, err := os.Stat(path + "-wal"); err != nil || st.Size() != 32 {
+		t.Fatalf("the WAL is %d bytes, %v: want its header, 32", st.Size(), err)
+	}
+	writesGoOn(t, db, `INSERT INTO t VALUES (100, 'x')`)
+	if n := mCount(t, db, `SELECT count(*) FROM t`); n != 1 {
+		t.Fatalf("%d rows, want 1", n)
+	}
 }
