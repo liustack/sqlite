@@ -1383,7 +1383,9 @@ func TestMergeDiskFull(t *testing.T) {
 func TestQueuedNotStarved(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(2000)")
-	other := mOpen(t, "file:"+p+"?_pragma=busy_timeout(10000)&_pragma=cache_size(-1000)")
+	// The writers ahead in line commit without a sync, so that the wait
+	// measured below is the turns taken and not the speed of the disk.
+	other := mOpen(t, "file:"+p+"?_pragma=busy_timeout(10000)&_pragma=cache_size(-1000)&_pragma=synchronous(NORMAL)")
 	other.SetMaxOpenConns(8)
 	mExec(t, db, `CREATE TABLE t(x)`)
 	stop := make(chan struct{})
