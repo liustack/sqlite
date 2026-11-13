@@ -335,18 +335,21 @@ func (c *conn) ResetSession(ctx context.Context) error {
 }
 
 func (c *conn) IsValid() bool {
-	return !c.closed && !c.bad && !c.c.Broken() && !c.walStopped()
+	return !c.closed && !c.bad && !c.c.Broken() && !c.stopped()
 }
 
-// walStopped says a failed sync stopped the WAL of a database of c. The WAL
-// opens again only once every connection that has it open is closed, and
-// c cannot use the database meanwhile: database/sql must drop c.
-func (c *conn) walStopped() bool {
-	if !vfs.WALsStopped() {
+// stopped says a failed sync stopped the WAL or the rollback journal of a
+// database of c. The WAL opens again only once every connection that has it
+// open is closed, and a connection with locking_mode=EXCLUSIVE keeps its
+// stopped journal open until it closes. c cannot use the database meanwhile:
+// database/sql must drop c.
+func (c *conn) stopped() bool {
+	wal, journal := vfs.WALsStopped(), vfs.JournalsStopped()
+	if !wal && !journal {
 		return false
 	}
 	for _, name := range c.c.Filenames() {
-		if vfs.WALStopped(name) {
+		if wal && vfs.WALStopped(name) || journal && vfs.JournalStopped(name) {
 			return true
 		}
 	}
