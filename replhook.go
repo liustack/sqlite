@@ -21,7 +21,7 @@ func init() {
 }
 
 // attach is replhook.Attach.
-func attach(path string, committed func(frames uint32)) (detach func(), err error) {
+func attach(path string, committed func(frames uint32, limit int64)) (detach func(), err error) {
 	file, err := fileOf(path)
 	if err != nil {
 		return nil, err

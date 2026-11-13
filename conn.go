@@ -26,6 +26,8 @@ type conn struct {
 	wl          *writeLock // the file's write lock, nil for memory
 	writing     bool       // the connection holds wl
 	busyTimeout time.Duration
+	walLimit    int64            // the WAL is started over once it is longer, in bytes: 0 for never (wallimit.go)
+	replicated  bool             // the file was replicated when the connection opened: its replicator checkpoints
 	cache       map[string]*stmt // statements of the queue (writer.go)
 	control     map[string]*stmt // BEGIN, SAVEPOINT, COMMIT and the like of a batch (writer.go)
 	queries     map[string]*stmt // statements of QueryContext (cache.go)

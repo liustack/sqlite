@@ -160,7 +160,7 @@ func TestAttachCommitted(t *testing.T) {
 	path := realName(t, name)
 	var calls []uint32
 	var lockErr error
-	detach, err := replhook.Attach(path, func(frames uint32) {
+	detach, err := replhook.Attach(path, func(frames uint32, limit int64) {
 		calls = append(calls, frames)
 		if len(calls) == 1 {
 			// The lock is held: taking it again waits.

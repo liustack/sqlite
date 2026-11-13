@@ -29,6 +29,10 @@
 //     starts deferred.
 //   - _time_format=sqlite: how a time.Time is written. The only format, and
 //     the default, is "2006-01-02 15:04:05.999999999-07:00".
+//   - _wal_limit=bytes: the length of the WAL past which the driver starts
+//     it over, waiting up to 100 ms for the readers that still use it. In
+//     WAL mode, reads that overlap without a gap otherwise let the WAL grow
+//     as long as they last. 67108864 (64 MiB) by default, 0 for no limit.
 //
 // A connection waits 5 seconds for a lock unless a _pragma sets busy_timeout.
 package sqlite
@@ -40,6 +44,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,7 +77,10 @@ type Connector struct {
 	name    string // what SQLite opens
 	pragmas []string
 	begin   string
-	opts    options // what Register and NewConnector gave
+	// walLimit is _wal_limit: the length in bytes past which the driver
+	// starts the WAL over, 0 for never (wallimit.go).
+	walLimit int64
+	opts     options // what Register and NewConnector gave
 	// key is the same for connectors that open a file the same way: group
 	// commit merges statements only between connections of one key.
 	key string
@@ -81,7 +89,7 @@ type Connector struct {
 // NewConnector parses dsn, for sql.OpenDB. Its connections get what
 // Register gave, then opts.
 func NewConnector(dsn string, opts ...Option) (*Connector, error) {
-	c := &Connector{begin: "BEGIN"}
+	c := &Connector{begin: "BEGIN", walLimit: defaultWALLimit}
 	o, setKey, err := applyOptions(opts)
 	if err != nil {
 		return nil, err
@@ -107,6 +115,13 @@ func NewConnector(dsn string, opts ...Option) (*Connector, error) {
 	default:
 		return nil, fmt.Errorf("sqlite: _time_format=%s: the only format is sqlite", f)
 	}
+	if v, ok := q["_wal_limit"]; ok {
+		n, err := strconv.ParseInt(v[len(v)-1], 10, 64)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("sqlite: _wal_limit=%s: want a size in bytes, or 0 for no limit", v[len(v)-1])
+		}
+		c.walLimit = n
+	}
 	if q.Get("cache") == "shared" {
 		// SQLite is built without shared cache (engine/sqlite.c), and would
 		// open each connection its own database without a word.
@@ -114,10 +129,10 @@ func NewConnector(dsn string, opts ...Option) (*Connector, error) {
 	}
 	for k := range q {
 		switch {
-		case k == "_pragma", k == "_txlock", k == "_time_format":
+		case k == "_pragma", k == "_txlock", k == "_time_format", k == "_wal_limit":
 			q.Del(k)
 		case strings.HasPrefix(k, "_"):
-			return nil, fmt.Errorf("sqlite: unknown parameter %s: the driver takes _pragma, _txlock and _time_format (for example _pragma=foreign_keys(1))", k)
+			return nil, fmt.Errorf("sqlite: unknown parameter %s: the driver takes _pragma, _txlock, _time_format and _wal_limit (for example _pragma=foreign_keys(1))", k)
 		}
 	}
 	if strings.HasPrefix(name, "file:") {
@@ -138,7 +153,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn := &conn{c: cc, begin: c.begin, key: c.key}
+	conn := &conn{c: cc, begin: c.begin, key: c.key, walLimit: c.walLimit}
 	if err := c.setUp(conn); err != nil {
 		cc.Close()
 		if conn.wl != nil {
@@ -167,6 +182,7 @@ func (c *Connector) setUp(conn *conn) error {
 			return err
 		}
 		cc.SetGuard(true)
+		conn.replicated = true
 	}
 	if err := c.opts.setUp(cc); err != nil {
 		return err

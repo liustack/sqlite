@@ -206,7 +206,7 @@ func TestBatchRollbackFails(t *testing.T) {
 	controlFault = nil
 	// The committed callback runs as the lock goes on.
 	var autocommit bool
-	wl.committed.Store(&[]func(uint32){func(uint32) { autocommit = c.c.AutoCommit() }}[0])
+	wl.committed.Store(&[]func(uint32, int64){func(uint32, int64) { autocommit = c.c.AutoCommit() }}[0])
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
