@@ -101,6 +101,24 @@ So on linux and darwin, the first failed sync of a WAL stops it in the process:
 
 The cost: with `synchronous=NORMAL`, what was committed since the last good sync of the WAL is lost, as on a power loss. With `synchronous=FULL` nothing told committed is lost, since a commit whose sync failed never joined the WAL. Until the WAL opens again, every call on the database fails. A connection that no one takes keeps it stopped: a `sql.Conn` or `sql.Tx` the program keeps open, or the idle connections of another `sql.DB` of the same file that gets no calls. `SetConnMaxIdleTime` lets `database/sql` close such idle connections. Another process is not stopped, and on windows SQLite's own behavior is kept.
 
+## When a sync of the rollback journal fails
+
+In the rollback journal modes (`DELETE`, `TRUNCATE`, `PERSIST`), a commit syncs the journal before it writes the database. When that sync fails, SQLite rolls the transaction back by reading the journal and putting each page it finds back into its cache. If the kernel dropped pages the sync could not write, the journal reads back without them, and SQLite's own VFS lets two things happen:
+
+- Without the header or the pages, SQLite finds nothing to restore, takes the rollback as done and keeps the pages of the failed transaction in its cache. The next commit writes them to the database: a write that was told failed is there after all, and when it made the file longer, the connection reads a malformed database until it closes.
+- A journal that persists (`PERSIST`) still holds the journal of an earlier transaction past the end of the current one, and SQLite zeroes the first byte of the old header there. Without that byte, the rollback goes on into the old journal and undoes pages of a transaction that was committed.
+
+So on linux and darwin, the first failed sync of a rollback journal cuts it and stops the open file of it:
+
+- The journal is cut at the first byte written since its last good sync. What is left is all that must be undone: SQLite writes a page to the database only after a good sync of the journal that holds it, so the part cut covers no page of the database.
+- Every read, write, truncate and sync of that open file then fails, and so does asking for its size. The rollback fails, and SQLite drops its whole cache, as after any I/O error it cannot undo.
+- SQLite then closes the journal and, at the next statement, rolls back what is left of it as after a crash.
+- With `locking_mode=EXCLUSIVE` SQLite keeps the journal open, so `database/sql` drops the connection when it takes it from its pool or gives it back (`IsValid`), and the next connection rolls the journal back.
+
+The cost: the write whose sync failed returns an error, and the next ones go on. A `sql.Conn` or `sql.Tx` the program keeps open on a connection with `locking_mode=EXCLUSIVE` fails every call until it is closed. The cut may not reach the disk either, so a power loss before the next statement can bring back what was cut, as it can any write that was not synced. When the cut itself fails, the journal does not open again in the process until the cut is made: each open tries it again, and every call on the database fails meanwhile. A journal that another process wrote or replaced since opens as it is, and another process is never stopped. On windows SQLite's own behavior is kept.
+
+An error from a commit does not always mean the write is absent. The last step of a commit ends the journal, after the database was written and synced, and syncs it again in three cases: `journal_mode=PERSIST`, `journal_mode=DELETE` with `locking_mode=EXCLUSIVE`, and `journal_mode=TRUNCATE` with `synchronous=FULL`. When that sync fails the commit returns an error, and the write is there. A transaction over several databases (`ATTACH`) returns no error then, as SQLite takes it as committed once the journal that ties the databases together is deleted.
+
 ## Group commit
 
 Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver takes the autocommit DML of many callers, runs it as one transaction and commits once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.
