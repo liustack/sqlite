@@ -1768,3 +1768,147 @@ func TestMergeTableOnlyInJoinBecomesGoTable(t *testing.T) {
 		t.Fatalf("%d rows in d, want 1: the refused statement ran", n)
 	}
 }
+
+// A call whose context ends once its statement is taken into a batch, and
+// before the statement starts, returns then: it does not wait for the
+// statements before it. Its statement never runs, and the lock goes on. With
+// a function that is not Innocuous the statement before it ends the batch,
+// and the request whose caller left goes back to the queue, where the lock
+// is not handed to it.
+func TestMergeCtxEndsBeforeTurn(t *testing.T) {
+	for _, innocuous := range []bool{true, false} {
+		t.Run(fmt.Sprint("innocuous=", innocuous), func(t *testing.T) {
+			started, goOn := make(chan struct{}), make(chan struct{})
+			start, release := sync.OnceFunc(func() { close(started) }), sync.OnceFunc(func() { close(goOn) })
+			defer release()
+			var flags []FuncFlag
+			if innocuous {
+				flags = append(flags, Innocuous)
+			}
+			cn, err := NewConnector("file:"+mPath(t)+"?_pragma=journal_mode(WAL)", WithFunction("slow", 0, func([]driver.Value) (driver.Value, error) {
+				start()
+				<-goOn
+				return int64(1), nil
+			}, flags...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			db := sql.OpenDB(cn)
+			t.Cleanup(func() { db.Close() })
+			mExec(t, db, `CREATE TABLE h(x); CREATE TABLE t(x)`)
+			tx, err := db.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			mExec(t, tx, `INSERT INTO h VALUES (1)`)
+			wait := func(n int) {
+				t.Helper()
+				for deadline := time.Now().Add(5 * time.Second); waiting() < n; time.Sleep(time.Millisecond) {
+					if time.Now().After(deadline) {
+						t.Fatalf("%d of %d statements wait", waiting(), n)
+					}
+				}
+			}
+			first := make(chan error, 1)
+			go func() {
+				_, err := db.Exec(`INSERT INTO t VALUES (slow())`)
+				first <- err
+			}()
+			wait(1)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			second := make(chan error, 1)
+			go func() {
+				_, err := db.ExecContext(ctx, `INSERT INTO t VALUES (2)`)
+				second <- err
+			}()
+			wait(2)
+			committed := make(chan error, 1)
+			go func() { committed <- tx.Commit() }()
+			select {
+			case <-started:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the batch does not start")
+			}
+			cancel()
+			select {
+			case err := <-second:
+				if !errors.Is(err, context.Canceled) {
+					t.Errorf("the call whose context ended: %v, want context.Canceled", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Error("the call whose context ended waits for the statement before it")
+			}
+			release()
+			for _, c := range []chan error{first, committed} {
+				select {
+				case err := <-c:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("the batch does not end")
+				}
+			}
+			// The lock went on: not to the caller that left.
+			after, stop := context.WithTimeout(context.Background(), 5*time.Second)
+			defer stop()
+			if _, err := db.ExecContext(after, `INSERT INTO t VALUES (3)`); err != nil {
+				t.Fatalf("a write after the batch: %v", err)
+			}
+			var got string
+			if err := db.QueryRow(`SELECT group_concat(x) FROM (SELECT x FROM t ORDER BY x)`).Scan(&got); err != nil || got != "1,3" {
+				t.Fatalf("t holds %q, %v: want 1,3", got, err)
+			}
+		})
+	}
+}
+
+// Whether the caller left or the batch started its statement is decided
+// once, by whichever came first: a request whose caller left does not run,
+// though its context was not yet seen done as its turn came.
+func TestMergeLeftRequestDoesNotRun(t *testing.T) {
+	c := batchConn(t)
+	if err := c.c.Exec(`CREATE TABLE t(x)`); err != nil {
+		t.Fatal(err)
+	}
+	left := batchReq(`INSERT INTO t VALUES (1)`)
+	left.state.Store(reqLeft)
+	stays := batchReq(`INSERT INTO t VALUES (2)`)
+	if back := c.runBatch([]*request{left, stays}); len(back) != 0 {
+		t.Fatalf("%d requests go back to the queue", len(back))
+	}
+	if stays.err != nil {
+		t.Fatal(stays.err)
+	}
+	if n := batchCount(t, c, `SELECT count(*) FROM t WHERE x = 1`); n != 0 {
+		t.Fatal("the statement of a caller that left ran")
+	}
+	if n := batchCount(t, c, `SELECT count(*) FROM t`); n != 1 {
+		t.Fatalf("%d rows, want 1", n)
+	}
+}
+
+// The lock is not handed to a request whose caller left: the request ends
+// there, and the lock goes to the next in line.
+func TestReleaseDropsRequestOfCallerThatLeft(t *testing.T) {
+	left, next := batchReq(`SELECT 1`), batchReq(`SELECT 1`)
+	left.seq, next.seq = 1, 2
+	left.state.Store(reqLeft)
+	l := &writeLock{held: true, queue: []*request{left, next}}
+	l.release(nil)
+	select {
+	case <-left.done:
+	default:
+		t.Error("the request of the caller that left is not ended")
+	}
+	if !l.held || !next.handed || len(l.queue) != 0 {
+		t.Fatalf("held %v, next handed %v, %d in the queue: want the lock handed to the next request", l.held, next.handed, len(l.queue))
+	}
+	l.queue = []*request{batchReq(`SELECT 1`)}
+	l.queue[0].state.Store(reqLeft)
+	l.release(nil)
+	if l.held || len(l.queue) != 0 {
+		t.Fatalf("held %v, %d in the queue: want the lock free", l.held, len(l.queue))
+	}
+}
