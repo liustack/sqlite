@@ -30,7 +30,9 @@
 // so that no frame of this process is checkpointed before it is staged. A
 // writer of the driver does it as it gives the lock back (committed), as
 // SQLite's automatic checkpoints run after a commit, so the WAL stays short.
-// A step does it too when it finds the WAL that long.
+// A step does it too when it finds the WAL that long. Once the WAL is past
+// the _wal_limit of the writer, that checkpoint waits for the readers, so
+// that the WAL starts over though reads overlap (checkpointAt).
 //
 // On start, the last staged file says where in the WAL staging stopped and
 // the checksum of the database there. The capturer reads the database,
@@ -165,6 +167,13 @@ type Capturer struct {
 	// later holds the errors of the checkpoints run for a writer of the
 	// driver (committed), which the next step of run reports.
 	later []error
+	// walSkip is the frames of the WAL below which no checkpoint waits for
+	// readers again, after one that they held off (checkpointAt).
+	walSkip int64
+
+	// walTries counts the checkpoints that waited for readers at the limit
+	// of a writer, and walRestarts those that started the WAL over.
+	walTries, walRestarts atomic.Int64
 
 	durable atomic.Uint64 // the last TXID whose name is synced
 	staged  chan struct{} // gets a value when durable moves
@@ -589,7 +598,8 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 		return err
 	}
 	defer unlock()
-	return c.checkpointHeld()
+	// No writer asks here: the limit of the WAL is left to the next one.
+	return c.checkpointHeld(0)
 }
 
 // committed is called by the driver each time a writer gives the write lock
@@ -598,7 +608,7 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 // checkpoints it there, as SQLite's automatic checkpoints run after a
 // commit: no writer runs meanwhile. A step under way has the capturer, and
 // the next write tries again.
-func (c *Capturer) committed(frames uint32) {
+func (c *Capturer) committed(frames uint32, limit int64) {
 	if frames < c.opt.CheckpointFrames || !c.mu.TryLock() {
 		return
 	}
@@ -616,9 +626,9 @@ func (c *Capturer) committed(frames uint32) {
 	case err != nil:
 	case c.full:
 		// Staging stopped: the frames are not staged, a full copy follows.
-		err = c.passive()
+		err = c.checkpointAt(frames, limit)
 	case c.lost == nil:
-		err = c.checkpointHeld()
+		err = c.checkpointHeld(limit)
 	}
 	if err != nil {
 		c.note(err)
@@ -629,15 +639,53 @@ func (c *Capturer) committed(frames uint32) {
 // holding the driver's write lock of the file: no frame comes meanwhile, so
 // SQLite copies them all, unless a reader still uses some, and the next
 // writer starts the WAL over. A WAL found lost is left to the next step,
-// which stages a full copy.
-func (c *Capturer) checkpointHeld() error {
-	if _, err := c.capture(); err != nil || c.lost != nil {
+// which stages a full copy. limit is as for checkpointAt.
+func (c *Capturer) checkpointHeld(limit int64) error {
+	frames, err := c.capture()
+	if err != nil || c.lost != nil {
 		return err
 	}
 	if err := c.syncNames(); err != nil {
 		return err
 	}
-	return c.passive()
+	return c.checkpointAt(frames, limit)
+}
+
+// checkpointAt checkpoints the WAL, which holds frames frames. While
+// readers overlap, a PASSIVE checkpoint copies the frames but no writer
+// finds the WAL free of readers, so it never starts over and grows as long
+// as that lasts. Once it is past limit bytes, the _wal_limit of the writer
+// the checkpoint runs for (0 for none), the checkpoint is a RESTART that
+// waits replhook.WALWait for the readers, as the driver does for a file
+// that is not replicated. When they do not end in time, it still copied
+// what it could, and the next wait comes once the WAL has grown by another
+// quarter of the limit. Call it holding the driver's write lock.
+func (c *Capturer) checkpointAt(frames uint32, limit int64) error {
+	most := limit / frameSize(c.pageSize)
+	if limit <= 0 || int64(frames) < most {
+		c.walSkip = 0
+		return c.passive()
+	}
+	if int64(frames) < c.walSkip {
+		return c.passive()
+	}
+	c.walTries.Add(1)
+	if err := c.conn.BusyTimeout(int(replhook.WALWait / time.Millisecond)); err != nil {
+		return err
+	}
+	_, _, err := c.conn.Checkpoint(csqlite.CheckpointRestart)
+	// The capturer never waits for a lock otherwise.
+	if e := c.conn.BusyTimeout(0); e != nil && err == nil {
+		err = e
+	}
+	switch {
+	case busy(err):
+		c.walSkip = int64(frames) + max(most/4, 1)
+		return nil
+	case err == nil:
+		c.walRestarts.Add(1)
+	}
+	return err
 }
 
 // syncNames makes the names of the staged files durable, which comes before

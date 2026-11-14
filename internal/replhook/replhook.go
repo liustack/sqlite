@@ -8,7 +8,15 @@
 // sqlite fills it in as it is initialized.
 package replhook
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// WALWait is how long a checkpoint that starts the WAL over, once it is
+// past the limit of a connection, waits for the readers: by the driver for
+// a file that is not replicated, by the replicator for one that is.
+const WALWait = 100 * time.Millisecond
 
 // Attach makes every connection the driver opens to the database file path
 // from then on ready for replication: no automatic checkpoints, and the
@@ -23,8 +31,11 @@ import "context"
 // the next writer, with the frames in the WAL as that connection last saw
 // them (csqlite.Conn.WALFrames): after a commit, the WAL it left. It runs on
 // the writer's goroutine and holds the lock meanwhile: the writers of the
-// file wait for it, and it must not take the lock (Lock).
-var Attach func(path string, committed func(frames uint32)) (detach func(), err error)
+// file wait for it, and it must not take the lock (Lock). limit is the
+// length of the WAL in bytes past which that connection wants it started
+// over, 0 for never (its _wal_limit): on an attached file the driver leaves
+// that to committed.
+var Attach func(path string, committed func(frames uint32, limit int64)) (detach func(), err error)
 
 // Lock takes the driver's write lock of an attached file, as a writer does,
 // waiting until ctx is done: until unlock, no connection of this process

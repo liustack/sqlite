@@ -86,6 +86,16 @@ Inside the driver, a connection takes its file's write lock before a statement t
 
 Readers still meet SQLite's locks in the default rollback journal mode: while a COMMIT holds the file locked, which lasts as long as its fsyncs, no connection can start a read, and SQLite's busy handler can miss every gap between commits that come back to back. With writes going on and a slow disk, a read, or the first statement of a new connection, can then wait the whole busy timeout and get `SQLITE_BUSY`. mattn/go-sqlite3 and modernc.org/sqlite do the same. In WAL mode readers never wait for writers: use it when a program reads while it writes.
 
+## A limit on the length of the WAL
+
+SQLite starts the WAL over from its first frame only when a writer finds every frame copied into the database and no reader on the WAL. While reads overlap there is no such moment: the automatic checkpoints still copy the frames, but the file grows as long as that lasts, and reads slow down with it. On an Apple M4, four readers that scan a 2 MB table beside one writer left a WAL of 542 MB after 5 seconds.
+
+So the connection that gives the write lock back looks at the length of the WAL, and once it is past `_wal_limit` (64 MiB by default, `_wal_limit=0` for no limit) it runs a RESTART checkpoint. That checkpoint waits up to 100 ms for the readers of the WAL to end, while new readers read the database file alone, and the next writer starts the WAL over. It holds the write lock, so writers wait with it, and one whose `busy_timeout` is shorter than the wait can get `SQLITE_BUSY` there, as behind any slow writer. In the same run the WAL stayed at 64 MB with as many writes and reads, and the wait was 10 ms at the median.
+
+When the readers do not end in time, as with a read transaction that stays open, the next try comes once the WAL has grown by another quarter of the limit: the wait is paid once in that much writing, not at each commit. So the limit is where the driver starts to try, not a length the WAL cannot pass. A read that never ends still lets the WAL grow, as in SQLite.
+
+A replicated file follows the same rule in its replicator, which runs every checkpoint of that file (see [Replication](#replication)).
+
 ## When a sync of the WAL fails
 
 When an fsync fails, Linux marks the pages it could not write clean. They still read back from memory and the next fsync succeeds, but once the kernel drops them they read back as the disk holds them. With `synchronous=NORMAL`, SQLite syncs the WAL only when it checkpoints, so after that sync fails, the next checkpoint copies frames that may not be on disk into the database. SQLite's own VFS lets it, and the database is damaged once the pages are dropped.
@@ -188,7 +198,7 @@ The `replica` package copies a database to S3-compatible storage as it changes. 
 
 - An attached file gets no automatic checkpoints, and the PRAGMAs that would checkpoint or leave WAL mode give an error.
 - The capturer reads the new frames of the WAL up to the last commit frame, checking salts and frame checksums as SQLite's recovery does, writes them as one LTX file, and syncs it before it counts as staged. Frames after the last commit are never read.
-- Checkpoints run under the driver's write lock of the file, after the WAL is staged to its end, so no frame is copied into the database or written over before it is staged. Once the WAL holds 4000 frames, the writer that gives the lock back stages and checkpoints, as SQLite's own automatic checkpoint runs in the writer that commits.
+- Checkpoints run under the driver's write lock of the file, after the WAL is staged to its end, so no frame is copied into the database or written over before it is staged. Once the WAL holds 4000 frames, the writer that gives the lock back stages and checkpoints, as SQLite's own automatic checkpoint runs in the writer that commits. Past the `_wal_limit` of that writer the checkpoint waits for readers, as [above](#a-limit-on-the-length-of-the-wal).
 - A WAL that went on in a way the driver did not make (other salts, a shorter WAL, frames it never saw) means another process wrote: the capturer stages a full copy of the database and reports it.
 - A snapshot takes the write lock only to stage the WAL and open a read transaction, then reads the pages without stopping writers.
 

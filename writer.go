@@ -54,8 +54,17 @@ type writeLock struct {
 	attached bool
 	// committed is the replicator's, called as a writer gives the lock
 	// back (replhook.Attach).
-	committed atomic.Pointer[func(frames uint32)]
+	committed atomic.Pointer[func(frames uint32, limit int64)]
 	stats     batchStats
+	// walSkip is the length of the WAL in frames below which no connection
+	// tries again to start it over, after a try that readers held off
+	// (wallimit.go), and walPage the page size of the database read at the
+	// last try, 0 before the first. Only the holder of the lock reads and
+	// writes them.
+	walSkip, walPage int64
+	// walTries counts the tries to start the WAL over, and walRestarts
+	// those that did.
+	walTries, walRestarts atomic.Int64
 }
 
 // batchStats counts what group commit does on one file, for the benchmarks
@@ -246,7 +255,12 @@ func (l *writeLock) release(c *conn) {
 	if c != nil {
 		if f := l.committed.Load(); f != nil {
 			l.mu.Unlock()
-			(*f)(c.c.WALFrames())
+			(*f)(c.c.WALFrames(), c.walLimit)
+			l.mu.Lock()
+		}
+		if c.walOver(l) {
+			l.mu.Unlock()
+			c.restartWAL(l)
 			l.mu.Lock()
 		}
 	}

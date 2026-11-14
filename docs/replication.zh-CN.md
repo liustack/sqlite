@@ -45,7 +45,7 @@ db, err := sql.Open("sqlite", "app.db")
 ## 对你的程序有什么变化
 
 - **写入从不等 S3。** 每次提交先复制进数据库旁边的暂存目录 `app.db-replica/`，再在后台上传。存储慢了或断了，写入既不变慢也不会失败。
-- **数据库是 WAL 模式，**检查点由复制器来做。复制期间，`PRAGMA wal_checkpoint`、设置 `wal_autocheckpoint`、WAL 以外的 `journal_mode` 和 `locking_mode=EXCLUSIVE` 会报错。WAL 满 4000 帧（4 KiB 的页约 16 MB）时复制器做检查点。和所有检查点一样，读事务还在用的帧会留着，所以一个一直不结束的读会让 WAL 变长。
+- **数据库是 WAL 模式，**检查点由复制器来做。复制期间，`PRAGMA wal_checkpoint`、设置 `wal_autocheckpoint`、WAL 以外的 `journal_mode` 和 `locking_mode=EXCLUSIVE` 会报错。WAL 满 4000 帧（4 KiB 的页约 16 MB）时复制器做检查点。WAL 超过 `_wal_limit`（默认 64 MiB）后，它的检查点最多等读者 100 ms，好让 WAL 从头开始，和驱动对没开复制的数据库做的一样（见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-长度的上限)）。读事务还在用的帧会留着，所以一个一直不结束的读会让 WAL 变长。
 - **只跟踪本进程里这个驱动的写入。** 在 `New` 之后用这个驱动打开数据库。如果别的进程（sqlite3 命令行、别的程序）写了文件还做了检查点，复制器会发现 WAL 的变化它没跟上，于是暂存一份整库，并报告给 `OnError`。数据不会丢，但整库要整个上传一次。
 - **WAL 同步失败要传一份整库。** 从 WAL 截掉的写入可能已经上传，所以 WAL 恢复后复制器暂存一份整库，并报告给 `OnError`。见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-同步失败时)。
 - **一个数据库文件同一时刻只有一个进程在复制。** 第一个还在跑时，同一个文件上的第二个 `New` 会失败。
