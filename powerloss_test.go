@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build (linux || darwin) && (amd64 || arm64)
+//go:build ((linux || darwin) && (amd64 || arm64)) || (windows && amd64)
 
 package sqlite
 
@@ -15,6 +15,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -119,6 +120,12 @@ func plStart(t *testing.T, dir string) *plDisk {
 	return d
 }
 
+// plNoDirSync says the system has no directory to sync (Windows). The VFS
+// then tells of none, and a file made or deleted counts as on disk at once:
+// the tests check the syncs of the files there, not what the file system
+// does with names.
+const plNoDirSync = runtime.GOOS == "windows"
+
 // apply is entry seq of the log.
 func (d *plDisk) apply(seq int, c vfs.Change) error {
 	name := filepath.Base(c.Path)
@@ -127,6 +134,9 @@ func (d *plDisk) apply(seq int, c vfs.Change) error {
 	case vfs.ChangeCreate:
 		if f == nil {
 			d.names[name] = &plFile{}
+			if plNoDirSync {
+				d.synced = maps.Clone(d.names)
+			}
 		}
 		return nil
 	case vfs.ChangeDirSync:
@@ -148,6 +158,9 @@ func (d *plDisk) apply(seq int, c vfs.Change) error {
 		f.pending = nil
 	case vfs.ChangeDelete:
 		delete(d.names, name)
+		if plNoDirSync {
+			d.synced = maps.Clone(d.names)
+		}
 	}
 	return nil
 }
@@ -341,6 +354,9 @@ func plBlob(txn, i, n int) []byte {
 func plPoints() int {
 	if n, err := strconv.Atoi(os.Getenv("POWERLOSS_POINTS")); err == nil && n > 0 {
 		return n
+	}
+	if runtime.GOOS == "windows" {
+		return 30 // each power loss writes and opens files, which is slow there
 	}
 	if testing.Short() {
 		return 60

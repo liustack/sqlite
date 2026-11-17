@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build (linux || darwin) && (amd64 || arm64)
+//go:build ((linux || darwin) && (amd64 || arm64)) || (windows && amd64)
 
 package vfs
 
@@ -24,6 +24,7 @@ const (
 	ChangeSync
 	// ChangeDirSync: the directory of the file is about to be synced. Once
 	// the sync returns, the files made in it and deleted from it are.
+	// Never told on Windows, which has no directory to sync.
 	ChangeDirSync
 	// ChangeDelete: the file was deleted.
 	ChangeDelete
