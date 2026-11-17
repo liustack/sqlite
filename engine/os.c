@@ -625,15 +625,26 @@ int go_wal_header(sqlite3 *db, void *out) {
   return SQLITE_OK;
 }
 
-/* go_wal_frames is the number of frames in the WAL of the main database of
-   db as the connection last saw it, 0 when it has no WAL. It needs no
-   transaction: right after the connection commits, it is the WAL that
-   commit left, and later it may be out of date. */
-unsigned go_wal_frames(sqlite3 *db) {
-  Pager *p;
-  if (!db->aDb[0].pBt) return 0;
-  p = sqlite3BtreePager(db->aDb[0].pBt);
-  return p->pWal ? p->pWal->hdr.mxFrame : 0;
+/* go_wal_now is the WAL of the main database of db as it is now: its length
+   in frames in the low half, and in the high half a number that changes
+   each time the WAL starts over (its first salt). GO_WAL_UNKNOWN when db
+   has not read that WAL yet.
+
+   It is read from the header that the connections of the file share, not
+   from the copy db made when it last began a transaction: a connection
+   that has not touched the main database since then, as one that writes
+   only its temporary tables, has an old copy. No lock is taken, so beside
+   a writer of another process the two halves may be of different moments:
+   the caller uses them to decide when to run a checkpoint, no more. */
+#define GO_WAL_UNKNOWN (~0ULL)
+unsigned long long go_wal_now(sqlite3 *db) {
+  Wal *w;
+  volatile WalIndexHdr *h;
+  if (!db->aDb[0].pBt) return GO_WAL_UNKNOWN;
+  w = sqlite3BtreePager(db->aDb[0].pBt)->pWal;
+  if (!w || w->nWiData == 0 || !w->apWiData[0]) return GO_WAL_UNKNOWN;
+  h = walIndexHdr(w);
+  return (unsigned long long)h->aSalt[0] << 32 | h->mxFrame;
 }
 
 /* go_page_count is the size of the main database of db in pages, as its

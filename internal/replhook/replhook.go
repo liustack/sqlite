@@ -28,8 +28,9 @@ const WALWait = 100 * time.Millisecond
 //
 // committed, if not nil, is called each time a connection of the driver that
 // held the file's write lock ends its transaction, before the lock goes to
-// the next writer, with the frames in the WAL as that connection last saw
-// them (csqlite.Conn.WALFrames): after a commit, the WAL it left. It runs on
+// the next writer, with the frames in the WAL as it is then
+// (csqlite.Conn.WALNow). A connection that never read the WAL does not
+// call it: it wrote nothing there. It runs on
 // the writer's goroutine and holds the lock meanwhile: the writers of the
 // file wait for it, and it must not take the lock (Lock). limit is the
 // length of the WAL in bytes past which that connection wants it started

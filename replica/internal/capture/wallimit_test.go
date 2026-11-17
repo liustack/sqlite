@@ -6,6 +6,7 @@
 package capture
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -219,5 +220,77 @@ func TestWALLimitStagingStopped(t *testing.T) {
 	}
 	if tries, restarts := c.walTries.Load()-tries0, c.walRestarts.Load()-restarts0; tries != 1 || restarts != 1 {
 		t.Fatalf("%d tries and %d restarts past the limit of the WAL, want one of each", tries, restarts)
+	}
+}
+
+// A connection that writes only its temporary tables gives the write lock
+// back too, and has not looked at the WAL for a while. The capturer is told
+// the WAL as it is, not as that connection knows it: no wait at each commit.
+func TestWALLimitStagingStoppedTempWriter(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 20
+	opt.Limit = 64 << 10
+	c := open(t, name, opt)
+	db, err := sql.Open("sqlite", "file:"+name+"?_pragma=synchronous(NORMAL)&_wal_limit=1048576")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	run(t, db, "CREATE TABLE t(k INTEGER PRIMARY KEY, v BLOB)")
+	// A write is about 100 KiB of frames, 25 of them.
+	write := func(n int) {
+		t.Helper()
+		for k := range n {
+			run(t, db, fmt.Sprintf("INSERT OR REPLACE INTO t VALUES (%d, randomblob(100000))", k%8))
+		}
+	}
+	write(9)
+	c.mu.Lock()
+	full := c.full
+	c.mu.Unlock()
+	if !full {
+		t.Fatal("staging goes on past its limit")
+	}
+	reader, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Rollback()
+	var n int
+	if err := reader.QueryRow("SELECT count(*) FROM t").Scan(&n); err != nil || n != 8 {
+		t.Fatalf("%d rows, %v", n, err)
+	}
+	write(2)
+	// It reads the WAL once, of some 50 frames, and then writes its own
+	// table alone.
+	ctx := context.Background()
+	temp, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer temp.Close()
+	if err := temp.QueryRowContext(ctx, "SELECT count(*) FROM t").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := temp.ExecContext(ctx, "CREATE TEMP TABLE tt(x)"); err != nil {
+		t.Fatal(err)
+	}
+	tries0 := c.walTries.Load()
+	for k := 0; c.walTries.Load() == tries0; k++ {
+		if k > 30 {
+			t.Fatal("no try to start the WAL over past the limit")
+		}
+		write(1)
+	}
+	// The next try comes a quarter of the limit later: 63 frames.
+	for range 2 {
+		if _, err := temp.ExecContext(ctx, "INSERT INTO tt VALUES (1)"); err != nil {
+			t.Fatal(err)
+		}
+		write(1)
+	}
+	if tries := c.walTries.Load() - tries0; tries != 1 {
+		t.Fatalf("%d tries in 2 writes after the first, beside a connection that writes its temporary table, want 1", tries)
 	}
 }

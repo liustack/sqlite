@@ -252,13 +252,15 @@ func (l *writeLock) release(c *conn) {
 			}
 		}
 	}
-	if c != nil {
+	// The WAL as it is now, which c knows once it has read it. A
+	// connection that never did wrote nothing there.
+	if frames, _, ok := walNow(c); ok {
 		if f := l.committed.Load(); f != nil {
 			l.mu.Unlock()
-			(*f)(c.c.WALFrames(), c.walLimit)
+			(*f)(frames, c.walLimit)
 			l.mu.Lock()
 		}
-		if c.walOver(l) {
+		if c.walOver(l, int64(frames)) {
 			l.mu.Unlock()
 			c.restartWAL(l)
 			l.mu.Lock()

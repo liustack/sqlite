@@ -10,6 +10,7 @@ package csqlite
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 )
 
 // What the replicator (replica/internal/capture) needs of a connection.
@@ -85,16 +86,23 @@ func (c *Conn) WALHeader() (WALHeader, error) {
 	return h, nil
 }
 
-// WALFrames is the number of frames in the WAL of the main database as the
-// connection last saw it, 0 when it has no WAL or is broken. It needs no transaction:
-// right after the connection commits, it is the WAL that commit left, and
-// later it may be out of date.
-func (c *Conn) WALFrames() uint32 {
+// WALNow is the WAL of the main database as it is now: its length in frames,
+// and a number that changes each time the WAL starts over. ok is false when
+// the connection has not read that WAL yet, has none, or is broken.
+//
+// It needs no transaction, and it is not what the connection last saw: a
+// connection that has not touched the main database for a while, as one
+// that writes only its temporary tables, still gets the WAL of now.
+func (c *Conn) WALNow() (frames, salt uint32, ok bool) {
 	if c.brokenErr() != nil {
-		return 0
+		return 0, 0, false
 	}
 	a := c.args()
-	return uint32(go_wal_frames(a.top, c.db))
+	v := uint64(go_wal_now(a.top, c.db))
+	if v == math.MaxUint64 {
+		return 0, 0, false
+	}
+	return uint32(v), uint32(v >> 32), true
 }
 
 // PageCount is the size of the main database in pages, as the open read

@@ -45,14 +45,24 @@ const (
 	maxPageSize    = 65536
 )
 
-// walOver says the WAL may be past the limit of c, which holds the write
-// lock l and has just committed: restartWAL then looks closer. It costs one
-// read of a field of the connection. l.mu is held.
-func (c *conn) walOver(l *writeLock) bool {
+// walNow is the WAL of the file of c as it is now (csqlite.Conn.WALNow). It
+// is not ok for the replicator, which gives the lock back with no
+// connection of the driver.
+func walNow(c *conn) (frames, salt uint32, ok bool) {
+	if c == nil {
+		return 0, 0, false
+	}
+	return c.c.WALNow()
+}
+
+// walOver says the WAL, of frames frames now, may be past the limit of c,
+// which holds the write lock l and has just committed: restartWAL then
+// looks closer. l.mu is held.
+func (c *conn) walOver(l *writeLock, frames int64) bool {
 	if c.walLimit <= 0 || c.replicated || c.closed || c.bad {
 		return false
 	}
-	frames, size := int64(c.c.WALFrames()), l.walPage
+	size := l.walPage
 	if size == 0 {
 		// Not read yet: as with the largest page.
 		size = maxPageSize
@@ -76,8 +86,9 @@ func (c *conn) restartWAL(l *writeLock) {
 		return
 	}
 	l.walPage = size
-	frames, limit := int64(c.c.WALFrames()), c.walLimit/(size+walFrameHeader)
-	if frames < limit {
+	now, _, ok := c.c.WALNow()
+	frames, limit := int64(now), c.walLimit/(size+walFrameHeader)
+	if !ok || frames < limit {
 		return
 	}
 	// The wait of the checkpoint is SQLite's busy timeout of the
