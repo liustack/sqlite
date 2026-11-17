@@ -82,4 +82,4 @@ make test-gen
 
 builds the pass into `.build/shadow.so` and runs the tests again with `GEN_LLVM` (the LLVM bin folder, from `scripts/llvm-bin.sh`) and `GEN_SHADOW_PASS` (the pass) set. `GEN_LLD` (an `ld.lld`) adds the tests that link and run samples natively. On macOS, LLVM comes from Homebrew (`brew install llvm@22`).
 
-Two tests only pass on a linux/amd64 machine, since they assemble x86 ELF code with the clang of the host: `TestEmitLeafFrame` and `TestNegativeBuild`. On darwin/arm64 they fail the same way in slowjs.
+The tests that link and run samples (`TestSampleRuns`, `TestVarargsNative`, `TestNarrowArgs`) need `GEN_LLD` and a linux/amd64 machine, and are skipped anywhere else. CI has no LLVM and runs none of the tests of this section. So after a change to the generator or its pass, run `make test-gen` with `GEN_LLD` set on a linux/amd64 machine as well as on the Mac.
