@@ -498,10 +498,10 @@ func (f *File) ShmUnmap(remove bool) int {
 	}
 	windows.CloseHandle(node.h)
 	shmNodes.Unlock()
-	// Delete can wait for a virus scanner: not with every open and close
-	// of the process held up.
+	// The delete can wait for a virus scanner: not with every open and
+	// close of the process held up.
 	if remove {
-		Delete(node.path, false)
+		deleteFile(node.path)
 	}
 	return OK
 }

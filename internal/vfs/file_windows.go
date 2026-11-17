@@ -118,6 +118,9 @@ func OpenWith(name string, flags int, o OpenOptions) (f *File, outFlags int, rc 
 		}
 		return nil, 0, CantOpen
 	}
+	if isCreate && !isDelete {
+		tell(ChangeCreate, name, 0, nil)
+	}
 	f = &File{
 		h:        h,
 		path:     name,
@@ -240,6 +243,7 @@ func (f *File) WriteAt(p []byte, off int64) int {
 		return rc
 	}
 	cnt := 0
+	all, at := p, off
 	for len(p) > 0 {
 		err := windows.WriteFile(f.h, p, &f.n, f.at(off))
 		if err != nil {
@@ -257,6 +261,7 @@ func (f *File) WriteAt(p []byte, off int64) int {
 		p = p[f.n:]
 		off += int64(f.n)
 	}
+	tell(ChangeWrite, f.path, at, all)
 	return OK
 }
 
@@ -276,6 +281,9 @@ func (f *File) Truncate(size int64) int {
 	if err != nil && err != windows.ERROR_USER_MAPPED_FILE {
 		return IOErrTruncate
 	}
+	if err == nil {
+		tell(ChangeTruncate, f.path, size, nil)
+	}
 	return OK
 }
 
@@ -285,6 +293,7 @@ func (f *File) Sync(flags int) int {
 	if rc := f.faultOf(OpSync); rc != OK {
 		return rc
 	}
+	tell(ChangeSync, f.path, 0, nil)
 	if err := windows.FlushFileBuffers(f.h); err != nil {
 		return IOErrFsync
 	}
@@ -496,6 +505,16 @@ func (f *File) LockState() int {
 // program has it open for a moment. syncDir does nothing: Windows has no
 // directory to sync.
 func Delete(name string, syncDir bool) int {
+	rc := deleteFile(name)
+	if rc == OK {
+		tell(ChangeDelete, name, 0, nil)
+	}
+	return rc
+}
+
+// deleteFile is Delete without telling SetTrace, which is not told of the
+// shared memory of a WAL.
+func deleteFile(name string) int {
 	p, err := windows.UTF16PtrFromString(name)
 	if err != nil {
 		return IOErrDelete
