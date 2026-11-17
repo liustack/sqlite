@@ -1901,6 +1901,7 @@ func walFindFrame(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func walIndexAppend(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func walIndexPageRealloc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func walIndexReadHdr(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func walIndexTryHdr(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func walLimitSize(a0 uintptr, a1 uintptr, a2 uintptr)
 func walRestartHdr(a0 uintptr, a1 uintptr, a2 uintptr)
 func walTryBeginRead(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr

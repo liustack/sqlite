@@ -14,7 +14,7 @@ English · [简体中文](upstream.zh-CN.md)
 | Code | From | Version | Kept by |
 | --- | --- | --- | --- |
 | `engine/sqlite3.c`, `engine/sqlite3.h` | The SQLite amalgamation, https://sqlite.org/download.html | 3.54.1 | `engine/vendor.sh` and `engine/SQLITE.sha256` |
-| `engine/libc/string/*.c` except `memcpy.c`, `engine/libc/math/*`, `engine/libc/internal/libm.h` (with `engine/libc/patches/libm.h.patch`), `engine/libc/COPYRIGHT` | musl, https://git.musl-libc.org/cgit/musl | commit `7ada6dd` (2024-03-02) | `engine/libc/vendor.sh` and `engine/libc/MUSL.sha256` |
+| `engine/libc/string/*.c` except `memcpy.c`, `engine/libc/math/*`, `engine/libc/internal/libm.h`, `engine/libc/COPYRIGHT`, with the patches of `engine/libc/patches/` (`libm.h`, and `memcmp.c` and `strcspn.c` for speed) | musl, https://git.musl-libc.org/cgit/musl | commit `7ada6dd` (2024-03-02) | `engine/libc/vendor.sh` and `engine/libc/MUSL.sha256` |
 | `internal/goasm/gen/`, the headers of `engine/libc/`, `engine/libc/string/memcpy.c`, `engine/libc/math.c`, `engine/libc/patches/libm.h.patch`, `scripts/docs-list.sh` | github.com/liustack/slowjs | commit `2445c180` | Copied once, then changed here |
 
 ## A new SQLite release

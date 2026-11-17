@@ -32,9 +32,15 @@ else sum() { shasum -a 256 "$1" | cut -d' ' -f1; }; fi
 files() {
 	echo "COPYRIGHT COPYRIGHT"
 	echo "src/internal/libm.h internal/libm.h libm.h.patch"
+	# memcmp and strcspn are patched for speed: SQLite compares keys with the
+	# one, and LIKE looks for the next place a match can start with the other,
+	# a letter in both cases. What they return is unchanged.
 	for f in bcmp bzero memchr memcmp memmove memrchr memset strchr strchrnul strcmp \
 		strcspn strlen strncmp strrchr strspn; do
-		echo "src/string/$f.c string/$f.c"
+		case $f in
+		memcmp | strcspn) echo "src/string/$f.c string/$f.c $f.c.patch" ;;
+		*) echo "src/string/$f.c string/$f.c" ;;
+		esac
 	done
 	# The math functions of SQLite (SQLITE_ENABLE_MATH_FUNCTIONS, and log in
 	# FTS5), and the helpers and tables they use.
