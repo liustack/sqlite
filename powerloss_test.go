@@ -11,23 +11,22 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
-	"maps"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/liustack/sqlite/internal/powerloss"
 	"github.com/liustack/sqlite/internal/vfs"
 )
 
 // The tests of this file play a power loss. A recorder keeps everything the
 // VFS does to the files of a database while a program writes (vfs.SetTrace).
-// Then, for many moments of that log, plDisk builds files a power loss at
+// Then, for many moments of that log, powerloss.Disk builds files a power loss at
 // that moment could leave: what was synced is there, and of what was not,
 // any part. The database must open from each of them whole.
 //
@@ -80,220 +79,13 @@ func (r *plRecorder) acked(n int) {
 	r.mu.Unlock()
 }
 
-// plOp is a write or a truncate of a file that no sync has followed.
-type plOp struct {
-	seq   int // its place in the log
-	trunc bool
-	off   int64 // where it wrote, or the new size
-	data  []byte
-}
-
-// plFile is a file as a power loss finds it: what its last sync put on
-// disk, and what was done to it since.
-type plFile struct {
-	disk    []byte
-	pending []plOp
-}
-
-// plDisk follows a log: the files of the directory, and the ones it held at
-// its last sync.
-type plDisk struct {
-	names  map[string]*plFile
-	synced map[string]*plFile
-}
-
 // plStart is the disk before the log: the files of dir, all of them synced.
-func plStart(t *testing.T, dir string) *plDisk {
-	d := &plDisk{names: map[string]*plFile{}}
-	entries, err := os.ReadDir(dir)
+func plStart(t *testing.T, dir string) *powerloss.Disk {
+	d, err := powerloss.Start(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range entries {
-		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		d.names[e.Name()] = &plFile{disk: b}
-	}
-	d.synced = maps.Clone(d.names)
 	return d
-}
-
-// plNoDirSync says the system has no directory to sync (Windows). The VFS
-// then tells of none, and a file made or deleted counts as on disk at once:
-// the tests check the syncs of the files there, not what the file system
-// does with names.
-const plNoDirSync = runtime.GOOS == "windows"
-
-// apply is entry seq of the log.
-func (d *plDisk) apply(seq int, c vfs.Change) error {
-	name := filepath.Base(c.Path)
-	f := d.names[name]
-	switch c.Kind {
-	case vfs.ChangeCreate:
-		if f == nil {
-			d.names[name] = &plFile{}
-			if plNoDirSync {
-				d.synced = maps.Clone(d.names)
-			}
-		}
-		return nil
-	case vfs.ChangeDirSync:
-		d.synced = maps.Clone(d.names)
-		return nil
-	}
-	if f == nil {
-		return fmt.Errorf("entry %d: change %d of %s, which is not there", seq, c.Kind, name)
-	}
-	switch c.Kind {
-	case vfs.ChangeWrite:
-		f.pending = append(f.pending, plOp{seq: seq, off: c.Off, data: c.Data})
-	case vfs.ChangeTruncate:
-		f.pending = append(f.pending, plOp{seq: seq, trunc: true, off: c.Off})
-	case vfs.ChangeSync:
-		for _, op := range f.pending {
-			f.disk = op.do(f.disk, len(op.data))
-		}
-		f.pending = nil
-	case vfs.ChangeDelete:
-		delete(d.names, name)
-		if plNoDirSync {
-			d.synced = maps.Clone(d.names)
-		}
-	}
-	return nil
-}
-
-// do is b after op, or after the first n bytes of its write.
-func (op plOp) do(b []byte, n int) []byte {
-	if op.trunc {
-		if int64(len(b)) >= op.off {
-			return b[:op.off]
-		}
-		return append(b, make([]byte, op.off-int64(len(b)))...)
-	}
-	if end := op.off + int64(n); int64(len(b)) < end {
-		b = append(b, make([]byte, end-int64(len(b)))...)
-	}
-	copy(b[op.off:], op.data[:n])
-	return b
-}
-
-// How a power loss treats what was not synced.
-const (
-	plNone  = iota // none of it arrived
-	plAll          // all of it did, as when the process is killed
-	plFirst        // what was done before some moment did
-	plSome         // any part: of each write all its sectors, none, the first ones or any of them
-	plKinds
-)
-
-var plKindNames = [...]string{"nothing unsynced arrived", "all arrived", "the first part arrived", "some writes arrived"}
-
-// plSector is what a disk writes at once. Of a write that a power loss
-// stops, some sectors are on disk and the others are as they were.
-const plSector = 512
-
-// Which sectors of a write arrived.
-const (
-	plWhole = iota
-	plNothing
-	plHead // the first ones
-	plAny  // each or not
-)
-
-// some is b after the sectors of op's write that arrived, as how says. With
-// junk, the file is as long as the write made it, and holds anything where
-// it grew and no data arrived. Without, it holds zeros there, and ends with
-// the last sector that arrived.
-func (op plOp) some(b []byte, how int, junk bool, rng *rand.Rand) []byte {
-	old, end := int64(len(b)), op.off+int64(len(op.data))
-	head := op.off + rng.Int64N(int64(len(op.data))/plSector+1)*plSector
-	for at := op.off; at < end; {
-		next := min((at/plSector+1)*plSector, end)
-		got := how == plWhole || how == plHead && next <= head || how == plAny && rng.IntN(2) == 0
-		if (got || junk) && int64(len(b)) < next {
-			b = append(b, make([]byte, next-int64(len(b)))...)
-		}
-		switch {
-		case got:
-			copy(b[at:next], op.data[at-op.off:])
-		case junk:
-			for i := max(at, old); i < next; i++ {
-				b[i] = byte(rng.Uint32())
-			}
-		}
-		at = next
-	}
-	return b
-}
-
-// crash gives the files a power loss now could leave. With garbage, where a
-// write that makes a file longer did not arrive, the file may be longer all
-// the same and hold anything there: SQLite assumes a file system may set
-// the size of a file before it writes the data.
-func (d *plDisk) crash(kind int, garbage bool, rng *rand.Rand) map[string][]byte {
-	files := map[string][]byte{}
-	all := maps.Clone(d.synced)
-	maps.Copy(all, d.names)
-	names := slices.Sorted(maps.Keys(all))
-	// plFirst: what came before entry cut of the log arrived.
-	cut := 0
-	if kind == plFirst {
-		var seqs []int
-		for _, name := range names {
-			if f := d.names[name]; f != nil {
-				for _, op := range f.pending {
-					seqs = append(seqs, op.seq)
-				}
-			}
-		}
-		if len(seqs) > 0 {
-			cut = seqs[rng.IntN(len(seqs))]
-		}
-	}
-	for _, name := range names {
-		// A name that changed since the directory was synced has the file
-		// it had then, or the one it has now, or none when one was deleted
-		// and another made.
-		was, is := d.synced[name], d.names[name]
-		f := is
-		if was != is && kind != plAll {
-			f = was
-			if kind != plNone {
-				f = []*plFile{was, is, nil}[rng.IntN(3)]
-				if f == nil && (was == nil || is == nil) {
-					f = []*plFile{was, is}[rng.IntN(2)]
-				}
-			}
-		}
-		if f == nil {
-			continue
-		}
-		b := slices.Clone(f.disk)
-		for _, op := range f.pending {
-			how := plWhole
-			switch kind {
-			case plNone:
-				how = plNothing
-			case plFirst:
-				if op.seq >= cut {
-					how = plNothing
-				}
-			case plSome:
-				how = []int{plWhole, plWhole, plNothing, plHead, plAny}[rng.IntN(5)]
-			}
-			switch {
-			case !op.trunc:
-				b = op.some(b, how, garbage && rng.IntN(2) == 0, rng)
-			case how != plNothing:
-				b = op.do(b, 0)
-			}
-		}
-		files[name] = b
-	}
-	return files
 }
 
 // plCase is one way to open the database of a power loss test.
@@ -303,8 +95,8 @@ type plCase struct {
 	// take back: 0 where a commit is durable, -1 for any number.
 	lose int
 	// any: the database stands whatever part of the writes that were not
-	// synced arrived (plSome), and a file that is longer than what arrived
-	// (the garbage of plDisk.crash).
+	// synced arrived (powerloss.Some), and a file that is longer than what arrived
+	// (the garbage of Disk.Crash).
 	any bool
 }
 
@@ -367,7 +159,7 @@ func plPoints() int {
 // plPlay plays a power loss at many moments of the log r kept from the disk
 // start on. check gets the database of each, opened, the entries of the log
 // before the moment, and says what is wrong with it.
-func plPlay(t *testing.T, tc plCase, start *plDisk, r *plRecorder, check func(db *sql.DB, before []plEvent) error) {
+func plPlay(t *testing.T, tc plCase, start *powerloss.Disk, r *plRecorder, check func(db *sql.DB, before []plEvent) error) {
 	t.Helper()
 	vfs.SetTrace(nil)
 	log := r.log
@@ -398,15 +190,15 @@ func plPlay(t *testing.T, tc plCase, start *plDisk, r *plRecorder, check func(db
 	played := 0
 	for k := 1; k <= len(log); k++ {
 		if e := log[k-1]; e.ack < 0 {
-			if err := start.apply(k-1, e.Change); err != nil {
+			if err := start.Apply(k-1, e.Change); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if !at[k] {
 			continue
 		}
-		for kind := range plKinds {
-			if kind == plSome && !tc.any {
+		for kind := range powerloss.Kinds {
+			if kind == powerloss.Some && !tc.any {
 				continue
 			}
 			played++
@@ -414,7 +206,7 @@ func plPlay(t *testing.T, tc plCase, start *plDisk, r *plRecorder, check func(db
 			if err := os.Mkdir(sub, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			for name, b := range start.crash(kind, tc.any, rng) {
+			for name, b := range start.Crash(kind, tc.any, rng) {
 				if err := os.WriteFile(filepath.Join(sub, name), b, 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -446,7 +238,7 @@ func plPlay(t *testing.T, tc plCase, start *plDisk, r *plRecorder, check func(db
 						t.Logf("  %d: %s %s at %d, %d bytes", i, plChangeNames[e.Kind], filepath.Base(e.Path), e.Off, len(e.Data))
 					}
 				}
-				t.Fatalf("power loss after entry %d of %d, %s (seed %d): %v", k-1, len(log), plKindNames[kind], seed, err)
+				t.Fatalf("power loss after entry %d of %d, %s (seed %d): %v", k-1, len(log), powerloss.KindNames[kind], seed, err)
 			}
 			os.RemoveAll(sub)
 		}
