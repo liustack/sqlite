@@ -607,8 +607,9 @@ var errNotHere = errors.New("sqlite: not mergeable here")
 type outcome int
 
 const (
-	// skipped: the statement never stepped. Its context ended, or its
-	// prepare or its bind failed: r.err says which. It is answered alone.
+	// skipped: the statement never stepped, and the transaction is still
+	// open. Its context ended, or its prepare or its bind failed: r.err
+	// says which. It is answered alone.
 	skipped outcome = iota
 	// notHere: c does not run it as the caller's connection would. It did
 	// nothing, and goes back to the queue.
@@ -635,6 +636,15 @@ func (c *conn) runOne(r *request) (outcome, error) {
 	}
 	if err != nil {
 		r.err = err
+		if c.c.AutoCommit() {
+			// The prepare ended the transaction. SQLite runs statements of
+			// its own while it prepares one (it reads the schema, and a
+			// virtual table reads its tables as it is connected), and one
+			// of those that runs out of memory rolls the transaction back.
+			// Going on would run the rest of the batch with no transaction
+			// around it, each statement committed by its RELEASE.
+			return ended, err
+		}
 		return skipped, nil
 	}
 	if !s.s.Mergeable() {
