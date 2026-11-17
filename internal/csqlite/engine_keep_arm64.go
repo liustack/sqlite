@@ -1884,6 +1884,7 @@ var goasmKeep = []any{
 	walIndexAppend,
 	walIndexPageRealloc,
 	walIndexReadHdr,
+	walIndexTryHdr,
 	walLimitSize,
 	walRestartHdr,
 	walTryBeginRead,

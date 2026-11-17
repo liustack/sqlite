@@ -225,6 +225,11 @@ sequenceDiagram
 
 quickjs 也守同样的规矩，还写了它是怎么得出这些规矩的：[让引擎更快](https://github.com/liustack/quickjs/blob/main/docs/architecture.zh-CN.md#让引擎更快)。试一个想法之前，先查 quickjs 试过但没做的清单：[performance.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/performance.zh-CN.md#试过但没做的) 和 [history.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/history.zh-CN.md#在旧引擎上试过但没做的)。
 
+时间花在哪里，是拿 SQLite 和原生编译的同一份 C 比着量的，用 `bench/native/engine.sql` 的十个负载，在下面两处改动之前。在 darwin/arm64 上，不用编译器内建函数和换用我们的 libc 都不花时间：那 31% 全在转成 Go 汇编这一步。在 linux/amd64 上，不用内建函数占 6 个点，musl 的函数比 glibc 的再多 4 个点，转成 Go 汇编占 17 个点。
+
+- **做了的。** `memcmp` 每次比较八个字节：查索引的负载少用 15% 到 18% 的时间。`strcspn` 给「只有两个停止字节」单开一条路：LIKE 用它找下一个可能匹配的起点，停止字节就是同一个字母的大写和小写。以 `%` 开头的 LIKE 少用 9% 到 17%。两处都是 `engine/libc/patches/` 里对 musl 的补丁，返回值和 musl 的一样。
+- **试过但没做的。** 打开编译器内建函数来编 SQLite 的 C：引擎在 linux/amd64 上慢了 3.7%，虽然原生 C 能因此快 6%。更快的 `sin`、`pow`、`log`：musl 的每次调用比 glibc 的多 6 到 8 纳秒，但换一套数学库就得保证每个平台算出同样的位。
+
 ## 没有走的路
 
 - **cgo**（mattn/go-sqlite3）：每次构建、每个目标平台都要 C 编译器，交叉编译也难。免去这些正是这个项目存在的原因。

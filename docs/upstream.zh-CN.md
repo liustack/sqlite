@@ -5,7 +5,7 @@
 | 代码 | 来源 | 版本 | 由谁维护 |
 | --- | --- | --- | --- |
 | `engine/sqlite3.c`、`engine/sqlite3.h` | SQLite amalgamation，https://sqlite.org/download.html | 3.54.1 | `engine/vendor.sh` 和 `engine/SQLITE.sha256` |
-| `engine/libc/string/*.c`（`memcpy.c` 除外）、`engine/libc/math/*`、`engine/libc/internal/libm.h`（打上 `engine/libc/patches/libm.h.patch`）、`engine/libc/COPYRIGHT` | musl，https://git.musl-libc.org/cgit/musl | 提交 `7ada6dd`（2024-03-02） | `engine/libc/vendor.sh` 和 `engine/libc/MUSL.sha256` |
+| `engine/libc/string/*.c`（`memcpy.c` 除外）、`engine/libc/math/*`、`engine/libc/internal/libm.h`、`engine/libc/COPYRIGHT`，打上 `engine/libc/patches/` 里的补丁（`libm.h`，以及为了速度改的 `memcmp.c` 和 `strcspn.c`） | musl，https://git.musl-libc.org/cgit/musl | 提交 `7ada6dd`（2024-03-02） | `engine/libc/vendor.sh` 和 `engine/libc/MUSL.sha256` |
 | `internal/goasm/gen/`、`engine/libc/` 的头文件、`engine/libc/string/memcpy.c`、`engine/libc/math.c`、`engine/libc/patches/libm.h.patch`、`scripts/docs-list.sh` | github.com/liustack/slowjs | 提交 `2445c180` | 复制过来一次，之后在本仓库里改 |
 
 ## 升级 SQLite

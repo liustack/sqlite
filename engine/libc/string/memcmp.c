@@ -1,8 +1,24 @@
 #include <string.h>
+#include <stdint.h>
+
+#if __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
+#error "memcmp finds the first byte that differs as on a little endian target"
+#endif
 
 int memcmp(const void *vl, const void *vr, size_t n)
 {
 	const unsigned char *l=vl, *r=vr;
+	/* Eight bytes at a time while eight are left. The lowest set bit of
+	 * the difference of two words is in the first byte that differs. */
+	for (; n >= 8; n -= 8, l += 8, r += 8) {
+		uint64_t a, b;
+		__builtin_memcpy(&a, l, 8);
+		__builtin_memcpy(&b, r, 8);
+		if (a != b) {
+			int i = __builtin_ctzll(a ^ b) >> 3;
+			return l[i]-r[i];
+		}
+	}
 	for (; n && *l == *r; n--, l++, r++);
 	return n ? *l-*r : 0;
 }

@@ -234,6 +234,11 @@ The engine is slower than the same C built by clang: on an Apple M4, work inside
 
 quickjs keeps the same rules, with the reasons it learned them: [Making the engine faster](https://github.com/liustack/quickjs/blob/main/docs/architecture.md#making-the-engine-faster). Before trying an idea, check the lists of what quickjs tried and did not do: [performance.md](https://github.com/liustack/quickjs/blob/main/docs/performance.md#what-was-tried-and-not-done) and [history.md](https://github.com/liustack/quickjs/blob/main/docs/history.md#what-was-tried-and-not-done-on-the-old-engine).
 
+Where the time goes was measured for SQLite against the same C built natively, on the ten workloads of `bench/native/engine.sql`, before the two changes below. On darwin/arm64 the missing compiler builtins and the libc cost nothing: the 31% are the lowering to Go assembly. On linux/amd64 the builtins cost 6 points and musl's functions against glibc's 4 more, and the lowering 17.
+
+- **Done.** `memcmp` compares eight bytes at a time: a workload of index lookups takes 15 to 18% less time. `strcspn` has a path of its own for two stop bytes: LIKE looks with it for the next place a match can start, a letter in its upper and its lower case. A LIKE that starts with `%` takes 9 to 17% less. Both are patches of musl in `engine/libc/patches/`, and both return what musl's return.
+- **Tried and not done.** SQLite's C built with the compiler builtins on: the engine got 3.7% slower on linux/amd64, although the native C gains 6% from them. A faster `sin`, `pow` and `log`: musl's take 6 to 8 ns more a call than glibc's, but another libm would have to give the same bits on every target.
+
 ## Routes left out
 
 - **cgo** (mattn/go-sqlite3): needs a C compiler for every build and every target, and cross-compiling is hard. Not having to do this is the reason for the project.
