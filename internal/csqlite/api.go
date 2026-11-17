@@ -450,6 +450,18 @@ func (c *Conn) BusyTimeout(ms int) error {
 	return c.err(int(int32(sqlite3_busy_timeout(c.sp, c.db, uintptr(ms)))))
 }
 
+// BusyTimeoutNow is the busy timeout of the connection in milliseconds, 0
+// for none, as PRAGMA busy_timeout reads it. ok is false when the
+// connection is broken. It runs no statement, so it also tells after a
+// statement that failed, when SQLite may refuse another: an interrupt stays
+// while a query of the connection is open.
+func (c *Conn) BusyTimeoutNow() (ms int, ok bool) {
+	if c.brokenErr() != nil {
+		return 0, false
+	}
+	return int(int32(go_busy_timeout(c.sp, c.db))), true
+}
+
 // TakeAutoCheckpoint takes the automatic checkpoints of the connection from
 // SQLite, which runs none of them from then on: the caller does. n is the
 // wal_autocheckpoint the connection had, 0 for none. ok is false when they

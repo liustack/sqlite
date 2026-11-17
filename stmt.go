@@ -156,12 +156,14 @@ func (s *stmt) prepareAgain() error {
 	return nil
 }
 
-// changed reads again what the driver keeps of the settings of c, after a
-// statement that changes the connection: busy_timeout, as the file's write
-// lock waits as long as SQLite would, and who runs the automatic checkpoints
-// (checkpoint.go).
+// changed reads what the driver keeps of the settings of c, once c is set
+// up and after each statement that changes the connection, failed or not:
+// busy_timeout, as the file's write lock waits as long as SQLite would, and
+// who runs the automatic checkpoints (checkpoint.go). It reads fields of
+// the connection and runs no statement, which SQLite may refuse after one
+// that failed.
 func (c *conn) changed() {
-	if ms, err := pragmaInt(c.c, "busy_timeout"); err == nil {
+	if ms, ok := c.c.BusyTimeoutNow(); ok {
 		c.busyTimeout = time.Duration(ms) * time.Millisecond
 	}
 	c.takeCheckpoints()

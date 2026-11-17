@@ -21179,6 +21179,16 @@ TEXT ·go_attached(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
+TEXT ·go_busy_timeout(SB), NOSPLIT, $0-24
+	NO_LOCAL_POINTERS
+	MOVD a0+0(FP), R20
+	MOVD a1+8(FP), R21
+	PCALIGN $16
+	WORD $0xb942dea0
+	WORD $0x14000001
+	MOVD R0, ret+16(FP)
+	RET
+
 TEXT ·go_page_count(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/liustack/sqlite/internal/vfs"
 )
@@ -498,5 +499,18 @@ func TestCheckpointEveryFailedPragma(t *testing.T) {
 	// About two frames a write: 40 checkpoints.
 	if ran, n := l.walCheckpoints.Load()-ran0, syncs.Load(); ran < 20 || ran > 60 || n > 70 {
 		t.Errorf("%d checkpoints and %d syncs of the WAL in 140 writes with wal_autocheckpoint=7, want about 40", ran, n)
+	}
+}
+
+// The same for busy_timeout, which the file's write lock waits by.
+func TestBusyTimeoutFailedPragma(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	c, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if dc := failKeptPragma(t, c, "busy_timeout"); dc.busyTimeout != 7*time.Millisecond {
+		t.Errorf("the write lock waits %v, want the 7 ms SQLite has", dc.busyTimeout)
 	}
 }

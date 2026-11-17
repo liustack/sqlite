@@ -51,7 +51,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/liustack/sqlite/internal/csqlite"
 )
@@ -200,12 +199,7 @@ func (c *Connector) setUp(conn *conn) error {
 			return fmt.Errorf("sqlite: %s: %w", p, err)
 		}
 	}
-	ms, err := pragmaInt(cc, "busy_timeout")
-	if err != nil {
-		return err
-	}
-	conn.busyTimeout = time.Duration(ms) * time.Millisecond
-	conn.takeCheckpoints()
+	conn.changed()
 	// A connection SQLite opened read-only, as when the file is, runs
 	// differently from the others of its key. So does one the DSN gave
 	// defer_foreign_keys, which SQLite turns off at the end of each

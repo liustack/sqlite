@@ -118,3 +118,23 @@ func TestAttached(t *testing.T) {
 		t.Fatal("attached after DETACH")
 	}
 }
+
+// BusyTimeoutNow reads what PRAGMA busy_timeout reads, with no statement.
+func TestBusyTimeoutNow(t *testing.T) {
+	c := open(t, filepath.Join(t.TempDir(), "x.db"))
+	for _, ms := range []int{123, 0, 5000} {
+		exec(t, c, "PRAGMA busy_timeout="+strconv.Itoa(ms))
+		if got, ok := c.BusyTimeoutNow(); !ok || got != ms {
+			t.Fatalf("BusyTimeoutNow is %d (%v), want %d", got, ok, ms)
+		}
+		if got := mustOne(t, c, "PRAGMA busy_timeout"); got != strconv.Itoa(ms) {
+			t.Fatalf("PRAGMA busy_timeout reads %s, want %d", got, ms)
+		}
+	}
+	if err := c.BusyTimeout(77); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := c.BusyTimeoutNow(); !ok || got != 77 {
+		t.Fatalf("BusyTimeoutNow is %d (%v) after BusyTimeout(77)", got, ok)
+	}
+}

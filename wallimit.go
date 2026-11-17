@@ -93,8 +93,8 @@ func (c *conn) restartWAL(l *writeLock) {
 	}
 	// The wait of the checkpoint is SQLite's busy timeout of the
 	// connection, set back to what it was after it.
-	was, err := pragmaInt(c.c, "busy_timeout")
-	if err != nil {
+	was, ok := c.c.BusyTimeoutNow()
+	if !ok {
 		return
 	}
 	l.walTries.Add(1)
@@ -102,7 +102,7 @@ func (c *conn) restartWAL(l *writeLock) {
 		return
 	}
 	_, _, err = c.c.Checkpoint(csqlite.CheckpointRestart)
-	c.c.BusyTimeout(int(was))
+	c.c.BusyTimeout(was)
 	if err != nil {
 		// Readers held it off, or c reads itself (a query not read to its
 		// end), or the checkpoint failed as a commit would.

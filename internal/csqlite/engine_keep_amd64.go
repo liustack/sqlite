@@ -553,6 +553,7 @@ var goasmKeep = []any{
 	goWritableCreate,
 	goWrite,
 	go_attached,
+	go_busy_timeout,
 	go_classify,
 	go_collate_failed,
 	go_count_rollbacks,

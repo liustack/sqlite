@@ -693,6 +693,12 @@ int go_wal_give(sqlite3 *db) {
 /* go_attached says db has a database attached: 0 is main and 1 is temp. */
 int go_attached(sqlite3 *db) { return db->nDb > 2; }
 
+/* go_busy_timeout is the busy timeout of db in milliseconds, 0 for none,
+   as PRAGMA busy_timeout reads it. It reads a field: the host asks after a
+   statement that may have set it and failed, and SQLite may refuse a
+   statement then, as while an interrupt is pending. */
+int go_busy_timeout(sqlite3 *db) { return db->busyTimeout; }
+
 /* go_page_count is the size of the main database of db in pages, as its
    read transaction sees it. */
 int go_page_count(sqlite3 *db, unsigned *n) {
