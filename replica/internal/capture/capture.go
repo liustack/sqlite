@@ -1333,7 +1333,7 @@ func (c *Capturer) Done(txid ltx.TXID) error {
 	}
 	for _, e := range entries {
 		if _, max, err := ltx.ParseFilename(e.Name()); err == nil && max <= keep {
-			if err := os.Remove(filepath.Join(c.dir, e.Name())); err != nil {
+			if err := remove(filepath.Join(c.dir, e.Name())); err != nil {
 				return err
 			}
 		}

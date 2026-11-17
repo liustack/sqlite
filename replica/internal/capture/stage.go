@@ -45,7 +45,7 @@ func lastStaged(dir string) (hdr ltx.Header, post ltx.Checksum, ok bool, err err
 	for _, e := range entries {
 		name := e.Name()
 		if strings.HasSuffix(name, ".tmp") {
-			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			if err := remove(filepath.Join(dir, name)); err != nil {
 				return hdr, 0, false, err
 			}
 			continue
@@ -108,6 +108,7 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 	if err != nil {
 		return false, 0, err
 	}
+	tell(ChangeCreate, tmp, "")
 	err = func() error {
 		w := bufio.NewWriterSize(f, 1<<20)
 		enc, err := ltx.NewEncoder(w)
@@ -133,7 +134,12 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 		if size, err = f.Seek(0, io.SeekCurrent); err != nil {
 			return err
 		}
-		return f.Sync()
+		tell(ChangeWritten, tmp, "")
+		if err := f.Sync(); err != nil {
+			return err
+		}
+		tell(ChangeSync, tmp, "")
+		return nil
 	}()
 	if cerr := f.Close(); err == nil {
 		err = cerr
@@ -146,7 +152,7 @@ func stageFile(dir string, mode os.FileMode, h ltx.Header, pages func(put func(p
 		err = rename(tmp, name)
 	}
 	if err != nil {
-		os.Remove(tmp)
+		remove(tmp)
 		return false, 0, err
 	}
 	return true, size, syncDir(dir)
@@ -270,7 +276,7 @@ func dropStaged(dir string, drop func(ltx.TXID) bool) error {
 		if _, max, err := ltx.ParseFilename(name); err == nil && !drop(max) || err != nil && !strings.HasSuffix(name, ".tmp") {
 			continue
 		}
-		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+		if err := remove(filepath.Join(dir, name)); err != nil {
 			return err
 		}
 	}

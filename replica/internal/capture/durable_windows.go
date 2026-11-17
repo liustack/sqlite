@@ -15,7 +15,7 @@ import (
 
 // rename moves a staged file to its name, with MOVEFILE_WRITE_THROUGH, and
 // syncDir flushes the folder after it.
-func rename(from, to string) error {
+func renameFS(from, to string) error {
 	f, err := windows.UTF16PtrFromString(from)
 	if err != nil {
 		return err
@@ -30,10 +30,10 @@ func rename(from, to string) error {
 	return nil
 }
 
-// syncDirFS is syncDir: FlushFileBuffers of the folder, which NTFS takes for
+// fsyncDir is syncDir: FlushFileBuffers of the folder, which NTFS takes for
 // a handle opened with FILE_FLAG_BACKUP_SEMANTICS and write access. rename
 // writes through already: this covers the removals too.
-func syncDirFS(dir string) error {
+func fsyncDir(dir string) error {
 	p, err := windows.UTF16PtrFromString(dir)
 	if err != nil {
 		return err
