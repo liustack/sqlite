@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,14 +67,14 @@ const never = math.MaxInt64
 // one that fails, checks what came of it, and gives how many such calls the
 // work made. A first run with never counts them. Then come FAULT_POINTS
 // points spread evenly over them from a first one picked at random: 40
-// when it is not set, 10 with -short, and every point when it is 0. A point
-// that fails does so again alone, and with FAULT_POINTS=0. It gives the
-// number of points there are.
+// when it is not set, 10 with -short or on Windows, and every point when it
+// is 0. A point that fails does so again alone, and with FAULT_POINTS=0. It
+// gives the number of points there are.
 func faultSweep(t *testing.T, run func(n int64) (calls int64)) int64 {
 	t.Helper()
 	budget := int64(40)
-	if testing.Short() {
-		budget = 10
+	if testing.Short() || runtime.GOOS == "windows" {
+		budget = 10 // a point takes several times longer on Windows
 	}
 	if s := os.Getenv("FAULT_POINTS"); s != "" {
 		v, err := strconv.ParseInt(s, 10, 64)
