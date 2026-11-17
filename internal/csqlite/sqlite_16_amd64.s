@@ -789,7 +789,7 @@ TEXT ·sqlite3MaterializeView(SB), $224-40
 	BYTE $0xff
 	RET
 
-TEXT ·updateVirtualTable(SB), NOSPLIT, $288-72
+TEXT ·updateVirtualTable(SB), $288-72
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000013024a48b4c
@@ -2229,7 +2229,7 @@ TEXT ·updateVirtualTable(SB), NOSPLIT, $288-72
 	BYTE $0xff
 	RET
 
-TEXT ·updateFromSelect(SB), NOSPLIT, $224-56
+TEXT ·updateFromSelect(SB), $224-56
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000f024a48b4c
@@ -2754,7 +2754,7 @@ TEXT ·updateFromSelect(SB), NOSPLIT, $224-56
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3VdbeChangeToNoop(SB), NOSPLIT, $48-24
+TEXT ·sqlite3VdbeChangeToNoop(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -3788,7 +3788,7 @@ TEXT ·disallowAggregatesInOrderByCb(SB), $32-32
 	BYTE $0x00
 	RET
 
-TEXT ·exprListAppendList(SB), NOSPLIT, $160-48
+TEXT ·exprListAppendList(SB), $160-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -4338,7 +4338,7 @@ TEXT ·unsetJoinExpr(SB), $96-32
 	BYTE $0x00
 	RET
 
-TEXT ·compoundHasDifferentAffinities(SB), NOSPLIT, $112-24
+TEXT ·compoundHasDifferentAffinities(SB), $112-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -4401,7 +4401,7 @@ TEXT ·compoundHasDifferentAffinities(SB), NOSPLIT, $112-24
 	BYTE $0x00
 	RET
 
-TEXT ·renumberCursors(SB), NOSPLIT, $80-40
+TEXT ·renumberCursors(SB), $80-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -4893,7 +4893,7 @@ TEXT ·substSelect(SB), $112-32
 	BYTE $0x00
 	RET
 
-TEXT ·recomputeColumnsUsed(SB), NOSPLIT, $32-24
+TEXT ·recomputeColumnsUsed(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -6777,7 +6777,7 @@ TEXT ·computeLimitRegisters(SB), $176-32
 	BYTE $0x00
 	RET
 
-TEXT ·multiSelectByMergeKeyInfo(SB), NOSPLIT, $144-32
+TEXT ·multiSelectByMergeKeyInfo(SB), $144-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -6895,7 +6895,7 @@ TEXT ·multiSelectCollSeq(SB), $80-40
 	BYTE $0x00
 	RET
 
-TEXT ·codeOffset(SB), NOSPLIT, $64-32
+TEXT ·codeOffset(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -9354,7 +9354,7 @@ TEXT ·propagateConstants(SB), $96-24
 	BYTE $0x00
 	RET
 
-TEXT ·countOfViewOptimization(SB), NOSPLIT, $128-32
+TEXT ·countOfViewOptimization(SB), $128-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -9890,7 +9890,7 @@ TEXT ·pushDownWhereTerms(SB), $176-56
 	BYTE $0xff
 	RET
 
-TEXT ·disableUnusedSubqueryResultColumns(SB), NOSPLIT, $96-16
+TEXT ·disableUnusedSubqueryResultColumns(SB), $96-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -10026,7 +10026,7 @@ TEXT ·disableUnusedSubqueryResultColumns(SB), NOSPLIT, $96-16
 	BYTE $0x00
 	RET
 
-TEXT ·fromClauseTermCanBeCoroutine(SB), NOSPLIT, $144-48
+TEXT ·fromClauseTermCanBeCoroutine(SB), $144-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -10192,7 +10192,7 @@ TEXT ·fromClauseTermCanBeCoroutine(SB), NOSPLIT, $144-48
 	BYTE $0xe6
 	RET
 
-TEXT ·isSelfJoinView(SB), NOSPLIT, $112-40
+TEXT ·isSelfJoinView(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -10305,7 +10305,7 @@ TEXT ·isSelfJoinView(SB), NOSPLIT, $112-40
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3KeyInfoFromExprList(SB), NOSPLIT, $112-40
+TEXT ·sqlite3KeyInfoFromExprList(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -13217,7 +13217,7 @@ TEXT ·agginfoFree(SB), $64-24
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ExprAnalyzeAggList(SB), NOSPLIT, $96-24
+TEXT ·sqlite3ExprAnalyzeAggList(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -13282,7 +13282,7 @@ TEXT ·sqlite3ExprAnalyzeAggList(SB), NOSPLIT, $96-24
 	BYTE $0x00
 	RET
 
-TEXT ·havingToWhere(SB), NOSPLIT, $32-24
+TEXT ·havingToWhere(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -13612,7 +13612,7 @@ TEXT ·analyzeAggregate(SB), $160-32
 	QUAD $0xfffff8aafffffac7
 	RET
 
-TEXT ·analyzeAggFuncArgs(SB), NOSPLIT, $128-24
+TEXT ·analyzeAggFuncArgs(SB), $128-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -13813,7 +13813,7 @@ TEXT ·sqlite3ExprNullRegisterRange(SB), $64-32
 	QUAD $0x00eb27428966c809
 	RET
 
-TEXT ·optimizeAggregateUseOfIndexedExpr(SB), NOSPLIT, $144-32
+TEXT ·optimizeAggregateUseOfIndexedExpr(SB), $144-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -13923,7 +13923,7 @@ TEXT ·optimizeAggregateUseOfIndexedExpr(SB), NOSPLIT, $144-32
 	BYTE $0x00
 	RET
 
-TEXT ·aggregateConvertIndexedExprRefToColumn(SB), NOSPLIT, $96-16
+TEXT ·aggregateConvertIndexedExprRefToColumn(SB), $96-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -13984,7 +13984,7 @@ TEXT ·aggregateConvertIndexedExprRefToColumn(SB), NOSPLIT, $96-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3ExprSkipCollateAndLikely(SB), NOSPLIT, $48-24
+TEXT ·sqlite3ExprSkipCollateAndLikely(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -14013,7 +14013,7 @@ TEXT ·sqlite3ExprSkipCollateAndLikely(SB), NOSPLIT, $48-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3ExprCodeMove(SB), NOSPLIT, $64-40
+TEXT ·sqlite3ExprCodeMove(SB), $64-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -15884,7 +15884,7 @@ TEXT ·resetAccumulator(SB), $176-24
 	BYTE $0xff
 	RET
 
-TEXT ·fixDistinctOpenEph(SB), NOSPLIT, $80-40
+TEXT ·fixDistinctOpenEph(SB), $80-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -15971,7 +15971,7 @@ TEXT ·isSimpleCount(SB), NOSPLIT, $0-32
 	QUAD $0x00eb2024448948c1
 	RET
 
-TEXT ·explainSimpleCount(SB), NOSPLIT, $48-32
+TEXT ·explainSimpleCount(SB), $48-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -16006,7 +16006,7 @@ TEXT ·explainSimpleCount(SB), NOSPLIT, $48-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3WhereMinMaxOptEarlyOut(SB), NOSPLIT, $112-24
+TEXT ·sqlite3WhereMinMaxOptEarlyOut(SB), $112-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -16063,7 +16063,7 @@ TEXT ·sqlite3WhereMinMaxOptEarlyOut(SB), NOSPLIT, $112-24
 	BYTE $0x00
 	RET
 
-TEXT ·generateSortTail(SB), NOSPLIT, $272-48
+TEXT ·generateSortTail(SB), $272-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000012024a48b4c
@@ -17011,7 +17011,7 @@ TEXT ·generateSortTail(SB), NOSPLIT, $272-48
 	QUAD $0xfffff54ffffff410
 	RET
 
-TEXT ·codeDistinct(SB), NOSPLIT, $176-64
+TEXT ·codeDistinct(SB), $176-64
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000c024a48b4c
@@ -17286,7 +17286,7 @@ TEXT ·aggregateIdxEprRefToColCallback(SB), NOSPLIT, $0-32
 	BYTE $0x00
 	RET
 
-TEXT ·findOrCreateAggInfoColumn(SB), NOSPLIT, $160-32
+TEXT ·findOrCreateAggInfoColumn(SB), $160-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -17544,7 +17544,7 @@ TEXT ·findOrCreateAggInfoColumn(SB), NOSPLIT, $160-32
 	QUAD $0xffffff13e9000001
 	RET
 
-TEXT ·addAggInfoFunc(SB), NOSPLIT, $112-32
+TEXT ·addAggInfoFunc(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -18025,7 +18025,7 @@ TEXT ·windowExprGtZero(SB), $96-32
 	QUAD $0x43dfffffffffffff
 	RET
 
-TEXT ·windowCheckValue(SB), NOSPLIT, $112-32
+TEXT ·windowCheckValue(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -20727,7 +20727,7 @@ TEXT ·windowCodeOp(SB), $208-48
 	BYTE $0x00
 	RET
 
-TEXT ·windowCodeRangeTest(SB), NOSPLIT, $208-56
+TEXT ·windowCodeRangeTest(SB), $208-56
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000e024a48b4c

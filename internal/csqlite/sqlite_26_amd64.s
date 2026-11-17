@@ -2486,7 +2486,7 @@ TEXT ·whereLoopAddVirtualOne(SB), $224-80
 	QUAD $0x43e0000000000000
 	RET
 
-TEXT ·indexInAffinityOk(SB), NOSPLIT, $96-40
+TEXT ·indexInAffinityOk(SB), $96-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -2595,7 +2595,7 @@ TEXT ·indexInAffinityOk(SB), NOSPLIT, $96-40
 	BYTE $0x00
 	RET
 
-TEXT ·minMaxQuery(SB), NOSPLIT, $112-40
+TEXT ·minMaxQuery(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -2720,7 +2720,7 @@ TEXT ·minMaxQuery(SB), NOSPLIT, $112-40
 	BYTE $0xb5
 	RET
 
-TEXT ·sqlite3_str_appendchar(SB), NOSPLIT, $80-32
+TEXT ·sqlite3_str_appendchar(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -2879,7 +2879,7 @@ TEXT ·bindText(SB), $128-64
 	QUAD $0x00eb000000c82484
 	RET
 
-TEXT ·sqlite3_bind_text64(SB), NOSPLIT, $64-64
+TEXT ·sqlite3_bind_text64(SB), $64-64
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -3314,7 +3314,7 @@ TEXT ·createCollation(SB), $192-64
 	BYTE $0x00
 	RET
 
-TEXT ·rtreeSearchPointNew(SB), NOSPLIT, $112-40
+TEXT ·rtreeSearchPointNew(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -8993,7 +8993,7 @@ TEXT ·createFunctionApi_block(SB), $144-24
 	BYTE $0x8e
 	RET
 
-TEXT ·sqlite3_create_window_function_block(SB), NOSPLIT, $32-24
+TEXT ·sqlite3_create_window_function_block(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c

@@ -1174,7 +1174,7 @@ TEXT ·sqlite3Fts5ConfigParseRank(SB), $152-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·fts5ConfigSkipLiteral(SB), NOSPLIT, $40-24
+TEXT ·fts5ConfigSkipLiteral(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1829,7 +1829,7 @@ TEXT ·fts5WriteInit(SB), $136-32
 	WORD $0x17fffff5
 	RET
 
-TEXT ·fts5WriteAppendTerm(SB), NOSPLIT, $152-40
+TEXT ·fts5WriteAppendTerm(SB), $152-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5674,7 +5674,7 @@ TEXT ·fts5FlushSecureDelete(SB), $232-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·fts5WriteDlidxAppend(SB), NOSPLIT, $184-32
+TEXT ·fts5WriteDlidxAppend(SB), $184-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8253,7 +8253,7 @@ TEXT ·fts5StructureAddLevel(SB), $200-24
 	WORD $0x17fffff2
 	RET
 
-TEXT ·fts5StructurePromote(SB), NOSPLIT, $184-32
+TEXT ·fts5StructurePromote(SB), $184-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8732,7 +8732,7 @@ TEXT ·fts5StructurePromote(SB), NOSPLIT, $184-32
 	WORD $0x17fffe2d
 	RET
 
-TEXT ·fts5IndexMerge(SB), NOSPLIT, $232-48
+TEXT ·fts5IndexMerge(SB), $232-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13579,7 +13579,7 @@ TEXT ·fts5WriteFlushBtree(SB), $136-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3Fts5PutVarint(SB), NOSPLIT, $56-32
+TEXT ·sqlite3Fts5PutVarint(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14795,7 +14795,7 @@ TEXT ·fts5PorterDelete(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5Porter_MEq1(SB), NOSPLIT, $88-32
+TEXT ·fts5Porter_MEq1(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15118,7 +15118,7 @@ TEXT ·fts5Porter_MEq1(SB), NOSPLIT, $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·fts5Porter_MGt0(SB), NOSPLIT, $72-32
+TEXT ·fts5Porter_MGt0(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15279,7 +15279,7 @@ TEXT ·fts5Porter_MGt0(SB), NOSPLIT, $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·fts5Porter_MGt1(SB), NOSPLIT, $88-32
+TEXT ·fts5Porter_MGt1(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17931,7 +17931,7 @@ TEXT ·fts5TriDelete(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5UnicodeAddExceptions(SB), NOSPLIT, $168-40
+TEXT ·fts5UnicodeAddExceptions(SB), $168-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18393,7 +18393,7 @@ TEXT ·fts5UnicodeAddExceptions(SB), NOSPLIT, $168-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·fts5ValueClampedInt(SB), NOSPLIT, $56-24
+TEXT ·fts5ValueClampedInt(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

@@ -11490,7 +11490,7 @@ TEXT ·sqlite3Prepare_block(SB), $168-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·vdbeSorterCompareRealInt_block(SB), NOSPLIT, $136-24
+TEXT ·vdbeSorterCompareRealInt_block(SB), $136-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11672,7 +11672,7 @@ TEXT ·vdbeSorterCompareRealInt_block(SB), NOSPLIT, $136-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·insertCell_block(SB), NOSPLIT, $136-24
+TEXT ·insertCell_block(SB), $136-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12138,7 +12138,7 @@ TEXT ·insertCell_block(SB), NOSPLIT, $136-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·pageInsertArray_block(SB), NOSPLIT, $200-24
+TEXT ·pageInsertArray_block(SB), $200-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14647,7 +14647,7 @@ TEXT ·sqlite3FkCheck_block(SB), $296-16
 	WORD $0x17ffff02
 	RET
 
-TEXT ·sqlite3CompleteInsertion_block(SB), NOSPLIT, $168-16
+TEXT ·sqlite3CompleteInsertion_block(SB), $168-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14891,7 +14891,7 @@ TEXT ·sqlite3CompleteInsertion_block(SB), NOSPLIT, $168-16
 	WORD $0x14000001
 	RET
 
-TEXT ·fkLookupParent_block(SB), NOSPLIT, $376-16
+TEXT ·fkLookupParent_block(SB), $376-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18274,7 +18274,7 @@ TEXT ·fkScanChildren_block(SB), $264-16
 	WORD $0x17ffff11
 	RET
 
-TEXT ·explainAppendTerm_block(SB), NOSPLIT, $168-16
+TEXT ·explainAppendTerm_block(SB), $168-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26857,7 +26857,7 @@ TEXT ·codeINTerm_block(SB), $280-16
 	WORD $0x17fffff6
 	RET
 
-TEXT ·sqlite3GenerateRowIndexDelete_block(SB), NOSPLIT, $152-16
+TEXT ·sqlite3GenerateRowIndexDelete_block(SB), $152-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

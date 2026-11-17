@@ -821,7 +821,7 @@ TEXT ·pagerUndoCallback(SB), $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·walCleanupHash(SB), NOSPLIT, $104-16
+TEXT ·walCleanupHash(SB), $104-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1037,7 +1037,7 @@ TEXT ·walCleanupHash(SB), NOSPLIT, $104-16
 	WORD $0x17fffff6
 	RET
 
-TEXT ·sqlite3PcacheDirtyList(SB), NOSPLIT, $88-24
+TEXT ·sqlite3PcacheDirtyList(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3511,7 +3511,7 @@ TEXT ·getPageError(SB), NOSPLIT, $0-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·addToSavepointBitvecs(SB), NOSPLIT, $104-24
+TEXT ·addToSavepointBitvecs(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3972,7 +3972,7 @@ TEXT ·pagerUnlockAndRollback(SB), $72-16
 	WORD $0x17ffff9f
 	RET
 
-TEXT ·sqlite3PagerRollback(SB), NOSPLIT, $72-16
+TEXT ·sqlite3PagerRollback(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -7401,7 +7401,7 @@ TEXT ·pager_truncate(SB), $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·pagerIsSuperJrnlName(SB), NOSPLIT, $56-24
+TEXT ·pagerIsSuperJrnlName(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -7915,7 +7915,7 @@ TEXT ·sqlite3MallocZero(SB), $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·walFindFrame(SB), NOSPLIT, $152-40
+TEXT ·walFindFrame(SB), $152-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10106,7 +10106,7 @@ TEXT ·accessPayload(SB), $184-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·copyPayload(SB), NOSPLIT, $88-56
+TEXT ·copyPayload(SB), $88-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11780,7 +11780,7 @@ TEXT ·sqlite3BtreeCommitPhaseOne(SB), $200-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3BtreeCommitPhaseTwo(SB), NOSPLIT, $88-32
+TEXT ·sqlite3BtreeCommitPhaseTwo(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13102,7 +13102,7 @@ TEXT ·incrVacuumStep(SB), $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3PagerWrite(SB), NOSPLIT, $40-24
+TEXT ·sqlite3PagerWrite(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16797,7 +16797,7 @@ TEXT ·walWriteOneFrame(SB), $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·walEncodeFrame(SB), NOSPLIT, $88-48
+TEXT ·walEncodeFrame(SB), $88-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17084,7 +17084,7 @@ TEXT ·walLimitSize(SB), $72-24
 	WORD $0x14000001
 	RET
 
-TEXT ·walIndexAppend(SB), NOSPLIT, $152-40
+TEXT ·walIndexAppend(SB), $152-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17378,7 +17378,7 @@ TEXT ·walIndexAppend(SB), NOSPLIT, $152-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·walChecksumBytes(SB), NOSPLIT, $56-48
+TEXT ·walChecksumBytes(SB), $56-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19142,7 +19142,7 @@ TEXT ·sqlite3_malloc64(SB), $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·walDecodeFrame(SB), NOSPLIT, $88-56
+TEXT ·walDecodeFrame(SB), $88-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19581,7 +19581,7 @@ TEXT ·sqlite3PcacheMove(SB), $88-24
 	WORD $0x17ffffb7
 	RET
 
-TEXT ·sqlite3BitvecClear(SB), NOSPLIT, $88-32
+TEXT ·sqlite3BitvecClear(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19985,7 +19985,7 @@ TEXT ·setChildPtrmaps(SB), $120-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·btreeInitPage(SB), NOSPLIT, $56-24
+TEXT ·btreeInitPage(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25155,7 +25155,7 @@ TEXT ·vdbePmaReaderClear(SB), $104-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3FindTable(SB), NOSPLIT, $152-40
+TEXT ·sqlite3FindTable(SB), $152-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

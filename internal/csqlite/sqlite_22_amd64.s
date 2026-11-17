@@ -10733,7 +10733,7 @@ TEXT ·sqlite3Fts5StorageDocsize(SB), $160-40
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3Fts5IsLocaleValue(SB), NOSPLIT, $64-32
+TEXT ·sqlite3Fts5IsLocaleValue(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c

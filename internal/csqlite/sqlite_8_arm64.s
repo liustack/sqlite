@@ -10342,7 +10342,7 @@ TEXT ·sqlite3FinishTrigger(SB), $152-32
 	WORD $0x17fffd51
 	RET
 
-TEXT ·sqlite3TriggerDeleteStep(SB), NOSPLIT, $104-56
+TEXT ·sqlite3TriggerDeleteStep(SB), $104-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20996,7 +20996,7 @@ TEXT ·sqlite3VtabBeginParse(SB), $168-48
 	WORD $0x17fffe62
 	RET
 
-TEXT ·sqlite3VtabArgInit(SB), NOSPLIT, $136-16
+TEXT ·sqlite3VtabArgInit(SB), $136-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21198,7 +21198,7 @@ TEXT ·sqlite3VtabArgInit(SB), NOSPLIT, $136-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3WithPush(SB), NOSPLIT, $56-24
+TEXT ·sqlite3WithPush(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21795,7 +21795,7 @@ TEXT ·sqlite3WithAdd(SB), $136-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3DbStrNDup(SB), NOSPLIT, $120-40
+TEXT ·sqlite3DbStrNDup(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21980,7 +21980,7 @@ TEXT ·sqlite3DbStrNDup(SB), NOSPLIT, $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3WindowAssemble(SB), NOSPLIT, $136-56
+TEXT ·sqlite3WindowAssemble(SB), $136-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22203,7 +22203,7 @@ TEXT ·sqlite3WindowAssemble(SB), NOSPLIT, $136-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3DequoteNumber(SB), NOSPLIT, $104-24
+TEXT ·sqlite3DequoteNumber(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22330,7 +22330,7 @@ TEXT ·sqlite3DequoteNumber(SB), NOSPLIT, $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3WindowOffsetExpr(SB), NOSPLIT, $88-32
+TEXT ·sqlite3WindowOffsetExpr(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22797,7 +22797,7 @@ TEXT ·renameUnmapSelectCb(SB), $168-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·renameWalkWith(SB), NOSPLIT, $152-24
+TEXT ·renameWalkWith(SB), $152-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23353,7 +23353,7 @@ TEXT ·sqlite3WithDeleteGeneric(SB), $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeCreate(SB), NOSPLIT, $88-24
+TEXT ·sqlite3VdbeCreate(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -24295,7 +24295,7 @@ TEXT ·alterFindTable(SB), $168-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·isAlterableTable(SB), NOSPLIT, $56-32
+TEXT ·isAlterableTable(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25088,7 +25088,7 @@ TEXT ·renameFixQuotes(SB), $72-32
 	WORD $0x14000001
 	RET
 
-TEXT ·isRowidAlias(SB), NOSPLIT, $104-48
+TEXT ·isRowidAlias(SB), $104-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25225,7 +25225,7 @@ TEXT ·isRowidAlias(SB), NOSPLIT, $104-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3GetVdbe(SB), NOSPLIT, $40-24
+TEXT ·sqlite3GetVdbe(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25470,7 +25470,7 @@ TEXT ·sqlite3OpenTable(SB), $120-48
 	WORD $0x17ffffb9
 	RET
 
-TEXT ·sqlite3VdbeAddOp1(SB), NOSPLIT, $72-40
+TEXT ·sqlite3VdbeAddOp1(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25509,7 +25509,7 @@ TEXT ·sqlite3VdbeAddOp1(SB), NOSPLIT, $72-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3VdbeAddOp2(SB), NOSPLIT, $72-48
+TEXT ·sqlite3VdbeAddOp2(SB), $72-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25547,7 +25547,7 @@ TEXT ·sqlite3VdbeAddOp2(SB), NOSPLIT, $72-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3VdbeAddOp3(SB), NOSPLIT, $72-56
+TEXT ·sqlite3VdbeAddOp3(SB), $72-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

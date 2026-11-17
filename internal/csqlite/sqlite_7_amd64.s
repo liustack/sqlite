@@ -2842,7 +2842,7 @@ TEXT ·tokenExpr(SB), $128-48
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ExprIdToTrueFalse(SB), NOSPLIT, $64-16
+TEXT ·sqlite3ExprIdToTrueFalse(SB), $64-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -2926,7 +2926,7 @@ TEXT ·sqlite3ExprIdToTrueFalse(SB), NOSPLIT, $64-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3AddNotNull(SB), NOSPLIT, $48-24
+TEXT ·sqlite3AddNotNull(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -3410,7 +3410,7 @@ TEXT ·sqlite3AddPrimaryKey(SB), $176-48
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3AddCheckConstraint(SB), NOSPLIT, $112-40
+TEXT ·sqlite3AddCheckConstraint(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -5144,7 +5144,7 @@ TEXT ·sqlite3AddCollateType(SB), $160-24
 	QUAD $0x00eb000001b8bd89
 	RET
 
-TEXT ·sqlite3AddGenerated(SB), NOSPLIT, $96-32
+TEXT ·sqlite3AddGenerated(SB), $96-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -13592,7 +13592,7 @@ TEXT ·attachWithToSelect(SB), $112-40
 	BYTE $0x00
 	RET
 
-TEXT ·parserDoubleLinkSelect(SB), NOSPLIT, $96-24
+TEXT ·parserDoubleLinkSelect(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -14448,7 +14448,7 @@ TEXT ·sqlite3SrcListAppendFromTerm(SB), $176-72
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3MultiValuesEnd(SB), NOSPLIT, $96-24
+TEXT ·sqlite3MultiValuesEnd(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -14878,7 +14878,7 @@ TEXT ·sqlite3MultiValues(SB), $192-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ExprListAppend(SB), NOSPLIT, $48-40
+TEXT ·sqlite3ExprListAppend(SB), $48-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -15345,7 +15345,7 @@ TEXT ·sqlite3ExprListSetName(SB), $128-32
 	QUAD $0xfffffc8de9000001
 	RET
 
-TEXT ·sqlite3ExprListSetSpan(SB), NOSPLIT, $128-40
+TEXT ·sqlite3ExprListSetSpan(SB), $128-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -15559,7 +15559,7 @@ TEXT ·sqlite3ExprListSetSpan(SB), NOSPLIT, $128-40
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3Expr(SB), NOSPLIT, $112-40
+TEXT ·sqlite3Expr(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -15791,7 +15791,7 @@ TEXT ·sqlite3Expr(SB), NOSPLIT, $112-40
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3SrcListShiftJoinType(SB), NOSPLIT, $64-16
+TEXT ·sqlite3SrcListShiftJoinType(SB), $64-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -15874,7 +15874,7 @@ TEXT ·sqlite3SrcListShiftJoinType(SB), NOSPLIT, $64-16
 	BYTE $0x83
 	RET
 
-TEXT ·sqlite3SrcListIndexedBy(SB), NOSPLIT, $112-32
+TEXT ·sqlite3SrcListIndexedBy(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -16061,7 +16061,7 @@ TEXT ·sqlite3SrcListIndexedBy(SB), NOSPLIT, $112-32
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3SrcListFuncArgs(SB), NOSPLIT, $32-32
+TEXT ·sqlite3SrcListFuncArgs(SB), $32-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -16084,7 +16084,7 @@ TEXT ·sqlite3SrcListFuncArgs(SB), NOSPLIT, $32-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3SrcListAppend(SB), NOSPLIT, $160-48
+TEXT ·sqlite3SrcListAppend(SB), $160-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -16989,7 +16989,7 @@ TEXT ·sqlite3RenameTokenMap(SB), $96-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3NameFromToken(SB), NOSPLIT, $112-32
+TEXT ·sqlite3NameFromToken(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -17154,7 +17154,7 @@ TEXT ·sqlite3NameFromToken(SB), NOSPLIT, $112-32
 	QUAD $0xfffffc4be9000604
 	RET
 
-TEXT ·sqlite3JoinType(SB), NOSPLIT, $144-48
+TEXT ·sqlite3JoinType(SB), $144-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c

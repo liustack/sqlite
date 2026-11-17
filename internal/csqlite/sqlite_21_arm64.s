@@ -3500,7 +3500,7 @@ TEXT ·sqlite3VdbeMemTranslate(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·getSafetyLevel(SB), NOSPLIT, $120-40
+TEXT ·getSafetyLevel(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3760,7 +3760,7 @@ TEXT ·getSafetyLevel(SB), NOSPLIT, $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3Atoi64(SB), NOSPLIT, $120-48
+TEXT ·sqlite3Atoi64(SB), $120-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4082,7 +4082,7 @@ TEXT ·sqlite3Atoi64(SB), NOSPLIT, $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·valueBytes(SB), NOSPLIT, $56-32
+TEXT ·valueBytes(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4753,7 +4753,7 @@ TEXT ·sqlite3VdbeMemSetStr(SB), $136-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·setResultStrOrError(SB), NOSPLIT, $88-48
+TEXT ·setResultStrOrError(SB), $88-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5048,7 +5048,7 @@ TEXT ·sqlite3_result_text64(SB), $88-48
 	WORD $0x14000001
 	RET
 
-TEXT ·jsonAppendCharExpand(SB), NOSPLIT, $72-24
+TEXT ·jsonAppendCharExpand(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5371,7 +5371,7 @@ TEXT ·jsonBlobExpandAndAppendNode(SB), $120-40
 	WORD $0x14000001
 	RET
 
-TEXT ·jsonBlobAppendNode(SB), NOSPLIT, $120-40
+TEXT ·jsonBlobAppendNode(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5564,7 +5564,7 @@ TEXT ·jsonBlobAppendNode(SB), NOSPLIT, $120-40
 	WORD $0x14000001
 	RET
 
-TEXT ·jsonBlobExpandAndAppendOneByte(SB), NOSPLIT, $72-24
+TEXT ·jsonBlobExpandAndAppendOneByte(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10734,7 +10734,7 @@ TEXT ·sqlite3VdbeMemCast(SB), $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·applyAffinity(SB), NOSPLIT, $72-32
+TEXT ·applyAffinity(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10849,7 +10849,7 @@ TEXT ·applyAffinity(SB), NOSPLIT, $72-32
 	WORD $0x14000001
 	RET
 
-TEXT ·extendFJMatch(SB), NOSPLIT, $88-40
+TEXT ·extendFJMatch(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12197,7 +12197,7 @@ TEXT ·sqlite3FindFunction(SB), $152-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3ResultSetOfSelect(SB), NOSPLIT, $120-40
+TEXT ·sqlite3ResultSetOfSelect(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20957,7 +20957,7 @@ TEXT ·sqlite3CteNew(SB), $136-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·renameReloadSchema(SB), NOSPLIT, $216-32
+TEXT ·renameReloadSchema(SB), $216-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21362,7 +21362,7 @@ TEXT ·renameReloadSchema(SB), NOSPLIT, $216-32
 	WORD $0x00000003
 	RET
 
-TEXT ·sqlite3TableColumnToStorage(SB), NOSPLIT, $152-32
+TEXT ·sqlite3TableColumnToStorage(SB), $152-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21583,7 +21583,7 @@ TEXT ·sqlite3TableColumnToStorage(SB), NOSPLIT, $152-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3AffinityType(SB), NOSPLIT, $104-32
+TEXT ·sqlite3AffinityType(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23535,7 +23535,7 @@ TEXT ·triggerStepAllocate(SB), $152-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3ValueFromExpr(SB), NOSPLIT, $88-48
+TEXT ·sqlite3ValueFromExpr(SB), $88-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23595,7 +23595,7 @@ TEXT ·sqlite3ValueFromExpr(SB), NOSPLIT, $88-48
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3SetTextEncoding(SB), NOSPLIT, $72-24
+TEXT ·sqlite3SetTextEncoding(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23729,7 +23729,7 @@ TEXT ·sqlite3SetTextEncoding(SB), NOSPLIT, $72-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeMemStringify(SB), NOSPLIT, $88-40
+TEXT ·sqlite3VdbeMemStringify(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25364,7 +25364,7 @@ TEXT ·sqlite3BtreeDelete(SB), $184-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3LogEst(SB), NOSPLIT, $40-24
+TEXT ·sqlite3LogEst(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25462,7 +25462,7 @@ TEXT ·sqlite3LogEst(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·checkPtrmap(SB), NOSPLIT, $104-40
+TEXT ·checkPtrmap(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25566,7 +25566,7 @@ TEXT ·computeCellSize(SB), $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·exprTableRegister(SB), NOSPLIT, $216-48
+TEXT ·exprTableRegister(SB), $216-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26807,7 +26807,7 @@ TEXT ·sqlite3WhereSplit(SB), $104-32
 	WORD $0x14000001
 	RET
 
-TEXT ·whereClauseInsert(SB), NOSPLIT, $136-40
+TEXT ·whereClauseInsert(SB), $136-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

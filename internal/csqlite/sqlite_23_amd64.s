@@ -2245,7 +2245,7 @@ TEXT ·fts5ColumnSizeCb(SB), NOSPLIT, $0-64
 	BYTE $0x00
 	RET
 
-TEXT ·fts5SpecialDelete(SB), NOSPLIT, $80-32
+TEXT ·fts5SpecialDelete(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -2290,7 +2290,7 @@ TEXT ·fts5SpecialDelete(SB), NOSPLIT, $80-32
 	QUAD $0x43dfffffffffffff
 	RET
 
-TEXT ·sqlite3Fts5StorageDeleteAll(SB), NOSPLIT, $80-24
+TEXT ·sqlite3Fts5StorageDeleteAll(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -10051,7 +10051,7 @@ TEXT ·sqlite3Fts5StorageFindDeleteRow(SB), $144-32
 	BYTE $0x00
 	RET
 
-TEXT ·fts5IndexTombstoneAddToPage(SB), NOSPLIT, $80-40
+TEXT ·fts5IndexTombstoneAddToPage(SB), $80-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c

@@ -1713,7 +1713,7 @@ TEXT ·pagerSyncHotJournal(SB), $72-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·pager_reset(SB), NOSPLIT, $56-16
+TEXT ·pager_reset(SB), $56-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3406,7 +3406,7 @@ TEXT ·analysisLoader(SB), $152-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
+TEXT ·decodeIntArray(SB), $136-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3832,7 +3832,7 @@ TEXT ·decodeIntArray(SB), NOSPLIT, $136-40
 	WORD $0x14000001
 	RET
 
-TEXT ·corruptSchema(SB), NOSPLIT, $88-32
+TEXT ·corruptSchema(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5776,7 +5776,7 @@ TEXT ·vdbePmaReaderSeek(SB), $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·vdbePmaReadVarint(SB), NOSPLIT, $88-32
+TEXT ·vdbePmaReadVarint(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -7762,7 +7762,7 @@ TEXT ·vdbeSorterFlushThread(SB), $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·invalidateIncrblobCursors(SB), NOSPLIT, $56-32
+TEXT ·invalidateIncrblobCursors(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -7810,7 +7810,7 @@ TEXT ·invalidateIncrblobCursors(SB), NOSPLIT, $56-32
 	WORD $0x14000001
 	RET
 
-TEXT ·dropCell(SB), NOSPLIT, $104-40
+TEXT ·dropCell(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13312,7 +13312,7 @@ TEXT ·releasePageNotNull(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·copyNodeContent(SB), NOSPLIT, $152-32
+TEXT ·copyNodeContent(SB), $152-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13611,7 +13611,7 @@ TEXT ·copyNodeContent(SB), NOSPLIT, $152-32
 	WORD $0x14000001
 	RET
 
-TEXT ·rebuildPage(SB), NOSPLIT, $200-48
+TEXT ·rebuildPage(SB), $200-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15487,7 +15487,7 @@ TEXT ·defragmentPage(SB), $216-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·pageFindSlot(SB), NOSPLIT, $120-40
+TEXT ·pageFindSlot(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15613,7 +15613,7 @@ TEXT ·pageFindSlot(SB), NOSPLIT, $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·freeSpace(SB), NOSPLIT, $184-40
+TEXT ·freeSpace(SB), $184-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16438,7 +16438,7 @@ TEXT ·btreeMoveto(SB), $136-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·btreeOverwriteCell(SB), NOSPLIT, $72-32
+TEXT ·btreeOverwriteCell(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18128,7 +18128,7 @@ TEXT ·vdbeRecordCompareInt(SB), $72-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3BtreeOffset(SB), NOSPLIT, $40-24
+TEXT ·sqlite3BtreeOffset(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18555,7 +18555,7 @@ TEXT ·destroyRootPage(SB), $120-32
 	WORD $0x14000001
 	RET
 
-TEXT ·exprNodeIsConstantFunction(SB), NOSPLIT, $120-32
+TEXT ·exprNodeIsConstantFunction(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18671,7 +18671,7 @@ TEXT ·sqlite3ExprListDeleteGeneric(SB), $40-24
 	WORD $0x14000001
 	RET
 
-TEXT ·triggersReallyExist(SB), NOSPLIT, $200-56
+TEXT ·triggersReallyExist(SB), $200-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19085,7 +19085,7 @@ TEXT ·triggersReallyExist(SB), NOSPLIT, $200-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3IsReadOnly(SB), NOSPLIT, $104-40
+TEXT ·sqlite3IsReadOnly(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20681,7 +20681,7 @@ TEXT ·xferOptimization(SB), $216-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·autoIncBegin(SB), NOSPLIT, $104-40
+TEXT ·autoIncBegin(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20797,7 +20797,7 @@ TEXT ·autoIncBegin(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3IsRowid(SB), NOSPLIT, $56-24
+TEXT ·sqlite3IsRowid(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20905,7 +20905,7 @@ TEXT ·sqlite3IsRowid(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeEndCoroutine(SB), NOSPLIT, $72-24
+TEXT ·sqlite3VdbeEndCoroutine(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20947,7 +20947,7 @@ TEXT ·sqlite3VdbeEndCoroutine(SB), NOSPLIT, $72-24
 	WORD $0x14000001
 	RET
 
-TEXT ·readsTable(SB), NOSPLIT, $120-40
+TEXT ·readsTable(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21108,7 +21108,7 @@ TEXT ·readsTable(SB), NOSPLIT, $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3HasExplicitNulls(SB), NOSPLIT, $88-32
+TEXT ·sqlite3HasExplicitNulls(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21176,7 +21176,7 @@ TEXT ·sqlite3HasExplicitNulls(SB), NOSPLIT, $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3UpsertAnalyzeTarget(SB), NOSPLIT, $200-48
+TEXT ·sqlite3UpsertAnalyzeTarget(SB), $200-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21631,7 +21631,7 @@ TEXT ·sqlite3UpsertAnalyzeTarget(SB), NOSPLIT, $200-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3ComputeGeneratedColumns(SB), NOSPLIT, $216-32
+TEXT ·sqlite3ComputeGeneratedColumns(SB), $216-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22706,7 +22706,7 @@ TEXT ·sqlite3TableAffinity(SB), $136-32
 	WORD $0x17ffffea
 	RET
 
-TEXT ·autoIncStep(SB), NOSPLIT, $72-32
+TEXT ·autoIncStep(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22747,7 +22747,7 @@ TEXT ·autoIncStep(SB), NOSPLIT, $72-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VtabMakeWritable(SB), NOSPLIT, $104-24
+TEXT ·sqlite3VtabMakeWritable(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22878,7 +22878,7 @@ TEXT ·sqlite3VtabMakeWritable(SB), NOSPLIT, $104-24
 	WORD $0x17ffffea
 	RET
 
-TEXT ·autoIncrementEnd(SB), NOSPLIT, $136-16
+TEXT ·autoIncrementEnd(SB), $136-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23038,7 +23038,7 @@ TEXT ·autoIncrementEnd(SB), NOSPLIT, $136-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3CodeChangeCount(SB), NOSPLIT, $104-32
+TEXT ·sqlite3CodeChangeCount(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

@@ -4,7 +4,7 @@
 #include "textflag.h"
 #include "funcdata.h"
 
-TEXT ·sqlite3ExprIdToTrueFalse(SB), NOSPLIT, $72-16
+TEXT ·sqlite3ExprIdToTrueFalse(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -100,7 +100,7 @@ TEXT ·sqlite3ExprIdToTrueFalse(SB), NOSPLIT, $72-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3AddNotNull(SB), NOSPLIT, $40-24
+TEXT ·sqlite3AddNotNull(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -670,7 +670,7 @@ TEXT ·sqlite3AddPrimaryKey(SB), $200-48
 	WORD $0x17ffff82
 	RET
 
-TEXT ·sqlite3AddCheckConstraint(SB), NOSPLIT, $104-40
+TEXT ·sqlite3AddCheckConstraint(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2950,7 +2950,7 @@ TEXT ·sqlite3AddCollateType(SB), $168-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3AddGenerated(SB), NOSPLIT, $104-32
+TEXT ·sqlite3AddGenerated(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11765,7 +11765,7 @@ TEXT ·attachWithToSelect(SB), $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·parserDoubleLinkSelect(SB), NOSPLIT, $104-24
+TEXT ·parserDoubleLinkSelect(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11867,7 +11867,7 @@ TEXT ·parserDoubleLinkSelect(SB), NOSPLIT, $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3MultiValuesEnd(SB), NOSPLIT, $88-24
+TEXT ·sqlite3MultiValuesEnd(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12389,7 +12389,7 @@ TEXT ·sqlite3MultiValues(SB), $136-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3ExprListAppend(SB), NOSPLIT, $56-40
+TEXT ·sqlite3ExprListAppend(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12946,7 +12946,7 @@ TEXT ·sqlite3ExprListSetName(SB), $152-32
 	WORD $0x17ffff39
 	RET
 
-TEXT ·sqlite3ExprListSetSpan(SB), NOSPLIT, $120-40
+TEXT ·sqlite3ExprListSetSpan(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13225,7 +13225,7 @@ TEXT ·sqlite3ExprListSetSpan(SB), NOSPLIT, $120-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3Expr(SB), NOSPLIT, $120-40
+TEXT ·sqlite3Expr(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13581,7 +13581,7 @@ TEXT ·sqlite3Expr(SB), NOSPLIT, $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3SrcListShiftJoinType(SB), NOSPLIT, $88-16
+TEXT ·sqlite3SrcListShiftJoinType(SB), $88-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13816,7 +13816,7 @@ TEXT ·sqlite3SrcListShiftJoinType(SB), NOSPLIT, $88-16
 	WORD $0x17fffff6
 	RET
 
-TEXT ·sqlite3SrcListIndexedBy(SB), NOSPLIT, $136-32
+TEXT ·sqlite3SrcListIndexedBy(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14075,7 +14075,7 @@ TEXT ·sqlite3SrcListIndexedBy(SB), NOSPLIT, $136-32
 	WORD $0x17ffff32
 	RET
 
-TEXT ·sqlite3SrcListFuncArgs(SB), NOSPLIT, $40-32
+TEXT ·sqlite3SrcListFuncArgs(SB), $40-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14104,7 +14104,7 @@ TEXT ·sqlite3SrcListFuncArgs(SB), NOSPLIT, $40-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3SrcListAppend(SB), NOSPLIT, $168-48
+TEXT ·sqlite3SrcListAppend(SB), $168-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15214,7 +15214,7 @@ TEXT ·sqlite3RenameTokenMap(SB), $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3NameFromToken(SB), NOSPLIT, $120-32
+TEXT ·sqlite3NameFromToken(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15444,7 +15444,7 @@ TEXT ·sqlite3NameFromToken(SB), NOSPLIT, $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3JoinType(SB), NOSPLIT, $152-48
+TEXT ·sqlite3JoinType(SB), $152-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18521,7 +18521,7 @@ TEXT ·sqlite3ExprListAppendVector(SB), $136-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3ExprInt32(SB), NOSPLIT, $56-32
+TEXT ·sqlite3ExprInt32(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18616,7 +18616,7 @@ TEXT ·sqlite3ExprInt32(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ExprAssignVarNumber(SB), NOSPLIT, $184-32
+TEXT ·sqlite3ExprAssignVarNumber(SB), $184-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19463,7 +19463,7 @@ TEXT ·sqlite3ExprAssignVarNumber(SB), NOSPLIT, $184-32
 	WORD $0x17fffd9e
 	RET
 
-TEXT ·sqlite3ExprAddCollateToken(SB), NOSPLIT, $88-40
+TEXT ·sqlite3ExprAddCollateToken(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19520,7 +19520,7 @@ TEXT ·sqlite3ExprAddCollateToken(SB), NOSPLIT, $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3ExprAttachSubtrees(SB), NOSPLIT, $40-32
+TEXT ·sqlite3ExprAttachSubtrees(SB), $40-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19557,7 +19557,7 @@ TEXT ·sqlite3ExprAttachSubtrees(SB), NOSPLIT, $40-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ExprAddFunctionOrderBy(SB), NOSPLIT, $88-32
+TEXT ·sqlite3ExprAddFunctionOrderBy(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19714,7 +19714,7 @@ TEXT ·sqlite3ExprAddFunctionOrderBy(SB), NOSPLIT, $88-32
 	WORD $0x17ffffb4
 	RET
 
-TEXT ·sqlite3WindowAttach(SB), NOSPLIT, $56-32
+TEXT ·sqlite3WindowAttach(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19754,7 +19754,7 @@ TEXT ·sqlite3WindowAttach(SB), NOSPLIT, $56-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3PExprIsNull(SB), NOSPLIT, $104-40
+TEXT ·sqlite3PExprIsNull(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19904,7 +19904,7 @@ TEXT ·sqlite3PExprIsNull(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3PExprIs(SB), NOSPLIT, $104-48
+TEXT ·sqlite3PExprIs(SB), $104-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19950,7 +19950,7 @@ TEXT ·sqlite3PExprIs(SB), NOSPLIT, $104-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3ExprUnmapAndDelete(SB), NOSPLIT, $88-24
+TEXT ·sqlite3ExprUnmapAndDelete(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20185,7 +20185,7 @@ TEXT ·sqlite3SelectWalkFail(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3PExprAddSelect(SB), NOSPLIT, $56-32
+TEXT ·sqlite3PExprAddSelect(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20218,7 +20218,7 @@ TEXT ·sqlite3PExprAddSelect(SB), NOSPLIT, $56-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ExprListToValues(SB), NOSPLIT, $120-40
+TEXT ·sqlite3ExprListToValues(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20345,7 +20345,7 @@ TEXT ·sqlite3ExprListToValues(SB), NOSPLIT, $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·parserAddExprIdListTerm(SB), NOSPLIT, $88-56
+TEXT ·parserAddExprIdListTerm(SB), $88-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21320,7 +21320,7 @@ TEXT ·sqlite3DropIndex(SB), $200-32
 	WORD $0x17ffff1b
 	RET
 
-TEXT ·sqlite3Vacuum(SB), NOSPLIT, $120-32
+TEXT ·sqlite3Vacuum(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

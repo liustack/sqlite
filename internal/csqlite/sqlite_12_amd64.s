@@ -190,7 +190,7 @@ TEXT ·sqlite3Reprepare(SB), $160-24
 	BYTE $0xef
 	RET
 
-TEXT ·sqlite3ValueText(SB), NOSPLIT, $32-24
+TEXT ·sqlite3ValueText(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -208,7 +208,7 @@ TEXT ·sqlite3ValueText(SB), NOSPLIT, $32-24
 	QUAD $0x00eb4024448948c0
 	RET
 
-TEXT ·sqlite3VdbeLogAbort(SB), NOSPLIT, $112-40
+TEXT ·sqlite3VdbeLogAbort(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -272,7 +272,7 @@ TEXT ·sqlite3VdbeLogAbort(SB), NOSPLIT, $112-40
 	BYTE $0x00
 	RET
 
-TEXT ·out2PrereleaseWithClear(SB), NOSPLIT, $32-24
+TEXT ·out2PrereleaseWithClear(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -293,7 +293,7 @@ TEXT ·out2PrereleaseWithClear(SB), NOSPLIT, $32-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeMemSetZeroBlob(SB), NOSPLIT, $32-24
+TEXT ·sqlite3VdbeMemSetZeroBlob(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -321,7 +321,7 @@ TEXT ·sqlite3VdbeMemSetZeroBlob(SB), NOSPLIT, $32-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeMemExpandBlob(SB), NOSPLIT, $96-24
+TEXT ·sqlite3VdbeMemExpandBlob(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -489,7 +489,7 @@ TEXT ·sqlite3MulInt64(SB), NOSPLIT, $0-32
 	BYTE $0x87
 	RET
 
-TEXT ·sqlite3VdbeIntValue(SB), NOSPLIT, $32-24
+TEXT ·sqlite3VdbeIntValue(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -526,7 +526,7 @@ TEXT ·sqlite3VdbeIntValue(SB), NOSPLIT, $32-24
 	QUAD $0x43dfffffffffffff
 	RET
 
-TEXT ·sqlite3VdbeMemRealify(SB), NOSPLIT, $48-16
+TEXT ·sqlite3VdbeMemRealify(SB), $48-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -553,7 +553,7 @@ TEXT ·sqlite3VdbeMemRealify(SB), NOSPLIT, $48-16
 	BYTE $0xbc
 	RET
 
-TEXT ·sqlite3VdbeBooleanValue(SB), NOSPLIT, $32-24
+TEXT ·sqlite3VdbeBooleanValue(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -577,7 +577,7 @@ TEXT ·sqlite3VdbeBooleanValue(SB), NOSPLIT, $32-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeFinishMoveto(SB), NOSPLIT, $80-24
+TEXT ·sqlite3VdbeFinishMoveto(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -752,7 +752,7 @@ TEXT ·sqlite3VdbeHandleMovedCursor(SB), $112-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeMemFromBtreeZeroOffset(SB), NOSPLIT, $112-40
+TEXT ·sqlite3VdbeMemFromBtreeZeroOffset(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -831,7 +831,7 @@ TEXT ·sqlite3VdbeMemFromBtreeZeroOffset(SB), NOSPLIT, $112-40
 	QUAD $0xfffffee4e9c03110
 	RET
 
-TEXT ·sqlite3VdbeMemShallowCopy(SB), NOSPLIT, $32-24
+TEXT ·sqlite3VdbeMemShallowCopy(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -1474,7 +1474,7 @@ TEXT ·vdbeColumnFromOverflow(SB), $176-72
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3VdbeMemClearAndResize(SB), NOSPLIT, $48-32
+TEXT ·sqlite3VdbeMemClearAndResize(SB), $48-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -1497,7 +1497,7 @@ TEXT ·sqlite3VdbeMemClearAndResize(SB), NOSPLIT, $48-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3PutVarint(SB), NOSPLIT, $32-32
+TEXT ·sqlite3PutVarint(SB), $32-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -1525,7 +1525,7 @@ TEXT ·sqlite3PutVarint(SB), NOSPLIT, $32-32
 	BYTE $0x00
 	RET
 
-TEXT ·putVarint64(SB), NOSPLIT, $112-32
+TEXT ·putVarint64(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -1703,7 +1703,7 @@ TEXT ·putVarint64(SB), NOSPLIT, $112-32
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3BtreeRowCountEst(SB), NOSPLIT, $80-24
+TEXT ·sqlite3BtreeRowCountEst(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -2006,7 +2006,7 @@ TEXT ·sqlite3CloseSavepoints(SB), $64-16
 	QUAD $0x00eb006d41c60000
 	RET
 
-TEXT ·sqlite3BtreeBeginTrans(SB), NOSPLIT, $48-40
+TEXT ·sqlite3BtreeBeginTrans(SB), $48-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -2324,7 +2324,7 @@ TEXT ·pagerOpenSavepoint(SB), $128-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3ResetOneSchema(SB), NOSPLIT, $64-24
+TEXT ·sqlite3ResetOneSchema(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -2374,7 +2374,7 @@ TEXT ·sqlite3ResetOneSchema(SB), NOSPLIT, $64-24
 	BYTE $0xc6
 	RET
 
-TEXT ·sqlite3BtreeUpdateMeta(SB), NOSPLIT, $64-40
+TEXT ·sqlite3BtreeUpdateMeta(SB), $64-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -2422,7 +2422,7 @@ TEXT ·sqlite3BtreeUpdateMeta(SB), NOSPLIT, $64-40
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3FkClearTriggerCache(SB), NOSPLIT, $80-24
+TEXT ·sqlite3FkClearTriggerCache(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -2575,7 +2575,7 @@ TEXT ·sqlite3BtreeClearCursor(SB), $64-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeMemIntegerify(SB), NOSPLIT, $48-16
+TEXT ·sqlite3VdbeMemIntegerify(SB), $48-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -2605,7 +2605,7 @@ TEXT ·sqlite3VdbeMemIntegerify(SB), NOSPLIT, $48-16
 	QUAD $0x43dfffffffffffff
 	RET
 
-TEXT ·btreeCursor(SB), NOSPLIT, $96-56
+TEXT ·btreeCursor(SB), $96-56
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -2687,7 +2687,7 @@ TEXT ·btreeCursor(SB), NOSPLIT, $96-56
 	BYTE $0x00
 	RET
 
-TEXT ·allocateTempSpace(SB), NOSPLIT, $64-24
+TEXT ·allocateTempSpace(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -2738,7 +2738,7 @@ TEXT ·allocateTempSpace(SB), NOSPLIT, $64-24
 	QUAD $0x00eb602444894800
 	RET
 
-TEXT ·sqlite3BtreeClearTable(SB), NOSPLIT, $96-32
+TEXT ·sqlite3BtreeClearTable(SB), $96-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -4024,7 +4024,7 @@ TEXT ·sqlite3BtreeCreateTable(SB), $160-40
 	BYTE $0xff
 	RET
 
-TEXT ·btreeLast(SB), NOSPLIT, $64-32
+TEXT ·btreeLast(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -5505,7 +5505,7 @@ TEXT ·btreePrevious(SB), $96-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeMemFromBtree(SB), NOSPLIT, $112-48
+TEXT ·sqlite3VdbeMemFromBtree(SB), $112-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -6338,7 +6338,7 @@ TEXT ·sqlite3VdbeRecordCompareWithSkip(SB), $192-48
 	QUAD $0xfffff13dfffff0bb
 	RET
 
-TEXT ·sqlite3VdbeRecordUnpack(SB), NOSPLIT, $128-32
+TEXT ·sqlite3VdbeRecordUnpack(SB), $128-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -13049,7 +13049,7 @@ TEXT ·sqlite3VdbeFindIndexKey(SB), $240-56
 	BYTE $0xff
 	RET
 
-TEXT ·vdbeIndexKeyCompare(SB), NOSPLIT, $128-40
+TEXT ·vdbeIndexKeyCompare(SB), $128-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -13196,7 +13196,7 @@ TEXT ·vdbeIndexKeyCompare(SB), NOSPLIT, $128-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3VdbeIdxRowid(SB), NOSPLIT, $112-40
+TEXT ·sqlite3VdbeIdxRowid(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -14024,7 +14024,7 @@ TEXT ·freePage2(SB), $112-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3RootPageMoved(SB), NOSPLIT, $64-40
+TEXT ·sqlite3RootPageMoved(SB), $64-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -14083,7 +14083,7 @@ TEXT ·sqlite3RootPageMoved(SB), NOSPLIT, $64-40
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3BtreeClearTableOfCursor(SB), NOSPLIT, $96-24
+TEXT ·sqlite3BtreeClearTableOfCursor(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -16522,7 +16522,7 @@ TEXT ·sqlite3VdbeMemSetRowSet(SB), $64-24
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3RowSetInsert(SB), NOSPLIT, $48-24
+TEXT ·sqlite3RowSetInsert(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -16723,7 +16723,7 @@ TEXT ·sqlite3RowSetNext(SB), $80-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3RowSetTest(SB), NOSPLIT, $144-40
+TEXT ·sqlite3RowSetTest(SB), $144-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -17291,7 +17291,7 @@ TEXT ·sqlite3PagerSetJournalMode(SB), $80-32
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3BtreeSetVersion(SB), NOSPLIT, $80-32
+TEXT ·sqlite3BtreeSetVersion(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -19138,7 +19138,7 @@ TEXT ·sqlite3RunVacuum(SB), $256-48
 	QUAD $0x0000000000000000
 	RET
 
-TEXT ·growVTrans(SB), NOSPLIT, $64-24
+TEXT ·growVTrans(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -19219,7 +19219,7 @@ TEXT ·growVTrans(SB), NOSPLIT, $64-24
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3VtabCallCreate(SB), NOSPLIT, $160-48
+TEXT ·sqlite3VtabCallCreate(SB), $160-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -19519,7 +19519,7 @@ TEXT ·sqlite3VdbeValueListFree(SB), $48-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3_value_text(SB), NOSPLIT, $32-24
+TEXT ·sqlite3_value_text(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -19537,7 +19537,7 @@ TEXT ·sqlite3_value_text(SB), NOSPLIT, $32-24
 	QUAD $0x00eb4024448948c0
 	RET
 
-TEXT ·filterHash(SB), NOSPLIT, $160-32
+TEXT ·filterHash(SB), $160-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -20967,7 +20967,7 @@ TEXT ·sqlite3BtreeGetMeta(SB), NOSPLIT, $0-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3BtreeCommit(SB), NOSPLIT, $48-24
+TEXT ·sqlite3BtreeCommit(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c

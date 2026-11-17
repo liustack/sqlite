@@ -3816,7 +3816,7 @@ TEXT ·fts5WriteFlushBtree(SB), $144-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3Fts5PutVarint(SB), NOSPLIT, $32-32
+TEXT ·sqlite3Fts5PutVarint(SB), $32-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -9141,7 +9141,7 @@ TEXT ·fts5PorterCb(SB), $160-64
 	QUAD $0xffffec45fffff027
 	RET
 
-TEXT ·fts5Porter_MEq1(SB), NOSPLIT, $64-32
+TEXT ·fts5Porter_MEq1(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -9318,7 +9318,7 @@ TEXT ·fts5Porter_MEq1(SB), NOSPLIT, $64-32
 	BYTE $0xff
 	RET
 
-TEXT ·fts5Porter_MGt0(SB), NOSPLIT, $80-32
+TEXT ·fts5Porter_MGt0(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -9410,7 +9410,7 @@ TEXT ·fts5Porter_MGt0(SB), NOSPLIT, $80-32
 	BYTE $0xff
 	RET
 
-TEXT ·fts5Porter_MGt1(SB), NOSPLIT, $64-32
+TEXT ·fts5Porter_MGt1(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -14315,7 +14315,7 @@ TEXT ·fts5TriTokenize(SB), $208-64
 	QUAD $0x0000000000000000
 	RET
 
-TEXT ·fts5UnicodeAddExceptions(SB), NOSPLIT, $128-40
+TEXT ·fts5UnicodeAddExceptions(SB), $128-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -18042,7 +18042,7 @@ TEXT ·fts5GetLocaleFunction(SB), $128-48
 	BYTE $0xff
 	RET
 
-TEXT ·fts5ValueClampedInt(SB), NOSPLIT, $48-24
+TEXT ·fts5ValueClampedInt(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c

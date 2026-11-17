@@ -590,7 +590,7 @@ TEXT ·memset(SB), NOSPLIT|NOFRAME, $0-0
 	WORD $0x14000001
 	RET
 
-TEXT ·bcmp(SB), NOSPLIT, $56-40
+TEXT ·bcmp(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -641,7 +641,7 @@ TEXT ·bcmp(SB), NOSPLIT, $56-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·bzero(SB), NOSPLIT, $72-24
+TEXT ·bzero(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -774,7 +774,7 @@ TEXT ·bzero(SB), NOSPLIT, $72-24
 	WORD $0x17fffff5
 	RET
 
-TEXT ·memchr(SB), NOSPLIT, $56-40
+TEXT ·memchr(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -960,7 +960,7 @@ TEXT ·memchr(SB), NOSPLIT, $56-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·memcmp(SB), NOSPLIT, $56-40
+TEXT ·memcmp(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1065,7 +1065,7 @@ TEXT ·__memrchr(SB), $56-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·strchr(SB), NOSPLIT, $56-32
+TEXT ·strchr(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1346,7 +1346,7 @@ TEXT ·__strchrnul(SB), $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·strcmp(SB), NOSPLIT, $40-32
+TEXT ·strcmp(SB), $40-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1388,7 +1388,7 @@ TEXT ·strcmp(SB), NOSPLIT, $40-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·strcspn(SB), NOSPLIT, $88-32
+TEXT ·strcspn(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1479,7 +1479,7 @@ TEXT ·strcspn(SB), NOSPLIT, $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·strlen(SB), NOSPLIT, $56-24
+TEXT ·strlen(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1609,7 +1609,7 @@ TEXT ·strlen(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·strncmp(SB), NOSPLIT, $72-40
+TEXT ·strncmp(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1668,7 +1668,7 @@ TEXT ·strncmp(SB), NOSPLIT, $72-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·strrchr(SB), NOSPLIT, $56-32
+TEXT ·strrchr(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1842,7 +1842,7 @@ TEXT ·strrchr(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·strspn(SB), NOSPLIT, $56-32
+TEXT ·strspn(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2011,7 +2011,7 @@ TEXT ·__cos(SB), NOSPLIT, $0-32
 	FMOVD F0, ret+24(FP)
 	RET
 
-TEXT ·__expo2(SB), NOSPLIT, $56-32
+TEXT ·__expo2(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	FMOVD a1+8(FP), F0
@@ -2190,7 +2190,7 @@ TEXT ·__math_xflow(SB), NOSPLIT, $0-32
 	FMOVD F0, ret+24(FP)
 	RET
 
-TEXT ·__rem_pio2(SB), NOSPLIT, $104-32
+TEXT ·__rem_pio2(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	FMOVD a1+8(FP), F0
@@ -2489,7 +2489,7 @@ TEXT ·__rem_pio2(SB), NOSPLIT, $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·__rem_pio2_large(SB), NOSPLIT, $344-56
+TEXT ·__rem_pio2_large(SB), $344-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

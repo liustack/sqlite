@@ -4,7 +4,7 @@
 #include "textflag.h"
 #include "funcdata.h"
 
-TEXT ·updateVirtualTable_block(SB), NOSPLIT, $248-16
+TEXT ·updateVirtualTable_block(SB), $248-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1889,7 +1889,7 @@ TEXT ·updateVirtualTable_block(SB), NOSPLIT, $248-16
 	WORD $0x17fffb39
 	RET
 
-TEXT ·updateFromSelect_block(SB), NOSPLIT, $168-16
+TEXT ·updateFromSelect_block(SB), $168-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5142,7 +5142,7 @@ TEXT ·selectInnerLoop_block(SB), $328-16
 	WORD $0x00000184
 	RET
 
-TEXT ·codeDistinct_block(SB), NOSPLIT, $168-24
+TEXT ·codeDistinct_block(SB), $168-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5481,7 +5481,7 @@ TEXT ·codeDistinct_block(SB), NOSPLIT, $168-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·windowCodeRangeTest_block(SB), NOSPLIT, $184-16
+TEXT ·windowCodeRangeTest_block(SB), $184-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6190,7 +6190,7 @@ TEXT ·windowCodeRangeTest_block(SB), NOSPLIT, $184-16
 	WORD $0x14000001
 	RET
 
-TEXT ·generateOutputSubroutine_block(SB), NOSPLIT, $200-24
+TEXT ·generateOutputSubroutine_block(SB), $200-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11740,7 +11740,7 @@ TEXT ·sqlite3_blob_open_block(SB), $248-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_prepare_v3_block(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_prepare_v3_block(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12239,7 +12239,7 @@ TEXT ·sqlite3Prepare16_block(SB), $152-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_prepare16_v3_block(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_prepare16_v3_block(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13094,7 +13094,7 @@ TEXT ·sqlite3_create_function_block(SB), $120-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_create_function_v2_block(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_create_function_v2_block(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13522,7 +13522,7 @@ TEXT ·createFunctionApi_block(SB), $152-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_create_window_function_block(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_create_window_function_block(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

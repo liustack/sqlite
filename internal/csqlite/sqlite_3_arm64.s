@@ -1007,7 +1007,7 @@ TEXT ·findConstraintFunc(SB), $120-32
 	WORD $0x17ffffed
 	RET
 
-TEXT ·sqlite3GetToken(SB), NOSPLIT, $104-32
+TEXT ·sqlite3GetToken(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1927,7 +1927,7 @@ TEXT ·sqlite3GetToken(SB), NOSPLIT, $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·keywordCode(SB), NOSPLIT, $88-40
+TEXT ·keywordCode(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2057,7 +2057,7 @@ TEXT ·keywordCode(SB), NOSPLIT, $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·getWhitespace(SB), NOSPLIT, $72-24
+TEXT ·getWhitespace(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2269,7 +2269,7 @@ TEXT ·sqlite3_str_new(SB), $72-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_str_append(SB), NOSPLIT, $104-32
+TEXT ·sqlite3_str_append(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2744,7 +2744,7 @@ TEXT ·getConstraint(SB), $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·renameParseSql(SB), NOSPLIT, $120-56
+TEXT ·renameParseSql(SB), $120-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3233,7 +3233,7 @@ TEXT ·renameColumnSelectCb(SB), $40-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3SelectPrep(SB), NOSPLIT, $88-32
+TEXT ·sqlite3SelectPrep(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3823,7 +3823,7 @@ TEXT ·sqlite3WalkExprNN(SB), $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·renameResolveTrigger(SB), NOSPLIT, $168-24
+TEXT ·renameResolveTrigger(SB), $168-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5145,7 +5145,7 @@ TEXT ·renameResolveTrigger(SB), NOSPLIT, $168-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·renameWalkTrigger(SB), NOSPLIT, $104-24
+TEXT ·renameWalkTrigger(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21379,7 +21379,7 @@ TEXT ·sqlite3RollbackAll(SB), $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·vdbeFkError(SB), NOSPLIT, $56-24
+TEXT ·vdbeFkError(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21407,7 +21407,7 @@ TEXT ·vdbeFkError(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·vdbeCloseStatement(SB), NOSPLIT, $168-32
+TEXT ·vdbeCloseStatement(SB), $168-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21985,7 +21985,7 @@ TEXT ·memjrnlTruncate(SB), $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·newDatabase(SB), NOSPLIT, $72-24
+TEXT ·newDatabase(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23823,7 +23823,7 @@ TEXT ·pager_write(SB), $136-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·zeroPage(SB), NOSPLIT, $152-24
+TEXT ·zeroPage(SB), $152-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

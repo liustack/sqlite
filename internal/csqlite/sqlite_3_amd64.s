@@ -186,7 +186,7 @@ TEXT ·sqlite3_str_new(SB), $64-24
 	BYTE $0x8b
 	RET
 
-TEXT ·sqlite3_str_append(SB), NOSPLIT, $112-32
+TEXT ·sqlite3_str_append(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -581,7 +581,7 @@ TEXT ·getConstraint(SB), $112-32
 	BYTE $0xff
 	RET
 
-TEXT ·renameParseSql(SB), NOSPLIT, $112-56
+TEXT ·renameParseSql(SB), $112-56
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -1013,7 +1013,7 @@ TEXT ·renameColumnSelectCb(SB), $32-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3SelectPrep(SB), NOSPLIT, $80-32
+TEXT ·sqlite3SelectPrep(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -1521,7 +1521,7 @@ TEXT ·sqlite3WalkExprNN(SB), $96-32
 	BYTE $0x00
 	RET
 
-TEXT ·renameResolveTrigger(SB), NOSPLIT, $208-24
+TEXT ·renameResolveTrigger(SB), $208-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000e024a48b4c
@@ -2711,7 +2711,7 @@ TEXT ·renameResolveTrigger(SB), NOSPLIT, $208-24
 	BYTE $0x00
 	RET
 
-TEXT ·renameWalkTrigger(SB), NOSPLIT, $96-24
+TEXT ·renameWalkTrigger(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -17931,7 +17931,7 @@ TEXT ·sqlite3RollbackAll(SB), $96-24
 	BYTE $0x00
 	RET
 
-TEXT ·vdbeFkError(SB), NOSPLIT, $48-24
+TEXT ·vdbeFkError(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -17957,7 +17957,7 @@ TEXT ·vdbeFkError(SB), NOSPLIT, $48-24
 	QUAD $0x00eb5024448948c1
 	RET
 
-TEXT ·vdbeCloseStatement(SB), NOSPLIT, $176-32
+TEXT ·vdbeCloseStatement(SB), $176-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000c024a48b4c
@@ -18510,7 +18510,7 @@ TEXT ·memjrnlTruncate(SB), $96-32
 	BYTE $0x00
 	RET
 
-TEXT ·newDatabase(SB), NOSPLIT, $112-24
+TEXT ·newDatabase(SB), $112-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -19997,7 +19997,7 @@ TEXT ·pager_write(SB), $160-24
 	BYTE $0xff
 	RET
 
-TEXT ·zeroPage(SB), NOSPLIT, $112-24
+TEXT ·zeroPage(SB), $112-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -23422,7 +23422,7 @@ TEXT ·pagerUndoCallback(SB), $80-32
 	BYTE $0xff
 	RET
 
-TEXT ·walCleanupHash(SB), NOSPLIT, $96-16
+TEXT ·walCleanupHash(SB), $96-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -23534,7 +23534,7 @@ TEXT ·walCleanupHash(SB), NOSPLIT, $96-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3PcacheDirtyList(SB), NOSPLIT, $96-24
+TEXT ·sqlite3PcacheDirtyList(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c

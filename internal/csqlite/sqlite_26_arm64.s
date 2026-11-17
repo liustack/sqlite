@@ -9971,7 +9971,7 @@ TEXT ·wherePathSatisfiesOrderBy_block(SB), $392-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·wherePathMatchSubqueryOB_block(SB), NOSPLIT, $120-24
+TEXT ·wherePathMatchSubqueryOB_block(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13541,7 +13541,7 @@ TEXT ·bindText_block(SB), $136-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_bind_text64_block(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_bind_text64_block(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

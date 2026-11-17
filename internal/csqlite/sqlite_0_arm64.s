@@ -11016,7 +11016,7 @@ TEXT ·strAccumFinishRealloc(SB), $120-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3DbMallocRawNN(SB), NOSPLIT, $56-32
+TEXT ·sqlite3DbMallocRawNN(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11730,7 +11730,7 @@ TEXT ·enlargeAndAppend(SB), $120-32
 	WORD $0x14000001
 	RET
 
-TEXT ·memIntValue(SB), NOSPLIT, $72-24
+TEXT ·memIntValue(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16625,7 +16625,7 @@ TEXT ·sqlite3RCStrUnref(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3AtoF(SB), NOSPLIT, $120-32
+TEXT ·sqlite3AtoF(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20803,7 +20803,7 @@ TEXT ·goCurrentTimeInt64(SB), $40-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_uri_parameter(SB), NOSPLIT, $88-32
+TEXT ·sqlite3_uri_parameter(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21672,7 +21672,7 @@ TEXT ·goShmUnmap(SB), $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3GetInt32(SB), NOSPLIT, $56-32
+TEXT ·sqlite3GetInt32(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

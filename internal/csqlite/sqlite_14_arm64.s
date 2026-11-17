@@ -3286,7 +3286,7 @@ TEXT ·fkActionTrigger(SB), $296-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3GenerateColumnNames(SB), NOSPLIT, $200-24
+TEXT ·sqlite3GenerateColumnNames(SB), $200-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3841,7 +3841,7 @@ TEXT ·sqlite3GenerateColumnNames(SB), NOSPLIT, $200-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ProcessReturningSubqueries(SB), NOSPLIT, $88-24
+TEXT ·sqlite3ProcessReturningSubqueries(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4416,7 +4416,7 @@ TEXT ·sqlite3LocateTableItem(SB), $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·xferCompatibleIndex(SB), NOSPLIT, $120-32
+TEXT ·xferCompatibleIndex(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4565,7 +4565,7 @@ TEXT ·xferCompatibleIndex(SB), NOSPLIT, $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·xferCompatibleCheck(SB), NOSPLIT, $120-32
+TEXT ·xferCompatibleCheck(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5684,7 +5684,7 @@ TEXT ·sqlite3MaterializeView(SB), $184-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeChangeToNoop(SB), NOSPLIT, $56-24
+TEXT ·sqlite3VdbeChangeToNoop(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6069,7 +6069,7 @@ TEXT ·disallowAggregatesInOrderByCb(SB), $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·exprListAppendList(SB), NOSPLIT, $168-48
+TEXT ·exprListAppendList(SB), $168-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6801,7 +6801,7 @@ TEXT ·unsetJoinExpr(SB), $104-32
 	WORD $0x14000001
 	RET
 
-TEXT ·compoundHasDifferentAffinities(SB), NOSPLIT, $88-24
+TEXT ·compoundHasDifferentAffinities(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6883,7 +6883,7 @@ TEXT ·compoundHasDifferentAffinities(SB), NOSPLIT, $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·renumberCursors(SB), NOSPLIT, $72-40
+TEXT ·renumberCursors(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -7435,7 +7435,7 @@ TEXT ·substSelect(SB), $120-32
 	WORD $0x14000001
 	RET
 
-TEXT ·recomputeColumnsUsed(SB), NOSPLIT, $56-24
+TEXT ·recomputeColumnsUsed(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8118,7 +8118,7 @@ TEXT ·computeLimitRegisters(SB), $152-32
 	WORD $0x14000001
 	RET
 
-TEXT ·multiSelectByMergeKeyInfo(SB), NOSPLIT, $136-32
+TEXT ·multiSelectByMergeKeyInfo(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8263,7 +8263,7 @@ TEXT ·multiSelectCollSeq(SB), $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·codeOffset(SB), NOSPLIT, $72-32
+TEXT ·codeOffset(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11354,7 +11354,7 @@ TEXT ·propagateConstants(SB), $88-24
 	WORD $0x14000001
 	RET
 
-TEXT ·countOfViewOptimization(SB), NOSPLIT, $136-32
+TEXT ·countOfViewOptimization(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12001,7 +12001,7 @@ TEXT ·pushDownWhereTerms(SB), $152-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·disableUnusedSubqueryResultColumns(SB), NOSPLIT, $72-16
+TEXT ·disableUnusedSubqueryResultColumns(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12175,7 +12175,7 @@ TEXT ·disableUnusedSubqueryResultColumns(SB), NOSPLIT, $72-16
 	WORD $0x14000001
 	RET
 
-TEXT ·fromClauseTermCanBeCoroutine(SB), NOSPLIT, $120-48
+TEXT ·fromClauseTermCanBeCoroutine(SB), $120-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12380,7 +12380,7 @@ TEXT ·fromClauseTermCanBeCoroutine(SB), NOSPLIT, $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·isSelfJoinView(SB), NOSPLIT, $104-40
+TEXT ·isSelfJoinView(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12512,7 +12512,7 @@ TEXT ·isSelfJoinView(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3KeyInfoFromExprList(SB), NOSPLIT, $104-40
+TEXT ·sqlite3KeyInfoFromExprList(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16130,7 +16130,7 @@ TEXT ·agginfoFree(SB), $72-24
 	WORD $0x17ffff9e
 	RET
 
-TEXT ·sqlite3ExprAnalyzeAggList(SB), NOSPLIT, $104-24
+TEXT ·sqlite3ExprAnalyzeAggList(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16198,7 +16198,7 @@ TEXT ·sqlite3ExprAnalyzeAggList(SB), NOSPLIT, $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·havingToWhere(SB), NOSPLIT, $56-24
+TEXT ·havingToWhere(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16617,7 +16617,7 @@ TEXT ·analyzeAggregate(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·analyzeAggFuncArgs(SB), NOSPLIT, $120-24
+TEXT ·analyzeAggFuncArgs(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16829,7 +16829,7 @@ TEXT ·sqlite3ExprNullRegisterRange(SB), $72-32
 	WORD $0x14000001
 	RET
 
-TEXT ·optimizeAggregateUseOfIndexedExpr(SB), NOSPLIT, $136-32
+TEXT ·optimizeAggregateUseOfIndexedExpr(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16961,7 +16961,7 @@ TEXT ·optimizeAggregateUseOfIndexedExpr(SB), NOSPLIT, $136-32
 	WORD $0x14000001
 	RET
 
-TEXT ·aggregateConvertIndexedExprRefToColumn(SB), NOSPLIT, $88-16
+TEXT ·aggregateConvertIndexedExprRefToColumn(SB), $88-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17023,7 +17023,7 @@ TEXT ·aggregateConvertIndexedExprRefToColumn(SB), NOSPLIT, $88-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ExprSkipCollateAndLikely(SB), NOSPLIT, $40-24
+TEXT ·sqlite3ExprSkipCollateAndLikely(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17069,7 +17069,7 @@ TEXT ·sqlite3ExprSkipCollateAndLikely(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3ExprCodeMove(SB), NOSPLIT, $72-40
+TEXT ·sqlite3ExprCodeMove(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19617,7 +19617,7 @@ TEXT ·resetAccumulator(SB), $168-24
 	WORD $0x17fffe44
 	RET
 
-TEXT ·fixDistinctOpenEph(SB), NOSPLIT, $104-40
+TEXT ·fixDistinctOpenEph(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19748,7 +19748,7 @@ TEXT ·isSimpleCount(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·explainSimpleCount(SB), NOSPLIT, $56-32
+TEXT ·explainSimpleCount(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19792,7 +19792,7 @@ TEXT ·explainSimpleCount(SB), NOSPLIT, $56-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3WhereMinMaxOptEarlyOut(SB), NOSPLIT, $104-24
+TEXT ·sqlite3WhereMinMaxOptEarlyOut(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19874,7 +19874,7 @@ TEXT ·sqlite3WhereMinMaxOptEarlyOut(SB), NOSPLIT, $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·generateSortTail(SB), NOSPLIT, $296-48
+TEXT ·generateSortTail(SB), $296-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21217,7 +21217,7 @@ TEXT ·aggregateIdxEprRefToColCallback(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·findOrCreateAggInfoColumn(SB), NOSPLIT, $136-32
+TEXT ·findOrCreateAggInfoColumn(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21569,7 +21569,7 @@ TEXT ·findOrCreateAggInfoColumn(SB), NOSPLIT, $136-32
 	WORD $0x17ffffd7
 	RET
 
-TEXT ·addAggInfoFunc(SB), NOSPLIT, $104-32
+TEXT ·addAggInfoFunc(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22185,7 +22185,7 @@ TEXT ·windowExprGtZero(SB), $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·windowCheckValue(SB), NOSPLIT, $120-32
+TEXT ·windowCheckValue(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26673,7 +26673,7 @@ TEXT ·windowAggStep(SB), $248-48
 	WORD $0x00000000
 	RET
 
-TEXT ·sqlite3ExprIsSingleTableConstraint(SB), NOSPLIT, $104-40
+TEXT ·sqlite3ExprIsSingleTableConstraint(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -27638,7 +27638,7 @@ TEXT ·propagateConstantExprRewrite(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·constInsert(SB), NOSPLIT, $120-40
+TEXT ·constInsert(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -28436,7 +28436,7 @@ TEXT ·sqlite3FkDropTable(SB), $168-32
 	WORD $0x17fffe7a
 	RET
 
-TEXT ·sqlite3ForceNotReadOnly(SB), NOSPLIT, $88-16
+TEXT ·sqlite3ForceNotReadOnly(SB), $88-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

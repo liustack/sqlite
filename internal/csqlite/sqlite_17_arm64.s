@@ -2806,7 +2806,7 @@ TEXT ·fts5VocabRowidMethod(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3Fts5PoslistNext64(SB), NOSPLIT, $88-48
+TEXT ·sqlite3Fts5PoslistNext64(SB), $88-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3010,7 +3010,7 @@ TEXT ·sqlite3Fts5PoslistNext64(SB), NOSPLIT, $88-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·fts5VocabInstanceNewTerm(SB), NOSPLIT, $120-24
+TEXT ·fts5VocabInstanceNewTerm(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4434,7 +4434,7 @@ TEXT ·fts5SegIterNextPage(SB), $88-24
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5SegIterLoadNPos(SB), NOSPLIT, $72-24
+TEXT ·fts5SegIterLoadNPos(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5283,7 +5283,7 @@ TEXT ·fts5SegIterReverseNewPage(SB), $88-24
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5MultiIterIsDeleted(SB), NOSPLIT, $120-24
+TEXT ·fts5MultiIterIsDeleted(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6146,7 +6146,7 @@ TEXT ·fts5LeafRead(SB), $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·fts5SegIterReverseInitPage(SB), NOSPLIT, $136-24
+TEXT ·fts5SegIterReverseInitPage(SB), $136-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6531,7 +6531,7 @@ TEXT ·fts5SegIterReverseInitPage(SB), NOSPLIT, $136-24
 	WORD $0x17fffff9
 	RET
 
-TEXT ·fts5DlidxLvlNext(SB), NOSPLIT, $120-24
+TEXT ·fts5DlidxLvlNext(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13241,7 +13241,7 @@ TEXT ·fts5SegIterNext(SB), $136-32
 	WORD $0x17fffdc1
 	RET
 
-TEXT ·fts5SegIterLoadTerm(SB), NOSPLIT, $152-32
+TEXT ·fts5SegIterLoadTerm(SB), $152-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14864,7 +14864,7 @@ TEXT ·fts5MultiIterFinishSetup(SB), $184-24
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5IterSetOutputsTokendata(SB), NOSPLIT, $184-16
+TEXT ·fts5IterSetOutputsTokendata(SB), $184-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21020,7 +21020,7 @@ TEXT ·fts5MultiIterFree(SB), $120-16
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5PutVarint64(SB), NOSPLIT, $104-32
+TEXT ·fts5PutVarint64(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22098,7 +22098,7 @@ TEXT ·sqlite3Fts5HashScanInit(SB), $184-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·fts5HashAddPoslistSize(SB), NOSPLIT, $104-40
+TEXT ·fts5HashAddPoslistSize(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22208,7 +22208,7 @@ TEXT ·fts5HashAddPoslistSize(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·fts5SegIterInit(SB), NOSPLIT, $104-32
+TEXT ·fts5SegIterInit(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22470,7 +22470,7 @@ TEXT ·fts5SegIterInit(SB), NOSPLIT, $104-32
 	WORD $0x17ffffe1
 	RET
 
-TEXT ·sqlite3Fts5PoslistSafeAppend(SB), NOSPLIT, $88-32
+TEXT ·sqlite3Fts5PoslistSafeAppend(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23278,7 +23278,7 @@ TEXT ·fts5IterSetOutputs_Col(SB), $72-24
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5SegiterPoslist(SB), NOSPLIT, $104-40
+TEXT ·fts5SegiterPoslist(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25242,7 +25242,7 @@ TEXT ·fts5MergeChunkCallback(SB), $136-40
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5WriteFlushLeaf(SB), NOSPLIT, $136-24
+TEXT ·fts5WriteFlushLeaf(SB), $136-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

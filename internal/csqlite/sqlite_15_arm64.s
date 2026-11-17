@@ -400,7 +400,7 @@ TEXT ·sqlite3AllocateIndexObject(SB), $152-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3ResolveSelfReference(SB), NOSPLIT, $72-40
+TEXT ·sqlite3ResolveSelfReference(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -490,7 +490,7 @@ TEXT ·sqlite3ResolveSelfReference(SB), NOSPLIT, $72-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3LocateCollSeq(SB), NOSPLIT, $104-32
+TEXT ·sqlite3LocateCollSeq(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -529,7 +529,7 @@ TEXT ·sqlite3LocateCollSeq(SB), NOSPLIT, $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·isDupColumn(SB), NOSPLIT, $104-48
+TEXT ·isDupColumn(SB), $104-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -624,7 +624,7 @@ TEXT ·isDupColumn(SB), NOSPLIT, $104-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3DefaultRowEst(SB), NOSPLIT, $56-16
+TEXT ·sqlite3DefaultRowEst(SB), $56-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -728,7 +728,7 @@ TEXT ·sqlite3DefaultRowEst(SB), NOSPLIT, $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·estimateIndexWidth(SB), NOSPLIT, $72-16
+TEXT ·estimateIndexWidth(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -846,7 +846,7 @@ TEXT ·estimateIndexWidth(SB), NOSPLIT, $72-16
 	WORD $0x17fffffc
 	RET
 
-TEXT ·recomputeColumnsNotIndexed(SB), NOSPLIT, $72-16
+TEXT ·recomputeColumnsNotIndexed(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3969,7 +3969,7 @@ TEXT ·createTableStmt(SB), $360-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·identPut(SB), NOSPLIT, $120-32
+TEXT ·identPut(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5168,7 +5168,7 @@ TEXT ·sqlite3Init(SB), $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3OpenSchemaTable(SB), NOSPLIT, $56-24
+TEXT ·sqlite3OpenSchemaTable(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5238,7 +5238,7 @@ TEXT ·sqlite3OpenSchemaTable(SB), NOSPLIT, $56-24
 	WORD $0x00000001
 	RET
 
-TEXT ·sqlite3VdbeMakeReady(SB), NOSPLIT, $152-24
+TEXT ·sqlite3VdbeMakeReady(SB), $152-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8328,7 +8328,7 @@ TEXT ·renameColumnExprCb(SB), $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·renameColumnElistNames(SB), NOSPLIT, $104-40
+TEXT ·renameColumnElistNames(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8467,7 +8467,7 @@ TEXT ·renameColumnElistNames(SB), NOSPLIT, $104-40
 	WORD $0x14000001
 	RET
 
-TEXT ·renameColumnIdlistNames(SB), NOSPLIT, $104-40
+TEXT ·renameColumnIdlistNames(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -9579,7 +9579,7 @@ TEXT ·sqlite3_msize(SB), $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_db_status(SB), NOSPLIT, $88-56
+TEXT ·sqlite3_db_status(SB), $88-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -9746,7 +9746,7 @@ TEXT ·sqlite3_vfs_find(SB), $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_initialize(SB), NOSPLIT, $40-16
+TEXT ·sqlite3_initialize(SB), $40-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	PCALIGN $16
@@ -10308,7 +10308,7 @@ TEXT ·sqlite3_malloc(SB), $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_realloc(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_realloc(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10382,7 +10382,7 @@ TEXT ·sqlite3_str_value(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_str_appendall(SB), NOSPLIT, $104-24
+TEXT ·sqlite3_str_appendall(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10866,7 +10866,7 @@ TEXT ·sqlite3_str_reset(SB), $56-16
 	WORD $0x17fffff1
 	RET
 
-TEXT ·sqlite3_vmprintf(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_vmprintf(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10936,7 +10936,7 @@ TEXT ·sqlite3_vmprintf(SB), NOSPLIT, $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_vsnprintf(SB), NOSPLIT, $72-48
+TEXT ·sqlite3_vsnprintf(SB), $72-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12428,7 +12428,7 @@ TEXT ·sqlite3_column_int(SB), $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_prepare_v2(SB), NOSPLIT, $40-56
+TEXT ·sqlite3_prepare_v2(SB), $40-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12455,7 +12455,7 @@ TEXT ·sqlite3_prepare_v2(SB), NOSPLIT, $40-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3_database_file_object(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_database_file_object(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13301,7 +13301,7 @@ TEXT ·sqlite3_clear_bindings(SB), $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_value_bytes(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_value_bytes(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13338,7 +13338,7 @@ TEXT ·sqlite3_value_bytes(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_value_bytes16(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_value_bytes16(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13376,7 +13376,7 @@ TEXT ·sqlite3_value_bytes16(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_value_double(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_value_double(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13408,7 +13408,7 @@ TEXT ·sqlite3_value_double(SB), NOSPLIT, $40-24
 	FMOVD F0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_value_int(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_value_int(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13468,7 +13468,7 @@ TEXT ·sqlite3_value_subtype(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_value_pointer(SB), NOSPLIT, $56-32
+TEXT ·sqlite3_value_pointer(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13527,7 +13527,7 @@ TEXT ·sqlite3_value_pointer(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_value_text16(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_value_text16(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13558,7 +13558,7 @@ TEXT ·sqlite3_value_text16(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_value_text16be(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_value_text16be(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13589,7 +13589,7 @@ TEXT ·sqlite3_value_text16be(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_value_text16le(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_value_text16le(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13769,7 +13769,7 @@ TEXT ·sqlite3_value_free(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_blob(SB), NOSPLIT, $72-40
+TEXT ·sqlite3_result_blob(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13844,7 +13844,7 @@ TEXT ·sqlite3_result_blob64(SB), $88-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_error(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_result_error(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13870,7 +13870,7 @@ TEXT ·sqlite3_result_error(SB), NOSPLIT, $72-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_error16(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_result_error16(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13896,7 +13896,7 @@ TEXT ·sqlite3_result_error16(SB), NOSPLIT, $72-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_int(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_result_int(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13922,7 +13922,7 @@ TEXT ·sqlite3_result_int(SB), NOSPLIT, $40-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_int64(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_result_int64(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13947,7 +13947,7 @@ TEXT ·sqlite3_result_int64(SB), NOSPLIT, $40-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_null(SB), NOSPLIT, $40-16
+TEXT ·sqlite3_result_null(SB), $40-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13969,7 +13969,7 @@ TEXT ·sqlite3_result_null(SB), NOSPLIT, $40-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_pointer(SB), NOSPLIT, $72-40
+TEXT ·sqlite3_result_pointer(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14042,7 +14042,7 @@ TEXT ·sqlite3_result_subtype(SB), NOSPLIT, $0-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_text(SB), NOSPLIT, $72-40
+TEXT ·sqlite3_result_text(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14064,7 +14064,7 @@ TEXT ·sqlite3_result_text(SB), NOSPLIT, $72-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_text16(SB), NOSPLIT, $72-40
+TEXT ·sqlite3_result_text16(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14087,7 +14087,7 @@ TEXT ·sqlite3_result_text16(SB), NOSPLIT, $72-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_text16be(SB), NOSPLIT, $72-40
+TEXT ·sqlite3_result_text16be(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14110,7 +14110,7 @@ TEXT ·sqlite3_result_text16be(SB), NOSPLIT, $72-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_text16le(SB), NOSPLIT, $72-40
+TEXT ·sqlite3_result_text16le(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14133,7 +14133,7 @@ TEXT ·sqlite3_result_text16le(SB), NOSPLIT, $72-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_error_toobig(SB), NOSPLIT, $72-16
+TEXT ·sqlite3_result_error_toobig(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14158,7 +14158,7 @@ TEXT ·sqlite3_result_error_toobig(SB), NOSPLIT, $72-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_zeroblob(SB), NOSPLIT, $88-24
+TEXT ·sqlite3_result_zeroblob(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14211,7 +14211,7 @@ TEXT ·sqlite3_result_zeroblob(SB), NOSPLIT, $88-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_result_zeroblob64(SB), NOSPLIT, $88-32
+TEXT ·sqlite3_result_zeroblob64(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14267,7 +14267,7 @@ TEXT ·sqlite3_result_zeroblob64(SB), NOSPLIT, $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_result_error_code(SB), NOSPLIT, $72-24
+TEXT ·sqlite3_result_error_code(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14355,7 +14355,7 @@ TEXT ·sqlite3_vtab_nochange(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_vtab_in_first(SB), NOSPLIT, $56-32
+TEXT ·sqlite3_vtab_in_first(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14373,7 +14373,7 @@ TEXT ·sqlite3_vtab_in_first(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·valueFromValueList(SB), NOSPLIT, $104-40
+TEXT ·valueFromValueList(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14634,7 +14634,7 @@ TEXT ·valueFromValueList(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_vtab_in_next(SB), NOSPLIT, $56-32
+TEXT ·sqlite3_vtab_in_next(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14652,7 +14652,7 @@ TEXT ·sqlite3_vtab_in_next(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_aggregate_context(SB), NOSPLIT, $56-32
+TEXT ·sqlite3_aggregate_context(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14674,7 +14674,7 @@ TEXT ·sqlite3_aggregate_context(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_get_auxdata(SB), NOSPLIT, $56-32
+TEXT ·sqlite3_get_auxdata(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16073,7 +16073,7 @@ TEXT ·sqlite3_bind_double(SB), $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_bind_int(SB), NOSPLIT, $56-40
+TEXT ·sqlite3_bind_int(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17043,7 +17043,7 @@ TEXT ·sqlite3_bind_parameter_count(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_bind_parameter_name(SB), NOSPLIT, $56-32
+TEXT ·sqlite3_bind_parameter_name(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17092,7 +17092,7 @@ TEXT ·sqlite3_bind_parameter_name(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_bind_parameter_index(SB), NOSPLIT, $120-32
+TEXT ·sqlite3_bind_parameter_index(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18789,7 +18789,7 @@ TEXT ·sqlite3_value_numeric_type(SB), $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·blobSeekToRow(SB), NOSPLIT, $88-40
+TEXT ·blobSeekToRow(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19232,7 +19232,7 @@ TEXT ·sqlite3_blob_read(SB), $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3BtreePayloadChecked(SB), NOSPLIT, $72-48
+TEXT ·sqlite3BtreePayloadChecked(SB), $72-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20031,7 +20031,7 @@ TEXT ·sqlite3_set_authorizer(SB), $72-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_strglob(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_strglob(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20060,7 +20060,7 @@ TEXT ·sqlite3_strglob(SB), NOSPLIT, $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_strlike(SB), NOSPLIT, $72-40
+TEXT ·sqlite3_strlike(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20452,7 +20452,7 @@ TEXT ·sqlite3_reset_auto_extension(SB), $72-8
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_prepare(SB), NOSPLIT, $40-56
+TEXT ·sqlite3_prepare(SB), $40-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20478,7 +20478,7 @@ TEXT ·sqlite3_prepare(SB), NOSPLIT, $40-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3_prepare16(SB), NOSPLIT, $40-56
+TEXT ·sqlite3_prepare16(SB), $40-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20504,7 +20504,7 @@ TEXT ·sqlite3_prepare16(SB), NOSPLIT, $40-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3_prepare16_v2(SB), NOSPLIT, $40-56
+TEXT ·sqlite3_prepare16_v2(SB), $40-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21662,7 +21662,7 @@ TEXT ·sqlite3_vtab_on_conflict(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_vtab_collation(SB), NOSPLIT, $88-32
+TEXT ·sqlite3_vtab_collation(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21790,7 +21790,7 @@ TEXT ·sqlite3_vtab_in(SB), NOSPLIT, $0-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_vtab_rhs_value(SB), NOSPLIT, $120-40
+TEXT ·sqlite3_vtab_rhs_value(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21953,7 +21953,7 @@ TEXT ·sqlite3_keyword_count(SB), NOSPLIT, $0-16
 	MOVD R0, ret+8(FP)
 	RET
 
-TEXT ·sqlite3_keyword_check(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_keyword_check(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22083,7 +22083,7 @@ TEXT ·sqlite3_keyword_check(SB), NOSPLIT, $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_incomplete(SB), NOSPLIT, $72-24
+TEXT ·sqlite3_incomplete(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22995,7 +22995,7 @@ TEXT ·sqlite3_incomplete(SB), NOSPLIT, $72-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_complete(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_complete(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -24815,7 +24815,7 @@ TEXT ·sqlite3_txn_state(SB), $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_close(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_close(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26027,7 +26027,7 @@ TEXT ·sqlite3Close(SB), $152-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_close_v2(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_close_v2(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26622,7 +26622,7 @@ TEXT ·sqlite3_wal_hook(SB), $72-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_wal_checkpoint(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_wal_checkpoint(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -27243,7 +27243,7 @@ TEXT ·sqlite3_errstr(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_open(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_open(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

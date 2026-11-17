@@ -4,44 +4,6 @@
 #include "textflag.h"
 #include "funcdata.h"
 
-TEXT ·sqlite3SubInt64(SB), NOSPLIT, $0-32
-	NO_LOCAL_POINTERS
-	MOVD a0+0(FP), R20
-	MOVD a1+8(FP), R21
-	MOVD a2+16(FP), R22
-	PCALIGN $16
-	WORD $0xd2f00009
-	WORD $0xf94002a8
-	WORD $0xeb0902df
-	WORD $0x54000081
-	WORD $0xb6f80268
-	WORD $0x9240f908
-	WORD $0x14000014
-	WORD $0xf10002df
-	WORD $0x5400012d
-	WORD $0xb6f80208
-	WORD $0xb24107e9
-	WORD $0x52800020
-	WORD $0xcb080129
-	WORD $0xcb16000a
-	WORD $0xeb0a013f
-	WORD $0x5400014d
-	WORD $0x1400000d
-	WORD $0xf100051f
-	WORD $0x540000eb
-	WORD $0xcb1603e9
-	WORD $0xd240f90a
-	WORD $0xeb09015f
-	WORD $0x54000062
-	WORD $0x52800020
-	WORD $0x14000005
-	WORD $0xcb160108
-	WORD $0x2a1f03e0
-	WORD $0xf90002a8
-	WORD $0x14000001
-	MOVD R0, ret+24(FP)
-	RET
-
 TEXT ·sqlite3MulInt64(SB), NOSPLIT, $0-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
@@ -95,7 +57,7 @@ TEXT ·sqlite3MulInt64(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3VdbeIntValue(SB), NOSPLIT, $40-24
+TEXT ·sqlite3VdbeIntValue(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -141,7 +103,7 @@ TEXT ·sqlite3VdbeIntValue(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeMemRealify(SB), NOSPLIT, $40-16
+TEXT ·sqlite3VdbeMemRealify(SB), $40-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -177,7 +139,7 @@ TEXT ·sqlite3VdbeMemRealify(SB), NOSPLIT, $40-16
 	WORD $0x17ffffee
 	RET
 
-TEXT ·sqlite3VdbeBooleanValue(SB), NOSPLIT, $40-24
+TEXT ·sqlite3VdbeBooleanValue(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -212,7 +174,7 @@ TEXT ·sqlite3VdbeBooleanValue(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeFinishMoveto(SB), NOSPLIT, $88-24
+TEXT ·sqlite3VdbeFinishMoveto(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -407,7 +369,7 @@ TEXT ·sqlite3VdbeHandleMovedCursor(SB), $104-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeMemFromBtreeZeroOffset(SB), NOSPLIT, $104-40
+TEXT ·sqlite3VdbeMemFromBtreeZeroOffset(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -533,7 +495,7 @@ TEXT ·sqlite3VdbeMemFromBtreeZeroOffset(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3VdbeMemShallowCopy(SB), NOSPLIT, $56-24
+TEXT ·sqlite3VdbeMemShallowCopy(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -690,7 +652,7 @@ TEXT ·sqlite3VdbeSerialGet(SB), NOSPLIT, $0-32
 	WORD $0x00000010
 	RET
 
-TEXT ·sqlite3VdbeMemClearAndResize(SB), NOSPLIT, $56-32
+TEXT ·sqlite3VdbeMemClearAndResize(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -720,7 +682,7 @@ TEXT ·sqlite3VdbeMemClearAndResize(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3PutVarint(SB), NOSPLIT, $56-32
+TEXT ·sqlite3PutVarint(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -752,7 +714,7 @@ TEXT ·sqlite3PutVarint(SB), NOSPLIT, $56-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·putVarint64(SB), NOSPLIT, $104-32
+TEXT ·putVarint64(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -989,7 +951,7 @@ TEXT ·putVarint64(SB), NOSPLIT, $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3BtreeRowCountEst(SB), NOSPLIT, $88-24
+TEXT ·sqlite3BtreeRowCountEst(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1391,7 +1353,7 @@ TEXT ·sqlite3CloseSavepoints(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3BtreeBeginTrans(SB), NOSPLIT, $56-40
+TEXT ·sqlite3BtreeBeginTrans(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1860,7 +1822,7 @@ TEXT ·pagerOpenSavepoint(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ResetOneSchema(SB), NOSPLIT, $72-24
+TEXT ·sqlite3ResetOneSchema(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1932,7 +1894,7 @@ TEXT ·sqlite3ResetOneSchema(SB), NOSPLIT, $72-24
 	WORD $0x17fffff4
 	RET
 
-TEXT ·sqlite3BtreeUpdateMeta(SB), NOSPLIT, $56-40
+TEXT ·sqlite3BtreeUpdateMeta(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2002,7 +1964,7 @@ TEXT ·sqlite3BtreeUpdateMeta(SB), NOSPLIT, $56-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3FkClearTriggerCache(SB), NOSPLIT, $72-24
+TEXT ·sqlite3FkClearTriggerCache(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2147,7 +2109,7 @@ TEXT ·sqlite3BtreeClearCursor(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeMemIntegerify(SB), NOSPLIT, $40-16
+TEXT ·sqlite3VdbeMemIntegerify(SB), $40-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2195,7 +2157,7 @@ TEXT ·sqlite3VdbeMemIntegerify(SB), NOSPLIT, $40-16
 	WORD $0x14000001
 	RET
 
-TEXT ·btreeCursor(SB), NOSPLIT, $104-56
+TEXT ·btreeCursor(SB), $104-56
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2300,7 +2262,7 @@ TEXT ·btreeCursor(SB), NOSPLIT, $104-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·allocateTempSpace(SB), NOSPLIT, $40-24
+TEXT ·allocateTempSpace(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2360,7 +2322,7 @@ TEXT ·allocateTempSpace(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3BtreeClearTable(SB), NOSPLIT, $104-32
+TEXT ·sqlite3BtreeClearTable(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4012,7 +3974,7 @@ TEXT ·sqlite3BtreeCreateTable(SB), $136-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·btreeLast(SB), NOSPLIT, $72-32
+TEXT ·btreeLast(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5793,7 +5755,7 @@ TEXT ·btreePrevious(SB), $104-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeMemFromBtree(SB), NOSPLIT, $120-48
+TEXT ·sqlite3VdbeMemFromBtree(SB), $120-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6933,7 +6895,7 @@ TEXT ·sqlite3VdbeRecordCompareWithSkip(SB), $184-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3VdbeRecordUnpack(SB), NOSPLIT, $136-32
+TEXT ·sqlite3VdbeRecordUnpack(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14457,7 +14419,7 @@ TEXT ·sqlite3VdbeFindIndexKey(SB), $216-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·vdbeIndexKeyCompare(SB), NOSPLIT, $104-40
+TEXT ·vdbeIndexKeyCompare(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14641,7 +14603,7 @@ TEXT ·vdbeIndexKeyCompare(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3VdbeIdxRowid(SB), NOSPLIT, $104-40
+TEXT ·sqlite3VdbeIdxRowid(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15747,7 +15709,7 @@ TEXT ·freePage2(SB), $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3RootPageMoved(SB), NOSPLIT, $56-40
+TEXT ·sqlite3RootPageMoved(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15820,7 +15782,7 @@ TEXT ·sqlite3RootPageMoved(SB), NOSPLIT, $56-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3BtreeClearTableOfCursor(SB), NOSPLIT, $104-24
+TEXT ·sqlite3BtreeClearTableOfCursor(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18745,7 +18707,7 @@ TEXT ·sqlite3VdbeMemSetRowSet(SB), $72-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3RowSetInsert(SB), NOSPLIT, $72-24
+TEXT ·sqlite3RowSetInsert(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19214,7 +19176,7 @@ TEXT ·sqlite3RowSetNext(SB), $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3RowSetTest(SB), NOSPLIT, $152-40
+TEXT ·sqlite3RowSetTest(SB), $152-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20191,7 +20153,7 @@ TEXT ·sqlite3PagerSetJournalMode(SB), $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3BtreeSetVersion(SB), NOSPLIT, $88-32
+TEXT ·sqlite3BtreeSetVersion(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22363,7 +22325,7 @@ TEXT ·sqlite3RunVacuum(SB), $264-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·growVTrans(SB), NOSPLIT, $56-24
+TEXT ·growVTrans(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22484,7 +22446,7 @@ TEXT ·growVTrans(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VtabCallCreate(SB), NOSPLIT, $152-48
+TEXT ·sqlite3VtabCallCreate(SB), $152-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22815,7 +22777,7 @@ TEXT ·sqlite3VdbeValueListFree(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_value_text(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_value_text(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22846,7 +22808,7 @@ TEXT ·sqlite3_value_text(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·filterHash(SB), NOSPLIT, $168-32
+TEXT ·filterHash(SB), $168-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -24500,7 +24462,7 @@ TEXT ·sqlite3BtreeGetMeta(SB), NOSPLIT, $0-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3BtreeCommit(SB), NOSPLIT, $72-24
+TEXT ·sqlite3BtreeCommit(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
