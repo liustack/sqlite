@@ -13,7 +13,14 @@
 1. 从 https://sqlite.org/download.html 取 amalgamation zip 的 `PRODUCT` 那一行，里面有版本号、路径（带年份）和 SHA3-256。
 2. 把它们填进 `engine/vendor.sh` 开头的 `version`、`year` 和 `zip_sha3`，然后运行它。脚本会下载 zip、校验、复制 `sqlite3.c` 和 `sqlite3.h`，并写出 `engine/SQLITE.sha256`。
 3. 看发布说明里有没有编译选项的变化，对照检查 `engine/sqlite.c`。`engine/os.c` 用到 SQLite 的三处内部实现。`sqlite3OomFault`：检查它是否仍然设置 `mallocFailed`，语句是否仍然因此中止。`db->nVTrans`：检查它是否仍然是当前事务里虚表的个数。`db->pParse`、`pToplevel` 和 `pOuterParse`（goNested）：检查触发器的语句体是否仍然通过 `pToplevel` 链到所属语句，在准备另一条语句时准备的语句是否仍然通过 `pOuterParse` 链到它。
-4. 运行 `make gen` 和测试，把 C 文件、清单和生成的文件放进同一个提交。
+4. 重新训练 profile（`engine/pgo/train.sh`，见 [profile](#profile)）。
+5. 运行 `make gen` 和测试，把 C 文件、清单、profile 和生成的文件放进同一个提交。
+
+### profile
+
+`make gen` 编译 C 时带着 `engine/pgo/profile.txt`（[architecture.zh-CN.md](architecture.zh-CN.md#profile)）。profile 只记每个分支走了多少次，所以旧的 profile 不会编出错的代码：最坏也只是代码按已经不准的次数来排布。profile 里每个函数带着它的分支和循环结构的哈希，结构变了的函数编译时不用它的 profile。只改结构里面的东西（一个常量、一个表达式）时 profile 照用。`make gen` 会打印 profile 对不上的函数有多少（`profile engine/pgo/profile.txt: 3393 functions, 0 it no longer fits ...`），超过 30 个，或者其中有执行每条语句的那个循环 `sqlite3VdbeExec` 时，会给出警告。
+
+这些时候要重新训练（`engine/pgo/train.sh`，再给两个目标各跑一次 `make gen`）：每次升级 SQLite，改了 `engine/sqlite.c` 的编译选项或 `engine/os.c`，以及 `make gen` 给出上面的警告时。改 `engine/libc` 只影响改到的那个函数。升级之后训练的检查没过，见 [engine/pgo/README.md](../engine/pgo/README.md#the-check)。
 
 ## 新增 libc 函数
 

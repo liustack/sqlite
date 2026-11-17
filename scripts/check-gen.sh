@@ -14,13 +14,16 @@ set -eu
 cd "$(dirname "$0")/.."
 archs=${*:-amd64 arm64}
 llvm=$(scripts/llvm-bin.sh)
+# The profile gen-engine.sh compiles with: the second run must compile alike.
+profile=${GEN_PROFILE-engine/pgo/profile.txt}
 for arch in $archs; do
 	GEN_JOBS=${GEN_JOBS:-4} scripts/gen-engine.sh "$arch"
 	bin=.build/csqlite-$arch.test
 	CGO_ENABLED=0 GOOS=linux GOARCH=$arch go test -c -tags goasmkeep,sqlite_anygo -o "$bin" ./internal/csqlite
 	.build/engine-gen -release -engine engine -llvm "$llvm" -pass .build/shadow.so -arch "$arch" -mode pn \
 		-varargs-block -shadow-size-log2=25 -pkg csqlite -work ".build/w-$arch" -out internal/csqlite \
-		-j "${GEN_JOBS:-4}" -verify-bin "$bin" -verify-pkg github.com/liustack/sqlite/internal/csqlite -verify-all
+		-j "${GEN_JOBS:-4}" ${profile:+-profile "$profile"} \
+		-verify-bin "$bin" -verify-pkg github.com/liustack/sqlite/internal/csqlite -verify-all
 done
 if ! git diff --quiet -- internal/csqlite || [ -n "$(git ls-files --others --exclude-standard internal/csqlite)" ]; then
 	echo "check-gen.sh: internal/csqlite is not what engine/ generates: commit the generated files with the change" >&2

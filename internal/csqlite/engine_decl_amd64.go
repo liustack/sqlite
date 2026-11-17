@@ -21,7 +21,7 @@ const (
 // noSplitList names the functions whose TEXT says NOSPLIT, which have no
 // stack check at their entry (gen.MarkNoSplit), for the tests. A constant
 // takes no room in a binary that does not use it.
-const noSplitList = "__cos __math_divzero __math_invalid __math_oflow __math_uflow __math_xflow __sin __tan acos acosh aggregateIdxEprRefToColCallback asin asinh atan atan2 atanh btreeParseCellAdjustSizeForOverflow btreeParseCellPtrNoPayload ceil cellSizePtr cellSizePtrIdxLeaf cellSizePtrNoPayload cellSizePtrTableLeaf checkConstraintExprNode computeFloor computeJD computeYMD degToRad expm1 exprColumnFlagUnion exprNodeIsDeterministic exprSelectWalkTableConstant floor fts5ApiColumnCount fts5ApiPhraseCount fts5ApiPhraseSize fts5ApiQueryToken fts5ApiUserData fts5ColumnSizeCb fts5CommitMethod fts5CountCb fts5DoclistIterNext fts5EofMethod fts5IterSetOutputs_None fts5IterSetOutputs_Noop fts5IterSetOutputs_ZeroColset fts5VocabEofMethod fts5VocabRowidMethod gatherSelectWindowsSelectCallback getPageError goDeviceCharacteristics goGetLastError goMutexEnd goMutexInit goRollbackHook goSectorSize goVtabEof goWalHook go_attached go_busy_timeout go_vtabs_in_tx go_wal_now incrAggDepth isSimpleCount jsonEachEof jsonEachRowid jsonHexToInt4 jsonIs4Hex jsonIs4HexB jsonbPayloadSizeWide kahanBabuskaNeumaierStepInt64 log log10 log1p log2 memcpy memdbAccess memdbDeviceCharacteristics memdbSync memjrnlFileSize memjrnlSync memmove memset nodeGetRowid noopMutexAlloc noopMutexEnd noopMutexEnter noopMutexFree noopMutexInit noopMutexLeave noopMutexTry noopStepFunc noopValueFunc pcache1Pagecount pcache1Shutdown pragmaVtabEof pragmaVtabRowid radToDeg recomputeColumnsUsedExpr renumberCursorsCb resolveRemoveWindowsCb rtreeBeginTransaction rtreeEof scalbn selectRefLeave setDoNotMergeFlagOnCopy specialcase specialcase_75 sqlite3BtreeGetMeta sqlite3ExprWalkNoop sqlite3Fp10Convert2 sqlite3Fts5GetVarint sqlite3Fts5GetVarint32 sqlite3GetTempRange sqlite3GetVarint32 sqlite3MemInit sqlite3MemRoundup sqlite3MemShutdown sqlite3MemSize sqlite3MulInt64 sqlite3NoopDestructor sqlite3PcacheMakeDirty sqlite3ReadOnlyShadowTables sqlite3ReturningSubqueryVarSelect sqlite3SelectWalkFail sqlite3SelectWalkNoop sqlite3SubInt64 sqlite3Utf8ReadLimited sqlite3VdbeFrameMemDel sqlite3VdbeSerialGet sqlite3WalkWinDefnDummyCallback sqlite3WalkerDepthDecrease sqlite3WalkerDepthIncrease sqlite3WindowExtraAggFuncDepth sqlite3_backup_pagecount sqlite3_backup_remaining sqlite3_bind_parameter_count sqlite3_blob_bytes sqlite3_column_count sqlite3_compileoption_get sqlite3_context_db_handle sqlite3_data_count sqlite3_db_handle sqlite3_db_mutex sqlite3_errstr sqlite3_interrupt sqlite3_is_interrupted sqlite3_keyword_count sqlite3_keyword_name sqlite3_libversion sqlite3_libversion_number sqlite3_os_end sqlite3_release_memory sqlite3_result_subtype sqlite3_setlk_timeout sqlite3_sourceid sqlite3_sql sqlite3_stmt_busy sqlite3_stmt_isexplain sqlite3_stmt_readonly sqlite3_str_errcode sqlite3_str_length sqlite3_str_truncate sqlite3_str_value sqlite3_threadsafe sqlite3_user_data sqlite3_value_encoding sqlite3_value_frombind sqlite3_value_nochange sqlite3_value_subtype sqlite3_value_type sqlite3_vtab_distinct sqlite3_vtab_in sqlite3_vtab_nochange sqlite3_vtab_on_conflict sqrt trunc whereLoopIsNoBetter xCeil xFloor xferCheckRowid"
+const noSplitList = "__cos __math_divzero __math_invalid __math_oflow __math_uflow __math_xflow __sin __tan acos acosh aggregateIdxEprRefToColCallback asin asinh atan atan2 atanh btreeParseCellAdjustSizeForOverflow btreeParseCellPtrNoPayload ceil cellSizePtr cellSizePtrIdxLeaf cellSizePtrNoPayload cellSizePtrTableLeaf checkConstraintExprNode computeFloor computeJD computeYMD degToRad expm1 exprColumnFlagUnion exprNodeIsDeterministic exprSelectWalkTableConstant floor fts5ApiColumnCount fts5ApiPhraseCount fts5ApiPhraseSize fts5ApiQueryToken fts5ApiUserData fts5ColumnSizeCb fts5CommitMethod fts5CountCb fts5DoclistIterNext fts5EofMethod fts5IterSetOutputs_None fts5IterSetOutputs_Noop fts5IterSetOutputs_ZeroColset fts5VocabEofMethod fts5VocabRowidMethod gatherSelectWindowsSelectCallback getPageError goDeviceCharacteristics goGetLastError goMutexEnd goMutexInit goRollbackHook goSectorSize goVtabEof goWalHook go_attached go_busy_timeout go_vtabs_in_tx go_wal_now incrAggDepth isSimpleCount jsonEachEof jsonEachRowid jsonHexToInt4 jsonIs4Hex jsonIs4HexB jsonbPayloadSizeWide kahanBabuskaNeumaierStepInt64 log log10 log1p log2 memcpy memdbAccess memdbDeviceCharacteristics memdbSync memjrnlFileSize memjrnlSync memmove memset nodeGetRowid noopMutexAlloc noopMutexEnd noopMutexEnter noopMutexFree noopMutexInit noopMutexLeave noopMutexTry noopStepFunc noopValueFunc pcache1Pagecount pcache1Shutdown pragmaVtabEof pragmaVtabRowid radToDeg recomputeColumnsUsedExpr renumberCursorsCb resolveRemoveWindowsCb rtreeBeginTransaction rtreeEof scalbn selectRefLeave setDoNotMergeFlagOnCopy specialcase specialcase_75 sqlite3BtreeGetMeta sqlite3CommitInternalChanges sqlite3ExprWalkNoop sqlite3Fp10Convert2 sqlite3Fts5GetVarint sqlite3Fts5GetVarint32 sqlite3GetTempRange sqlite3GetVarint32 sqlite3LogEstAdd sqlite3MemInit sqlite3MemRoundup sqlite3MemShutdown sqlite3MemSize sqlite3MulInt64 sqlite3NoopDestructor sqlite3PcacheMakeDirty sqlite3ReadOnlyShadowTables sqlite3ReturningSubqueryVarSelect sqlite3SelectDestInit sqlite3SelectWalkFail sqlite3SelectWalkNoop sqlite3SubInt64 sqlite3Utf8ReadLimited sqlite3VdbeExplainPop sqlite3VdbeFrameMemDel sqlite3VdbeJumpHere sqlite3VdbeMakeLabel sqlite3VdbeSerialGet sqlite3WalkWinDefnDummyCallback sqlite3WalkerDepthDecrease sqlite3WalkerDepthIncrease sqlite3WindowExtraAggFuncDepth sqlite3_backup_pagecount sqlite3_backup_remaining sqlite3_bind_parameter_count sqlite3_blob_bytes sqlite3_column_count sqlite3_compileoption_get sqlite3_context_db_handle sqlite3_data_count sqlite3_db_handle sqlite3_db_mutex sqlite3_errstr sqlite3_interrupt sqlite3_is_interrupted sqlite3_keyword_count sqlite3_keyword_name sqlite3_libversion sqlite3_libversion_number sqlite3_os_end sqlite3_release_memory sqlite3_result_subtype sqlite3_setlk_timeout sqlite3_sourceid sqlite3_sql sqlite3_stmt_busy sqlite3_stmt_isexplain sqlite3_stmt_readonly sqlite3_str_errcode sqlite3_str_length sqlite3_str_truncate sqlite3_str_value sqlite3_threadsafe sqlite3_user_data sqlite3_value_encoding sqlite3_value_frombind sqlite3_value_nochange sqlite3_value_subtype sqlite3_value_type sqlite3_vtab_distinct sqlite3_vtab_in sqlite3_vtab_nochange sqlite3_vtab_on_conflict sqrt trunc whereLoopIsNoBetter xCeil xFloor xferCheckRowid"
 
 func AdjustTree(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func ChooseLeaf(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
@@ -492,6 +492,7 @@ func gatherSelectWindowsCallback(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func gatherSelectWindowsSelectCallback(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func generateOutputSubroutine(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr) uintptr
 func generateSortTail(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
+func generateWithRecursiveQuery(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func geomCallback(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func getAutoVacuum(a0 uintptr, a1 uintptr) uintptr
 func getCellInfo(a0 uintptr, a1 uintptr)
@@ -599,6 +600,7 @@ func groupConcatValue(a0 uintptr, a1 uintptr)
 func growOp3(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func growOpArray(a0 uintptr, a1 uintptr) uintptr
 func growVTrans(a0 uintptr, a1 uintptr) uintptr
+func hasAnchor(a0 uintptr, a1 uintptr) uintptr
 func havingToWhere(a0 uintptr, a1 uintptr, a2 uintptr)
 func havingToWhereExprCb(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func heightOfSelect(a0 uintptr, a1 uintptr, a2 uintptr)
@@ -762,6 +764,7 @@ func moveToRoot(a0 uintptr, a1 uintptr) uintptr
 func multiSelectByMerge(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func multiSelectByMergeKeyInfo(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func multiSelectCollSeq(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func multiSelectValues(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func newDatabase(a0 uintptr, a1 uintptr) uintptr
 func nocaseCollatingFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func nodeAcquire(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
@@ -1026,6 +1029,7 @@ func sqlite3AnalysisLoad(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3Analyze(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3AtoF(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3Atoi64(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
+func sqlite3AuthCheck(a0 uintptr, a1 uintptr) uintptr
 func sqlite3AuthReadCol(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3AutoLoadExtensions(a0 uintptr, a1 uintptr)
 func sqlite3BeginTransaction(a0 uintptr, a1 uintptr, a2 uintptr)
@@ -1082,6 +1086,7 @@ func sqlite3ColumnExprAuth(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintp
 func sqlite3ColumnSetColl(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3ColumnType(a0 uintptr, a1 uintptr) uintptr
 func sqlite3ColumnsFromExprList(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func sqlite3CommitInternalChanges(a0 uintptr, a1 uintptr)
 func sqlite3CompleteInsertion(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr, a9 uintptr)
 func sqlite3ComputeGeneratedColumns(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3ConstructBloomFilter(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
@@ -1142,8 +1147,10 @@ func sqlite3ExprCollSeq(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3ExprCompare(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3ExprCompareCollSeq(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3ExprDataType(a0 uintptr, a1 uintptr) uintptr
+func sqlite3ExprDelete(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3ExprDeleteGeneric(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3ExprDeleteNN(a0 uintptr, a1 uintptr, a2 uintptr)
+func sqlite3ExprDup(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3ExprForVectorField(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3ExprFunction(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3ExprFunctionUsable(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1160,6 +1167,7 @@ func sqlite3ExprListAppendGrow(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) u
 func sqlite3ExprListAppendNew(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3ExprListAppendVector(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr) uintptr
 func sqlite3ExprListCompare(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
+func sqlite3ExprListDelete(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3ExprListDeleteGeneric(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3ExprListDup(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3ExprListSetName(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1276,6 +1284,7 @@ func sqlite3LocateTable(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintp
 func sqlite3LocateTableItem(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3LockAndPrepare(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr) uintptr
 func sqlite3LogEst(a0 uintptr, a1 uintptr) uintptr
+func sqlite3LogEstAdd(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3MPrintf(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3Malloc(a0 uintptr, a1 uintptr) uintptr
 func sqlite3MallocZero(a0 uintptr, a1 uintptr) uintptr
@@ -1294,6 +1303,7 @@ func sqlite3MemSize(a0 uintptr, a1 uintptr) uintptr
 func sqlite3MulInt64(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3MultiValues(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3MultiValuesEnd(a0 uintptr, a1 uintptr, a2 uintptr)
+func sqlite3MutexAlloc(a0 uintptr) uintptr
 func sqlite3NameFromToken(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3NestedParse(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3NoopDestructor(a0 uintptr, a1 uintptr)
@@ -1367,8 +1377,10 @@ func sqlite3RunVacuum(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr
 func sqlite3Savepoint(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3SchemaClear(a0 uintptr, a1 uintptr)
 func sqlite3SchemaGet(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
+func sqlite3SchemaToIndex(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3Select(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3SelectDeleteGeneric(a0 uintptr, a1 uintptr, a2 uintptr)
+func sqlite3SelectDestInit(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3SelectDup(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3SelectNew(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr, a9 uintptr) uintptr
 func sqlite3SelectPopWith(a0 uintptr, a1 uintptr, a2 uintptr)
@@ -1399,7 +1411,7 @@ func sqlite3SubInt64(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func sqlite3SubqueryColumnTypes(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
 func sqlite3TableAffinity(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3TableColumnToStorage(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
-func sqlite3TestExtInit(a0 uintptr, a1 uintptr) uintptr
+func sqlite3TestExtInit(a0 uintptr) uintptr
 func sqlite3TriggerColmask(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr) uintptr
 func sqlite3TriggerDeleteStep(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func sqlite3TriggerInsertStep(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr) uintptr
@@ -1436,6 +1448,7 @@ func sqlite3VdbeEndCoroutine(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3VdbeError(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3VdbeExec(a0 uintptr, a1 uintptr) uintptr
 func sqlite3VdbeExplain(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func sqlite3VdbeExplainPop(a0 uintptr, a1 uintptr)
 func sqlite3VdbeFinalize(a0 uintptr, a1 uintptr) uintptr
 func sqlite3VdbeFindIndexKey(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func sqlite3VdbeFinishMoveto(a0 uintptr, a1 uintptr) uintptr
@@ -1448,8 +1461,10 @@ func sqlite3VdbeHalt(a0 uintptr, a1 uintptr) uintptr
 func sqlite3VdbeHandleMovedCursor(a0 uintptr, a1 uintptr) uintptr
 func sqlite3VdbeIdxRowid(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3VdbeIntValue(a0 uintptr, a1 uintptr) uintptr
+func sqlite3VdbeJumpHere(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3VdbeLoadString(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func sqlite3VdbeLogAbort(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr)
+func sqlite3VdbeMakeLabel(a0 uintptr, a1 uintptr) uintptr
 func sqlite3VdbeMakeReady(a0 uintptr, a1 uintptr, a2 uintptr)
 func sqlite3VdbeMemCast(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr) uintptr
 func sqlite3VdbeMemClearAndResize(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
@@ -1840,6 +1855,7 @@ func trunc(a0 uintptr, a1 float64) float64
 func typeofFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func unhexFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func unicodeFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func unionWithLimitOne(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func unistrFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func unixepochFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
 func unsetJoinExpr(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
@@ -1893,6 +1909,7 @@ func vdbeSorterListToPMA(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func vdbeSorterSort(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func vdbeUnbind(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func versionFunc(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr)
+func vfsUnlink(a0 uintptr)
 func viewGetColumnNames(a0 uintptr, a1 uintptr, a2 uintptr) uintptr
 func vtabCallConstructor(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr) uintptr
 func walChecksumBytes(a0 uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr)
