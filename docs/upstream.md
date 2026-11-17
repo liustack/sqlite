@@ -1,10 +1,11 @@
 ---
-summary: 'Where the code comes from (SQLite, musl, the generator of slowjs), at which versions, how to move to a new SQLite release, and which Go releases build the driver'
+summary: 'Where the code comes from (SQLite, musl, the generator of slowjs), at which versions, how to move to a new SQLite release, when to train the profile again, and which Go releases build the driver'
 read_when:
   - Moving to a new SQLite release
   - Adding a function to engine/libc
   - Asked which version of SQLite the driver has
   - Moving to a new Go release, or asked which Go releases are supported
+  - Asked when to train the profile again, or make gen prints a line that starts with "warning: profile:"
 ---
 
 # Upstream
@@ -22,7 +23,14 @@ English · [简体中文](upstream.zh-CN.md)
 1. Take the `PRODUCT` line of the amalgamation zip from https://sqlite.org/download.html. It gives the version, the path (with the year) and the SHA3-256.
 2. Put them in `version`, `year` and `zip_sha3` at the top of `engine/vendor.sh`, and run it. It downloads the zip, checks it, copies `sqlite3.c` and `sqlite3.h` and writes `engine/SQLITE.sha256`.
 3. Read the release notes for changed compile options, and check `engine/sqlite.c`. `engine/os.c` uses three internals of SQLite. `sqlite3OomFault`: check that it still sets `mallocFailed` and that a statement still stops on it. `db->nVTrans`: check that it still counts the virtual tables of the open transaction. `db->pParse`, `pToplevel` and `pOuterParse` (goNested): check that a trigger body still links to its statement through `pToplevel`, and a statement prepared while another is prepared still links to it through `pOuterParse`.
-4. Run `make gen` and the tests, and commit the C, the manifest and the generated files together.
+4. Train the profile again (`engine/pgo/train.sh`, see [The profile](#the-profile)).
+5. Run `make gen` and the tests, and commit the C, the manifest, the profile and the generated files together.
+
+### The profile
+
+`make gen` compiles the C with `engine/pgo/profile.txt` ([architecture.md](architecture.md#the-profile)). A profile only says how often each branch ran, so an old one never gives wrong code: at worst the code is laid out for counts that are no longer true. The profile holds a hash of the branches and loops of each function, and a function where those changed is compiled without its profile. A change inside them (a constant, an expression) keeps the profile. `make gen` prints how many functions the profile no longer fits (`profile engine/pgo/profile.txt: 3393 functions, 0 it no longer fits ...`), and warns when there are more than 30 or when `sqlite3VdbeExec`, the loop that runs every statement, is one of them.
+
+Train again (`engine/pgo/train.sh`, then `make gen` for both targets) with every new SQLite release, after a change to the compile options of `engine/sqlite.c` or to `engine/os.c`, and when `make gen` gives that warning. A change to `engine/libc` needs it only for the function that changed. When the check of the training fails after a new release, see [engine/pgo/README.md](../engine/pgo/README.md#the-check).
 
 ## A new libc function
 

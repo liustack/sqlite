@@ -237,7 +237,26 @@ quickjs keeps the same rules, with the reasons it learned them: [Making the engi
 Where the time goes was measured for SQLite against the same C built natively, on the ten workloads of `bench/native/engine.sql`, before the two changes below. On darwin/arm64 the missing compiler builtins and the libc cost nothing: the 31% are the lowering to Go assembly. On linux/amd64 the builtins cost 6 points and musl's functions against glibc's 4 more, and the lowering 17.
 
 - **Done.** `memcmp` compares eight bytes at a time: a workload of index lookups takes 15 to 18% less time. `strcspn` has a path of its own for two stop bytes: LIKE looks with it for the next place a match can start, a letter in its upper and its lower case. A LIKE that starts with `%` takes 9 to 17% less. Both are patches of musl in `engine/libc/patches/`, and both return what musl's return.
+- **Done.** The C is compiled with a profile of training SQL, which says where the code of each function is hot: 6 to 10% less time over the ten workloads (see [The profile](#the-profile)).
 - **Tried and not done.** SQLite's C built with the compiler builtins on: the engine got 3.7% slower on linux/amd64, although the native C gains 6% from them. A faster `sin`, `pow` and `log`: musl's take 6 to 8 ns more a call than glibc's, but another libm would have to give the same bits on every target.
+
+### The profile
+
+`make gen` compiles the C with a profile, `engine/pgo/profile.txt`: how often each branch of each function was taken while a program ran the SQL of `engine/pgo/train.sql`. The compiler uses it to lay out the code of a function. The blocks that run stay together in a straight line, the ones that do not are moved out of the way, and a value stays in a register where the code is hot.
+
+On the ten workloads of `bench/native/engine.sql`, none of which the profile was trained on, the engine takes 6.3% less time on an Apple M4 and 9.9% less on linux/amd64 (the geometric mean), from 1% less for a large sort to 22% less for JSON on linux. None takes more, and each gives the same result.
+
+Three decisions are kept from the profile, because what they cost depends on the data of the program, which a training cannot know:
+
+- **What is inlined.** `make gen` compiles twice. The first time it compiles without the profile and writes down every call it inlined. The second time it compiles with the profile and inlines only calls it wrote down. Left to itself, the profile inlines more into the functions the training ran most, and the rest of the engine pays for it: quickjs measured 5 to 15% more time that way.
+- **Size over speed.** With a profile the compiler makes the code the training ran little or never small instead of fast, and counts on a loop running as many turns as it did in the training. Both are turned off.
+- **Where a loop counts for its polls.** The pass that adds the polls weighs each loop as it does without a profile.
+
+Why it is safe: the profile changes where code is placed, not what it computes. The C, the options and the libc are the same, the post-link check holds every generated function to the compiler's code as before, and the tests are the same. A function whose branches and loops changed since the training is compiled without its profile.
+
+What it costs: `make gen` takes about 80 seconds for a target instead of 50, the generated files are 10 to 13% larger and a binary about 5% larger. A path the training never ran looks to the compiler like one that never runs, and a program that runs it may pay a little for that. So the training runs every kind of work a program may do, and a check stops it when it runs less than 95% of the paths the ten workloads run (it runs all of them). With the profile, 17 small functions of the code that prepares a statement are no longer inlined at one of their call sites.
+
+What the training runs, how the check works and how to train again: [engine/pgo/README.md](../engine/pgo/README.md). When to train again: [upstream.md](upstream.md#the-profile).
 
 ## Routes left out
 

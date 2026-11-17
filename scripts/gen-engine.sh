@@ -14,6 +14,9 @@
 #   LLVM_BIN     bin folder of LLVM 22.1.8 (default: scripts/llvm-bin.sh)
 #   GEN_JOBS     parallel clang jobs (default 4)
 #   GEN_OUT      write to this folder (default internal/csqlite, the package)
+#   GEN_PROFILE  the profile to compile with (default engine/pgo/profile.txt,
+#                which engine/pgo/train.sh trains). Set to nothing, it
+#                generates without a profile, for comparison.
 set -eu
 
 case $(uname -m) in arm64 | aarch64) native=arm64 ;; *) native=amd64 ;; esac
@@ -51,7 +54,8 @@ else
 fi
 [ "$arch" = pass ] && exit 0
 
+profile=${GEN_PROFILE-engine/pgo/profile.txt}
 go build -o .build/engine-gen ./internal/goasm/gen/cmd/engine
 rm -rf ".build/w-$arch"
 .build/engine-gen -release -engine engine -llvm "$llvm" -pass $pass -arch "$arch" -mode pn -varargs-block \
-	-shadow-size-log2=25 -pkg csqlite -work ".build/w-$arch" -out "$out" -j "${GEN_JOBS:-4}"
+	-shadow-size-log2=25 -pkg csqlite -work ".build/w-$arch" -out "$out" -j "${GEN_JOBS:-4}" ${profile:+-profile "$profile"}

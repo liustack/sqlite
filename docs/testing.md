@@ -64,7 +64,7 @@ The tests of `replica/internal/capture` check that the staged LTX files rebuild 
 
 ## The generated engine
 
-`internal/csqlite` holds the engine generated from `engine/`. After a change to `engine/`, the generator or `scripts/gen-engine.sh`, run `make gen ARCH=amd64` and `make gen ARCH=arm64` and commit the files they write with the change. Then:
+`internal/csqlite` holds the engine generated from `engine/`. After a change to `engine/` (the profile `engine/pgo/profile.txt` is part of it), the generator or `scripts/gen-engine.sh`, run `make gen ARCH=amd64` and `make gen ARCH=arm64` and commit the files they write with the change. Then:
 
 ```sh
 make check-gen

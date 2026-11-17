@@ -16,7 +16,8 @@ check: vendor-check
 	cd bench && go vet -tags liustack ./... && go run ./cmd/benchrun docs -check
 
 # The C of engine/ as Go assembly, on a machine with LLVM 22.1.8: make gen,
-# make gen ARCH=amd64. ARCH defaults to the machine's.
+# make gen ARCH=amd64. ARCH defaults to the machine's. It compiles with the
+# profile engine/pgo/profile.txt, which engine/pgo/train.sh trains.
 gen:
 	scripts/gen-engine.sh $(ARCH)
 
