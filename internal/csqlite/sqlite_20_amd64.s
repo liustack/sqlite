@@ -2255,7 +2255,7 @@ TEXT ·fts5MultiIterFinishSetup(SB), $208-24
 	BYTE $0x00
 	RET
 
-TEXT ·fts5IterSetOutputsTokendata(SB), NOSPLIT, $176-16
+TEXT ·fts5IterSetOutputsTokendata(SB), $176-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000c024a48b4c
@@ -9142,7 +9142,7 @@ TEXT ·fts5MultiIterFree(SB), $112-16
 	BYTE $0x00
 	RET
 
-TEXT ·fts5PutVarint64(SB), NOSPLIT, $112-32
+TEXT ·fts5PutVarint64(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -10019,7 +10019,7 @@ TEXT ·sqlite3Fts5HashScanInit(SB), $192-40
 	BYTE $0x00
 	RET
 
-TEXT ·fts5HashAddPoslistSize(SB), NOSPLIT, $96-40
+TEXT ·fts5HashAddPoslistSize(SB), $96-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -10099,7 +10099,7 @@ TEXT ·fts5HashAddPoslistSize(SB), NOSPLIT, $96-40
 	BYTE $0xff
 	RET
 
-TEXT ·fts5SegIterInit(SB), NOSPLIT, $96-32
+TEXT ·fts5SegIterInit(SB), $96-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -10286,7 +10286,7 @@ TEXT ·fts5SegIterInit(SB), NOSPLIT, $96-32
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3Fts5PoslistSafeAppend(SB), NOSPLIT, $80-32
+TEXT ·sqlite3Fts5PoslistSafeAppend(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -10925,7 +10925,7 @@ TEXT ·fts5IterSetOutputs_Col(SB), $64-24
 	BYTE $0x00
 	RET
 
-TEXT ·fts5SegiterPoslist(SB), NOSPLIT, $112-40
+TEXT ·fts5SegiterPoslist(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -12329,7 +12329,7 @@ TEXT ·fts5MergeChunkCallback(SB), $128-40
 	QUAD $0x00eb187e0141f006
 	RET
 
-TEXT ·fts5WriteFlushLeaf(SB), NOSPLIT, $144-24
+TEXT ·fts5WriteFlushLeaf(SB), $144-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -15376,7 +15376,7 @@ TEXT ·sqlite3Fts5ConfigParseRank(SB), $128-40
 	BYTE $0xff
 	RET
 
-TEXT ·fts5ConfigSkipLiteral(SB), NOSPLIT, $48-24
+TEXT ·fts5ConfigSkipLiteral(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -15876,7 +15876,7 @@ TEXT ·fts5WriteInit(SB), $144-32
 	BYTE $0xf5
 	RET
 
-TEXT ·fts5WriteAppendTerm(SB), NOSPLIT, $144-40
+TEXT ·fts5WriteAppendTerm(SB), $144-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -19093,7 +19093,7 @@ TEXT ·fts5FlushSecureDelete(SB), $272-56
 	BYTE $0xff
 	RET
 
-TEXT ·fts5WriteDlidxAppend(SB), NOSPLIT, $160-32
+TEXT ·fts5WriteDlidxAppend(SB), $160-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -21319,7 +21319,7 @@ TEXT ·fts5StructureAddLevel(SB), $160-24
 	QUAD $0x8000000080000000
 	RET
 
-TEXT ·fts5StructurePromote(SB), NOSPLIT, $144-32
+TEXT ·fts5StructurePromote(SB), $144-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -21551,7 +21551,7 @@ TEXT ·fts5StructurePromote(SB), NOSPLIT, $144-32
 	BYTE $0xff
 	RET
 
-TEXT ·fts5IndexMerge(SB), NOSPLIT, $208-48
+TEXT ·fts5IndexMerge(SB), $208-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000e024a48b4c

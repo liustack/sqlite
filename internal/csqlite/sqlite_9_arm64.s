@@ -4361,7 +4361,7 @@ TEXT ·exprPartidxExprLookup(SB), $136-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·codeInteger(SB), NOSPLIT, $120-40
+TEXT ·codeInteger(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4527,7 +4527,7 @@ TEXT ·codeInteger(SB), NOSPLIT, $120-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ExprTruthValue(SB), NOSPLIT, $40-24
+TEXT ·sqlite3ExprTruthValue(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4577,7 +4577,7 @@ TEXT ·sqlite3ExprTruthValue(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·codeReal(SB), NOSPLIT, $104-40
+TEXT ·codeReal(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4637,7 +4637,7 @@ TEXT ·codeReal(SB), NOSPLIT, $104-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeLoadString(SB), NOSPLIT, $88-32
+TEXT ·sqlite3VdbeLoadString(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4693,7 +4693,7 @@ TEXT ·sqlite3VdbeLoadString(SB), NOSPLIT, $88-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3HexToBlob(SB), NOSPLIT, $136-40
+TEXT ·sqlite3HexToBlob(SB), $136-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5475,7 +5475,7 @@ TEXT ·sqlite3CodeSubselect(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3VdbeResolveLabel(SB), NOSPLIT, $56-24
+TEXT ·sqlite3VdbeResolveLabel(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11163,7 +11163,7 @@ TEXT ·exprCodeVector(SB), $152-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3ExprToRegister(SB), NOSPLIT, $40-24
+TEXT ·sqlite3ExprToRegister(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13507,7 +13507,7 @@ TEXT ·sqlite3ExprIfTrue(SB), $152-40
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ExprCodeFactorable(SB), NOSPLIT, $120-32
+TEXT ·sqlite3ExprCodeFactorable(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14039,7 +14039,7 @@ TEXT ·exprINAffinity(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3OpenTempDatabase(SB), NOSPLIT, $88-24
+TEXT ·sqlite3OpenTempDatabase(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14545,7 +14545,7 @@ TEXT ·sqlite3KeyInfoOfIndex(SB), $152-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3SetHasNullFlag(SB), NOSPLIT, $104-40
+TEXT ·sqlite3SetHasNullFlag(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16494,7 +16494,7 @@ TEXT ·sqlite3CodeRhsOfIN(SB), $216-40
 	WORD $0x17fffc11
 	RET
 
-TEXT ·sqlite3KeyInfoAlloc(SB), NOSPLIT, $104-40
+TEXT ·sqlite3KeyInfoAlloc(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17703,7 +17703,7 @@ TEXT ·impliesNotNullRow(SB), $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·bothImplyNotNullRow(SB), NOSPLIT, $72-32
+TEXT ·bothImplyNotNullRow(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18183,7 +18183,7 @@ TEXT ·sqlite3ValueFree(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3FindIndex(SB), NOSPLIT, $104-40
+TEXT ·sqlite3FindIndex(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18810,7 +18810,7 @@ TEXT ·sqlite3IsShadowTableOf(SB), $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3CheckObjectName(SB), NOSPLIT, $104-48
+TEXT ·sqlite3CheckObjectName(SB), $104-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19053,7 +19053,7 @@ TEXT ·sqlite3CheckObjectName(SB), NOSPLIT, $104-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3_stricmp(SB), NOSPLIT, $40-32
+TEXT ·sqlite3_stricmp(SB), $40-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21377,7 +21377,7 @@ TEXT ·statAccumDestructor(SB), $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3RefillIndex(SB), NOSPLIT, $168-32
+TEXT ·sqlite3RefillIndex(SB), $168-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25393,7 +25393,7 @@ TEXT ·sqlite3SchemaGet(SB), $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3VtabEponymousTableClearAll(SB), NOSPLIT, $72-16
+TEXT ·sqlite3VtabEponymousTableClearAll(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25811,7 +25811,7 @@ TEXT ·sqlite3DropTriggerPtr(SB), $152-24
 	WORD $0x17ffff59
 	RET
 
-TEXT ·sqlite3SrcListEnlarge(SB), NOSPLIT, $136-48
+TEXT ·sqlite3SrcListEnlarge(SB), $136-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26925,7 +26925,7 @@ TEXT ·sqlite3ReadOnlyShadowTables(SB), NOSPLIT, $0-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3CodeVerifySchema(SB), NOSPLIT, $40-24
+TEXT ·sqlite3CodeVerifySchema(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26953,7 +26953,7 @@ TEXT ·sqlite3CodeVerifySchema(SB), NOSPLIT, $40-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3BeginWriteOperation(SB), NOSPLIT, $56-32
+TEXT ·sqlite3BeginWriteOperation(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26991,7 +26991,7 @@ TEXT ·sqlite3BeginWriteOperation(SB), NOSPLIT, $56-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ChangeCookie(SB), NOSPLIT, $72-24
+TEXT ·sqlite3ChangeCookie(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -28109,7 +28109,7 @@ TEXT ·sqlite3VdbeSetNumCols(SB), $120-24
 	WORD $0x17ffffb9
 	RET
 
-TEXT ·returnSingleText(SB), NOSPLIT, $88-24
+TEXT ·returnSingleText(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

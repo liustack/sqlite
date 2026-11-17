@@ -8389,7 +8389,7 @@ TEXT ·sqlite3SrcListDup(SB), $200-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3ResolveExprListNames(SB), NOSPLIT, $120-32
+TEXT ·sqlite3ResolveExprListNames(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8517,7 +8517,7 @@ TEXT ·sqlite3ResolveExprListNames(SB), NOSPLIT, $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ResolveExprNames(SB), NOSPLIT, $88-32
+TEXT ·sqlite3ResolveExprNames(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8600,7 +8600,7 @@ TEXT ·sqlite3ResolveExprNames(SB), NOSPLIT, $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ExprListAppendNew(SB), NOSPLIT, $72-32
+TEXT ·sqlite3ExprListAppendNew(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -9686,7 +9686,7 @@ TEXT ·sqlite3ExprListDup(SB), $200-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3IdListDup(SB), NOSPLIT, $168-32
+TEXT ·sqlite3IdListDup(SB), $168-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -13317,7 +13317,7 @@ TEXT ·gatherSelectWindowsSelectCallback(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3WindowLink(SB), NOSPLIT, $120-24
+TEXT ·sqlite3WindowLink(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14868,7 +14868,7 @@ TEXT ·sqlite3VdbeMemNumerify(SB), $88-16
 	WORD $0x14000001
 	RET
 
-TEXT ·resolveOrderGroupBy(SB), NOSPLIT, $200-48
+TEXT ·resolveOrderGroupBy(SB), $200-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15341,7 +15341,7 @@ TEXT ·resolveOrderGroupBy(SB), NOSPLIT, $200-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3SelectWrongNumTermsError(SB), NOSPLIT, $56-24
+TEXT ·sqlite3SelectWrongNumTermsError(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15570,7 +15570,7 @@ TEXT ·selectCheckOnClausesSelect(SB), $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·resolveCompoundOrderBy(SB), NOSPLIT, $216-32
+TEXT ·resolveCompoundOrderBy(SB), $216-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16599,7 +16599,7 @@ TEXT ·resolveRemoveWindowsCb(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ResolveOrderGroupBy(SB), NOSPLIT, $152-48
+TEXT ·sqlite3ResolveOrderGroupBy(SB), $152-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16816,7 +16816,7 @@ TEXT ·sqlite3ResolveOrderGroupBy(SB), NOSPLIT, $152-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·resolveAlias(SB), NOSPLIT, $104-48
+TEXT ·resolveAlias(SB), $104-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16973,7 +16973,7 @@ TEXT ·incrAggDepth(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ExprAddCollateString(SB), NOSPLIT, $136-40
+TEXT ·sqlite3ExprAddCollateString(SB), $136-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17666,7 +17666,7 @@ TEXT ·sqlite3ParserAddCleanup(SB), $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·isValidSchemaTableName(SB), NOSPLIT, $56-40
+TEXT ·isValidSchemaTableName(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18017,7 +18017,7 @@ TEXT ·sqlite3AuthReadCol(SB), $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·exprProbability(SB), NOSPLIT, $56-24
+TEXT ·exprProbability(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18187,7 +18187,7 @@ TEXT ·resolveSetExprSubtypeArg(SB), $72-16
 	WORD $0x14000001
 	RET
 
-TEXT ·notValidImpl(SB), NOSPLIT, $72-32
+TEXT ·notValidImpl(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18260,7 +18260,7 @@ TEXT ·notValidImpl(SB), NOSPLIT, $72-32
 	WORD $0x17fffffa
 	RET
 
-TEXT ·sqlite3ExprFunctionUsable(SB), NOSPLIT, $56-32
+TEXT ·sqlite3ExprFunctionUsable(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18291,7 +18291,7 @@ TEXT ·sqlite3ExprFunctionUsable(SB), NOSPLIT, $56-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3WalkExprList(SB), NOSPLIT, $88-24
+TEXT ·sqlite3WalkExprList(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18348,7 +18348,7 @@ TEXT ·sqlite3WalkExprList(SB), NOSPLIT, $88-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3WindowUpdate(SB), NOSPLIT, $136-40
+TEXT ·sqlite3WindowUpdate(SB), $136-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -19181,7 +19181,7 @@ TEXT ·sqlite3WindowChain(SB), $120-32
 	WORD $0x17fffff7
 	RET
 
-TEXT ·sqlite3ExprListAppendGrow(SB), NOSPLIT, $88-40
+TEXT ·sqlite3ExprListAppendGrow(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -24493,7 +24493,7 @@ TEXT ·columnTypeImpl(SB), $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ExprCollSeq(SB), NOSPLIT, $136-32
+TEXT ·sqlite3ExprCollSeq(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -24860,7 +24860,7 @@ TEXT ·sqlite3ExprCollSeq(SB), NOSPLIT, $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ColumnSetColl(SB), NOSPLIT, $120-32
+TEXT ·sqlite3ColumnSetColl(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25690,7 +25690,7 @@ TEXT ·sqlite3VtabUnlock(SB), $72-16
 	WORD $0x17ffff2b
 	RET
 
-TEXT ·sqlite3HashFind(SB), NOSPLIT, $72-32
+TEXT ·sqlite3HashFind(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

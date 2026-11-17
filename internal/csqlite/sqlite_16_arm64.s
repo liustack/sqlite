@@ -10891,7 +10891,7 @@ TEXT ·rtreeDeleteRowid(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·ChooseLeaf(SB), NOSPLIT, $312-48
+TEXT ·ChooseLeaf(SB), $312-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17156,7 +17156,7 @@ TEXT ·nodeWrite(SB), $120-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·nodeParentIndex(SB), NOSPLIT, $72-40
+TEXT ·nodeParentIndex(SB), $72-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17229,7 +17229,7 @@ TEXT ·nodeParentIndex(SB), NOSPLIT, $72-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·nodeOverwriteCell(SB), NOSPLIT, $88-40
+TEXT ·nodeOverwriteCell(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17323,7 +17323,7 @@ TEXT ·nodeOverwriteCell(SB), NOSPLIT, $88-40
 	WORD $0x00000000
 	RET
 
-TEXT ·AdjustTree(SB), NOSPLIT, $296-40
+TEXT ·AdjustTree(SB), $296-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20175,7 +20175,7 @@ TEXT ·fixBoundingBox(SB), $200-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·rtreeSearchPointPop(SB), NOSPLIT, $104-16
+TEXT ·rtreeSearchPointPop(SB), $104-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

@@ -7859,7 +7859,7 @@ TEXT ·strAccumFinishRealloc(SB), $112-24
 	BYTE $0xac
 	RET
 
-TEXT ·sqlite3DbMallocRawNN(SB), NOSPLIT, $32-32
+TEXT ·sqlite3DbMallocRawNN(SB), $32-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -8572,7 +8572,7 @@ TEXT ·enlargeAndAppend(SB), $128-32
 	BYTE $0x00
 	RET
 
-TEXT ·memIntValue(SB), NOSPLIT, $64-24
+TEXT ·memIntValue(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -13059,7 +13059,7 @@ TEXT ·sqlite3RCStrUnref(SB), $48-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3AtoF(SB), NOSPLIT, $128-32
+TEXT ·sqlite3AtoF(SB), $128-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -16549,7 +16549,7 @@ TEXT ·goCurrentTimeInt64(SB), $32-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3_uri_parameter(SB), NOSPLIT, $80-32
+TEXT ·sqlite3_uri_parameter(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -17220,7 +17220,7 @@ TEXT ·goShmUnmap(SB), $32-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3GetInt32(SB), NOSPLIT, $64-32
+TEXT ·sqlite3GetInt32(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c

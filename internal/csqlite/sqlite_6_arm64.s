@@ -11613,7 +11613,7 @@ TEXT ·sqlite3IdListAppend(SB), $152-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3ExprFunction(SB), NOSPLIT, $120-48
+TEXT ·sqlite3ExprFunction(SB), $120-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11700,7 +11700,7 @@ TEXT ·sqlite3ExprFunction(SB), NOSPLIT, $120-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3PExpr(SB), NOSPLIT, $88-48
+TEXT ·sqlite3PExpr(SB), $88-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11859,7 +11859,7 @@ TEXT ·sqlite3PExpr(SB), NOSPLIT, $88-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3ExprAnd(SB), NOSPLIT, $104-40
+TEXT ·sqlite3ExprAnd(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12088,7 +12088,7 @@ TEXT ·sqlite3SetJoinExpr(SB), $104-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ExprAlloc(SB), NOSPLIT, $136-48
+TEXT ·sqlite3ExprAlloc(SB), $136-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12393,7 +12393,7 @@ TEXT ·sqlite3ExprAlloc(SB), NOSPLIT, $136-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3ExprSetHeightAndFlags(SB), NOSPLIT, $152-24
+TEXT ·sqlite3ExprSetHeightAndFlags(SB), $152-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12745,7 +12745,7 @@ TEXT ·sqlite3ExprSetHeightAndFlags(SB), NOSPLIT, $152-24
 	WORD $0x17fffff2
 	RET
 
-TEXT ·heightOfSelect(SB), NOSPLIT, $72-24
+TEXT ·heightOfSelect(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14608,7 +14608,7 @@ TEXT ·sqlite3InitOne(SB), $200-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3PragmaVtabRegister(SB), NOSPLIT, $136-32
+TEXT ·sqlite3PragmaVtabRegister(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14709,7 +14709,7 @@ TEXT ·sqlite3PragmaVtabRegister(SB), NOSPLIT, $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3JsonVtabRegister(SB), NOSPLIT, $120-32
+TEXT ·sqlite3JsonVtabRegister(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18391,7 +18391,7 @@ TEXT ·jsonEachRowid(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·jsonEachPathLength(SB), NOSPLIT, $104-24
+TEXT ·jsonEachPathLength(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18548,7 +18548,7 @@ TEXT ·jsonEachPathLength(SB), NOSPLIT, $104-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·jsonAppendPathName(SB), NOSPLIT, $104-16
+TEXT ·jsonAppendPathName(SB), $104-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20953,7 +20953,7 @@ TEXT ·sqlite3RunParser(SB), $184-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·apiHandleError(SB), NOSPLIT, $40-32
+TEXT ·apiHandleError(SB), $40-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21476,7 +21476,7 @@ TEXT ·yyGrowStack(SB), $152-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3FinishCoding(SB), NOSPLIT, $168-16
+TEXT ·sqlite3FinishCoding(SB), $168-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22409,7 +22409,7 @@ TEXT ·sqlite3FinishCoding(SB), NOSPLIT, $168-16
 	WORD $0x00000001
 	RET
 
-TEXT ·sqlite3BeginTransaction(SB), NOSPLIT, $120-24
+TEXT ·sqlite3BeginTransaction(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22575,7 +22575,7 @@ TEXT ·sqlite3BeginTransaction(SB), NOSPLIT, $120-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3EndTransaction(SB), NOSPLIT, $88-24
+TEXT ·sqlite3EndTransaction(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23083,7 +23083,7 @@ TEXT ·sqlite3Savepoint(SB), $152-32
 	WORD $0x14000001
 	RET
 
-TEXT ·disableLookaside(SB), NOSPLIT, $56-16
+TEXT ·disableLookaside(SB), $56-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

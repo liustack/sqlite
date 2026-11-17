@@ -947,7 +947,7 @@ TEXT ·computeIndexAffStr(SB), $96-32
 	BYTE $0x9d
 	RET
 
-TEXT ·sqlite3VdbeGoto(SB), NOSPLIT, $64-24
+TEXT ·sqlite3VdbeGoto(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -976,7 +976,7 @@ TEXT ·sqlite3VdbeGoto(SB), NOSPLIT, $64-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3RegisterLikeFunctions(SB), NOSPLIT, $112-24
+TEXT ·sqlite3RegisterLikeFunctions(SB), $112-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -1073,7 +1073,7 @@ TEXT ·sqlite3RegisterLikeFunctions(SB), NOSPLIT, $112-24
 	BYTE $0x00
 	RET
 
-TEXT ·integrityCheckResultRow(SB), NOSPLIT, $80-24
+TEXT ·integrityCheckResultRow(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -1154,7 +1154,7 @@ TEXT ·integrityCheckResultRow(SB), NOSPLIT, $80-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3ColumnExprAuth(SB), NOSPLIT, $48-40
+TEXT ·sqlite3ColumnExprAuth(SB), $48-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -1189,7 +1189,7 @@ TEXT ·sqlite3ColumnExprAuth(SB), NOSPLIT, $48-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ColumnDefault(SB), NOSPLIT, $96-32
+TEXT ·sqlite3ColumnDefault(SB), $96-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -1239,7 +1239,7 @@ TEXT ·sqlite3ColumnDefault(SB), NOSPLIT, $96-32
 	QUAD $0x0000000000000000
 	RET
 
-TEXT ·sqlite3VdbeAppendP4(SB), NOSPLIT, $32-32
+TEXT ·sqlite3VdbeAppendP4(SB), $32-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c

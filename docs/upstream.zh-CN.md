@@ -24,7 +24,9 @@
 `internal/csqlite` 的 Go 汇编是用 Go 1.27.2 生成的，用 Go 1.26 和 1.27 验证过。`go.mod` 要求 1.26.6 或更新。更新的 Go 会被 `internal/goversion` 的报错拦下构建（它的 `newer.go` 的构建行是 `go1.28 && !sqlite_anygo`），因为汇编从没在那个版本上验证过。加 `-tags sqlite_anygo` 可以照样构建。汇编依赖 Go 里不在 Go 1 兼容承诺之内的东西：
 
 - 每个非 NOSPLIT 函数开头的栈检查：栈指针和 `g.stackguard0`（`g` 的偏移 16，`g` 在 amd64 的 R14、arm64 的 X28）比较，再调用 `runtime.morestack_noctxt.abi0`（`internal/goasm/gen/verify_insn.go`、`arm64_verify.go`）。
-- 链接器允许一串 NOSPLIT 函数用的栈空间，减去出错时为 `runtime.sigpanic` 压进去的部分（`internal/goasm/gen/nosplit.go`）。
+- Go 汇编器自己会把哪些叶子函数标成 NOSPLIT：不调用任何函数、栈帧小于 128 字节的函数。生成器把这份名单写下来，汇编器标了别的函数时，链接后检查会失败（`internal/goasm/gen/nosplit.go`）。
+
+每个会调用别人的函数都有栈检查。没有栈检查的只有叶子函数：用寄存器接参数的 `memcpy`、`memmove`、`memset`，以及汇编器自己标的那些。这种叶子函数里出错时，用的是调用方的栈检查留下的空间，和任何 Go 程序的叶子函数出错时一样，所以生成器不再依赖运行时的某个数字。
 
 升级到更新的 Go 时，用新版本：
 
@@ -37,7 +39,7 @@
    make check-gen test-gen
    ```
 
-2. 有失败就去读新版本源码里的栈检查和 `runtime.sigpanic`，生成器只按读到的改。
+2. 有失败就去读新版本源码里的栈检查和汇编器的 NOSPLIT 规则，生成器只按读到的改。
 3. 全部通过后，把 `internal/goversion/newer.go` 的构建行改到下一个版本，把里面的名字改成验证过的版本，再在这里、README（两种语言）、AGENTS.md 和 `.github/workflows/test.yml` 的 `go-version` 里写上新的版本范围。`TestNewerGoStops` 会检查构建行和名字是否一致。
 
 最低是 Go 1.26.6，即 `go.mod` 的 `go` 行。1.26.6 之前，goroutine 的栈被复制时，被 Go 注入了调用的函数（比如出错的生成函数被注入 `sigpanic`），它的栈帧会留着指向旧栈的帧指针，执行跟踪器和 block、mutex 两种 profile 可能顺着它读（`runtime/stack.go` 的 `adjustframe`）。Go 1.26 的 `database/sql` 没有 `RowsColumnScanner`，所以 `Scan` 通过 `Next` 读一行，分配的内存更多（`scan_go127.go` 只在 Go 1.27 上编译）。结果一样。

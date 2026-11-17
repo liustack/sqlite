@@ -5219,7 +5219,7 @@ TEXT ·isDistinctRedundant(SB), $152-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·whereScanNext(SB), NOSPLIT, $184-24
+TEXT ·whereScanNext(SB), $184-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5813,7 +5813,7 @@ TEXT ·whereScanNext(SB), NOSPLIT, $184-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·whereScanInitIndexExpr(SB), NOSPLIT, $56-24
+TEXT ·whereScanInitIndexExpr(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -9501,7 +9501,7 @@ TEXT ·whereLoopAddOr(SB), $344-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·whereInterstageHeuristic(SB), NOSPLIT, $56-16
+TEXT ·whereInterstageHeuristic(SB), $56-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -9581,7 +9581,7 @@ TEXT ·whereInterstageHeuristic(SB), NOSPLIT, $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·whereReverseScanOrder(SB), NOSPLIT, $56-16
+TEXT ·whereReverseScanOrder(SB), $56-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -9639,7 +9639,7 @@ TEXT ·whereReverseScanOrder(SB), NOSPLIT, $56-16
 	WORD $0x14000001
 	RET
 
-TEXT ·whereOmitNoopJoin(SB), NOSPLIT, $184-24
+TEXT ·whereOmitNoopJoin(SB), $184-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10103,7 +10103,7 @@ TEXT ·whereOmitNoopJoin(SB), NOSPLIT, $184-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·whereCheckIfBloomFilterIsUseful(SB), NOSPLIT, $120-16
+TEXT ·whereCheckIfBloomFilterIsUseful(SB), $120-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10260,7 +10260,7 @@ TEXT ·whereCheckIfBloomFilterIsUseful(SB), NOSPLIT, $120-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeChangeP4(SB), NOSPLIT, $56-32
+TEXT ·sqlite3VdbeChangeP4(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -14164,7 +14164,7 @@ TEXT ·codeExprOrVector(SB), $136-40
 	WORD $0x14000001
 	RET
 
-TEXT ·disableTerm(SB), NOSPLIT, $72-24
+TEXT ·disableTerm(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16078,7 +16078,7 @@ TEXT ·codeAllEqualityTerms(SB), $216-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·sqlite3ExprCanBeNull(SB), NOSPLIT, $40-24
+TEXT ·sqlite3ExprCanBeNull(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16141,7 +16141,7 @@ TEXT ·sqlite3ExprCanBeNull(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·updateRangeAffinityStr(SB), NOSPLIT, $104-32
+TEXT ·updateRangeAffinityStr(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -16313,7 +16313,7 @@ TEXT ·updateRangeAffinityStr(SB), NOSPLIT, $104-32
 	WORD $0x14000001
 	RET
 
-TEXT ·codeApplyAffinity(SB), NOSPLIT, $104-40
+TEXT ·codeApplyAffinity(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17311,7 +17311,7 @@ TEXT ·whereApplyPartialIndexConstraints(SB), $120-32
 	WORD $0x14000001
 	RET
 
-TEXT ·whereLoopIsOneRow(SB), NOSPLIT, $40-24
+TEXT ·whereLoopIsOneRow(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17368,7 +17368,7 @@ TEXT ·whereLoopIsOneRow(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·whereExprIsReady(SB), NOSPLIT, $72-48
+TEXT ·whereExprIsReady(SB), $72-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17850,7 +17850,7 @@ TEXT ·sqlite3WhereExplainBloomFilter(SB), $120-32
 	WORD $0x3b9aca00
 	RET
 
-TEXT ·termCanDriveIndex(SB), NOSPLIT, $88-40
+TEXT ·termCanDriveIndex(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -17969,7 +17969,7 @@ TEXT ·termCanDriveIndex(SB), NOSPLIT, $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3ExprCompareCollSeq(SB), NOSPLIT, $72-32
+TEXT ·sqlite3ExprCompareCollSeq(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -18012,7 +18012,7 @@ TEXT ·sqlite3ExprCompareCollSeq(SB), NOSPLIT, $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·columnIsGoodIndexCandidate(SB), NOSPLIT, $72-32
+TEXT ·columnIsGoodIndexCandidate(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21170,7 +21170,7 @@ TEXT ·whereLoopInsert(SB), $200-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·whereIsCoveringIndex(SB), NOSPLIT, $104-40
+TEXT ·whereIsCoveringIndex(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21658,7 +21658,7 @@ TEXT ·whereIsCoveringIndexWalkCallback(SB), $136-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3ExprIsInteger(SB), NOSPLIT, $104-48
+TEXT ·sqlite3ExprIsInteger(SB), $104-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21920,7 +21920,7 @@ TEXT ·exprNodePatternLengthEst(SB), $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_value_int64(SB), NOSPLIT, $40-24
+TEXT ·sqlite3_value_int64(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22245,7 +22245,7 @@ TEXT ·freeIndexInfo(SB), $72-24
 	WORD $0x14000001
 	RET
 
-TEXT ·whereAddLimitExpr(SB), NOSPLIT, $120-48
+TEXT ·whereAddLimitExpr(SB), $120-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22538,7 +22538,7 @@ TEXT ·whereAddLimitExpr(SB), NOSPLIT, $120-48
 	WORD $0x17ffff56
 	RET
 
-TEXT ·exprMightBeIndexed2(SB), NOSPLIT, $152-48
+TEXT ·exprMightBeIndexed2(SB), $152-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22724,7 +22724,7 @@ TEXT ·exprMightBeIndexed2(SB), NOSPLIT, $152-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·termIsEquivalence(SB), NOSPLIT, $88-40
+TEXT ·termIsEquivalence(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22808,7 +22808,7 @@ TEXT ·termIsEquivalence(SB), NOSPLIT, $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·exprCommute(SB), NOSPLIT, $88-24
+TEXT ·exprCommute(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22898,7 +22898,7 @@ TEXT ·exprCommute(SB), NOSPLIT, $88-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ExprForVectorField(SB), NOSPLIT, $104-48
+TEXT ·sqlite3ExprForVectorField(SB), $104-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -23074,7 +23074,7 @@ TEXT ·checkConstraintExprNode(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3FkRequired(SB), NOSPLIT, $136-48
+TEXT ·sqlite3FkRequired(SB), $136-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25977,7 +25977,7 @@ TEXT ·codeRowTrigger(SB), $200-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3FkOldmask(SB), NOSPLIT, $232-32
+TEXT ·sqlite3FkOldmask(SB), $232-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26509,7 +26509,7 @@ TEXT ·sqlite3FkOldmask(SB), NOSPLIT, $232-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·codeReturningTrigger(SB), NOSPLIT, $248-40
+TEXT ·codeReturningTrigger(SB), $248-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

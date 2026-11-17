@@ -4,7 +4,7 @@
 #include "textflag.h"
 #include "funcdata.h"
 
-TEXT ·setPragmaResultColumnNames(SB), NOSPLIT, $120-24
+TEXT ·setPragmaResultColumnNames(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -100,7 +100,7 @@ TEXT ·setPragmaResultColumnNames(SB), NOSPLIT, $120-24
 	WORD $0x14000001
 	RET
 
-TEXT ·returnSingleInt(SB), NOSPLIT, $88-24
+TEXT ·returnSingleInt(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -369,7 +369,7 @@ TEXT ·sqlite3BtreeSetPageSize(SB), $104-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3OomFault(SB), NOSPLIT, $72-16
+TEXT ·sqlite3OomFault(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -437,7 +437,7 @@ TEXT ·sqlite3OomFault(SB), NOSPLIT, $72-16
 	WORD $0x17ffffea
 	RET
 
-TEXT ·getLockingMode(SB), NOSPLIT, $56-24
+TEXT ·getLockingMode(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -519,7 +519,7 @@ TEXT ·getLockingMode(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·getAutoVacuum(SB), NOSPLIT, $88-24
+TEXT ·getAutoVacuum(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -648,7 +648,7 @@ TEXT ·getAutoVacuum(SB), NOSPLIT, $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeAddOpList(SB), NOSPLIT, $88-40
+TEXT ·sqlite3VdbeAddOpList(SB), $88-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -768,7 +768,7 @@ TEXT ·sqlite3BtreeSetCacheSize(SB), $40-24
 	WORD $0x14000001
 	RET
 
-TEXT ·setAllPagerFlags(SB), NOSPLIT, $56-16
+TEXT ·setAllPagerFlags(SB), $56-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -892,7 +892,7 @@ TEXT ·sqlite3BtreeSetMmapLimit(SB), $56-24
 	WORD $0x14000001
 	RET
 
-TEXT ·changeTempStorage(SB), NOSPLIT, $104-24
+TEXT ·changeTempStorage(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1024,7 +1024,7 @@ TEXT ·changeTempStorage(SB), NOSPLIT, $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·invalidateTempStorage(SB), NOSPLIT, $72-16
+TEXT ·invalidateTempStorage(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1066,7 +1066,7 @@ TEXT ·invalidateTempStorage(SB), NOSPLIT, $72-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeAddOp0(SB), NOSPLIT, $72-32
+TEXT ·sqlite3VdbeAddOp0(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1103,7 +1103,7 @@ TEXT ·sqlite3VdbeAddOp0(SB), NOSPLIT, $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3CodeVerifyNamedSchema(SB), NOSPLIT, $104-24
+TEXT ·sqlite3CodeVerifyNamedSchema(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1214,7 +1214,7 @@ TEXT ·sqlite3CodeVerifyNamedSchema(SB), NOSPLIT, $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3ColumnType(SB), NOSPLIT, $40-24
+TEXT ·sqlite3ColumnType(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -1586,7 +1586,7 @@ TEXT ·sqlite3_finalize(SB), $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·pragmaFunclistLine(SB), NOSPLIT, $88-32
+TEXT ·pragmaFunclistLine(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2731,7 +2731,7 @@ TEXT ·computeIndexAffStr(SB), $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3VdbeGoto(SB), NOSPLIT, $72-24
+TEXT ·sqlite3VdbeGoto(SB), $72-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2768,7 +2768,7 @@ TEXT ·sqlite3VdbeGoto(SB), NOSPLIT, $72-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3RegisterLikeFunctions(SB), NOSPLIT, $104-24
+TEXT ·sqlite3RegisterLikeFunctions(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2861,7 +2861,7 @@ TEXT ·sqlite3RegisterLikeFunctions(SB), NOSPLIT, $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·integrityCheckResultRow(SB), NOSPLIT, $88-24
+TEXT ·integrityCheckResultRow(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -2963,7 +2963,7 @@ TEXT ·integrityCheckResultRow(SB), NOSPLIT, $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3ColumnExprAuth(SB), NOSPLIT, $56-40
+TEXT ·sqlite3ColumnExprAuth(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3010,7 +3010,7 @@ TEXT ·sqlite3ColumnExprAuth(SB), NOSPLIT, $56-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3ColumnDefault(SB), NOSPLIT, $88-32
+TEXT ·sqlite3ColumnDefault(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -3066,7 +3066,7 @@ TEXT ·sqlite3ColumnDefault(SB), NOSPLIT, $88-32
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeAppendP4(SB), NOSPLIT, $56-32
+TEXT ·sqlite3VdbeAppendP4(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -27798,7 +27798,7 @@ TEXT ·sqlite3Reprepare(SB), $120-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3ValueText(SB), NOSPLIT, $56-24
+TEXT ·sqlite3ValueText(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -27829,7 +27829,7 @@ TEXT ·sqlite3ValueText(SB), NOSPLIT, $56-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeLogAbort(SB), NOSPLIT, $120-40
+TEXT ·sqlite3VdbeLogAbort(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -27895,7 +27895,7 @@ TEXT ·sqlite3VdbeLogAbort(SB), NOSPLIT, $120-40
 	WORD $0x14000001
 	RET
 
-TEXT ·out2PrereleaseWithClear(SB), NOSPLIT, $40-24
+TEXT ·out2PrereleaseWithClear(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -27919,7 +27919,7 @@ TEXT ·out2PrereleaseWithClear(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeMemSetZeroBlob(SB), NOSPLIT, $56-24
+TEXT ·sqlite3VdbeMemSetZeroBlob(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -27951,7 +27951,7 @@ TEXT ·sqlite3VdbeMemSetZeroBlob(SB), NOSPLIT, $56-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeMemExpandBlob(SB), NOSPLIT, $120-24
+TEXT ·sqlite3VdbeMemExpandBlob(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -28150,5 +28150,43 @@ TEXT ·vdbeClrCopy(SB), $88-32
 	WORD $0x79002aa8
 	WORD $0xf9402bfe
 	WORD $0x14000001
+	RET
+
+TEXT ·sqlite3SubInt64(SB), NOSPLIT, $0-32
+	NO_LOCAL_POINTERS
+	MOVD a0+0(FP), R20
+	MOVD a1+8(FP), R21
+	MOVD a2+16(FP), R22
+	PCALIGN $16
+	WORD $0xd2f00009
+	WORD $0xf94002a8
+	WORD $0xeb0902df
+	WORD $0x54000081
+	WORD $0xb6f80268
+	WORD $0x9240f908
+	WORD $0x14000014
+	WORD $0xf10002df
+	WORD $0x5400012d
+	WORD $0xb6f80208
+	WORD $0xb24107e9
+	WORD $0x52800020
+	WORD $0xcb080129
+	WORD $0xcb16000a
+	WORD $0xeb0a013f
+	WORD $0x5400014d
+	WORD $0x1400000d
+	WORD $0xf100051f
+	WORD $0x540000eb
+	WORD $0xcb1603e9
+	WORD $0xd240f90a
+	WORD $0xeb09015f
+	WORD $0x54000062
+	WORD $0x52800020
+	WORD $0x14000005
+	WORD $0xcb160108
+	WORD $0x2a1f03e0
+	WORD $0xf90002a8
+	WORD $0x14000001
+	MOVD R0, ret+24(FP)
 	RET
 

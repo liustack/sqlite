@@ -7243,7 +7243,7 @@ TEXT ·sqlite3Fts5StorageDocsize(SB), $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3Fts5IsLocaleValue(SB), NOSPLIT, $72-32
+TEXT ·sqlite3Fts5IsLocaleValue(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21243,7 +21243,7 @@ TEXT ·sqlite3Fts5ParseNodeFree(SB), $72-16
 	WORD $0x14000001
 	RET
 
-TEXT ·fts5SpecialDelete(SB), NOSPLIT, $88-32
+TEXT ·fts5SpecialDelete(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -21312,7 +21312,7 @@ TEXT ·fts5SpecialDelete(SB), NOSPLIT, $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3Fts5StorageDeleteAll(SB), NOSPLIT, $88-24
+TEXT ·sqlite3Fts5StorageDeleteAll(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

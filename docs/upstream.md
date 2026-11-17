@@ -33,7 +33,9 @@ SQLite may call a new libc function after an upgrade. Take it from musl at the s
 The Go assembly of `internal/csqlite` was made with Go 1.27.2 and is checked with Go 1.26 and 1.27. `go.mod` asks for 1.26.6 or later, and a newer Go stops the build with the error of `internal/goversion` (its file `newer.go` has the build line `go1.28 && !sqlite_anygo`), since the assembly was never checked with it. `-tags sqlite_anygo` builds anyway. The assembly depends on things of Go that the Go 1 promise does not cover:
 
 - The stack check at the start of every function that is not NOSPLIT: a compare of the stack pointer with `g.stackguard0` (offset 16 of `g`, in R14 on amd64 and X28 on arm64), and a call of `runtime.morestack_noctxt.abi0` (`internal/goasm/gen/verify_insn.go`, `arm64_verify.go`).
-- The room of a chain of NOSPLIT functions that the linker allows, less what a fault pushes for `runtime.sigpanic` (`internal/goasm/gen/nosplit.go`).
+- Which leaves the Go assembler marks NOSPLIT by itself: a function that calls nothing and whose frame is under 128 bytes. The generator writes that list down, and the post-link check fails when the assembler marks other functions (`internal/goasm/gen/nosplit.go`).
+
+Every function that calls has a stack check. The only functions without one are leaves: `memcpy`, `memmove` and `memset`, which take their arguments in registers, and the ones the assembler marks. A fault in such a leaf has the room that the stack check of its caller left, as a fault in a leaf of any Go program has, so the generator assumes no number of the runtime for it.
 
 To move to a newer Go, with it:
 
@@ -46,7 +48,7 @@ To move to a newer Go, with it:
    make check-gen test-gen
    ```
 
-2. If one fails, read the stack check and `runtime.sigpanic` in the source of the new release, and change the generator only for what you read there.
+2. If one fails, read the stack check and the NOSPLIT rule of the assembler in the source of the new release, and change the generator only for what you read there.
 3. When all pass, move the build line of `internal/goversion/newer.go` to the next version and the name in it to the version you checked, and write the new range here, in the README (both languages), in AGENTS.md and in the `go-version` of `.github/workflows/test.yml`. `TestNewerGoStops` checks that the line and the name agree.
 
 The lowest Go is 1.26.6, the `go` line of `go.mod`. Before 1.26.6, when a goroutine's stack was copied, the frame of a function into which Go injected a call (as it injects `sigpanic` into a generated function that faulted) kept a frame pointer into the old stack, which the execution tracer and the block and mutex profiles may follow (`adjustframe` in `runtime/stack.go`). On Go 1.26, `database/sql` has no `RowsColumnScanner`, so `Scan` reads a row through `Next` and allocates more (`scan_go127.go` is built only on Go 1.27). The results are the same.

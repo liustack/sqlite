@@ -9154,7 +9154,7 @@ TEXT ·applyNumericAffinity(SB), $88-24
 	WORD $0x17ffff43
 	RET
 
-TEXT ·vdbeReleaseAndSetInt64(SB), NOSPLIT, $56-24
+TEXT ·vdbeReleaseAndSetInt64(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10437,7 +10437,7 @@ TEXT ·patternCompare(SB), $168-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·sqlite3Utf8Read(SB), NOSPLIT, $56-24
+TEXT ·sqlite3Utf8Read(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10618,7 +10618,7 @@ TEXT ·sqlite3RowSetClear(SB), $72-16
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3VdbeMemMakeWriteable(SB), NOSPLIT, $120-24
+TEXT ·sqlite3VdbeMemMakeWriteable(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -10801,7 +10801,7 @@ TEXT ·sqlite3VdbeMemMakeWriteable(SB), NOSPLIT, $120-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·createAggContext(SB), NOSPLIT, $104-32
+TEXT ·createAggContext(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11377,7 +11377,7 @@ TEXT ·percentCompute(SB), $104-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_realloc64(SB), NOSPLIT, $72-32
+TEXT ·sqlite3_realloc64(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11405,7 +11405,7 @@ TEXT ·sqlite3_realloc64(SB), NOSPLIT, $72-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_result_error_nomem(SB), NOSPLIT, $72-16
+TEXT ·sqlite3_result_error_nomem(SB), $72-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12540,7 +12540,7 @@ TEXT ·kahanBabuskaNeumaierStepInt64(SB), NOSPLIT, $0-24
 	WORD $0x14000001
 	RET
 
-TEXT ·sqlite3_value_blob(SB), NOSPLIT, $120-24
+TEXT ·sqlite3_value_blob(SB), $120-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12715,7 +12715,7 @@ TEXT ·sqlite3_value_blob(SB), NOSPLIT, $120-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3MemCompare(SB), NOSPLIT, $56-40
+TEXT ·sqlite3MemCompare(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12836,7 +12836,7 @@ TEXT ·sqlite3MemCompare(SB), NOSPLIT, $56-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_result_value(SB), NOSPLIT, $104-24
+TEXT ·sqlite3_result_value(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12969,7 +12969,7 @@ TEXT ·vdbeCompareMemString(SB), $72-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3BlobCompare(SB), NOSPLIT, $72-32
+TEXT ·sqlite3BlobCompare(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -15136,7 +15136,7 @@ TEXT ·sqlite3_value_dup(SB), $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $88-24
+TEXT ·sqlite3_compileoption_used(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20713,7 +20713,7 @@ TEXT ·jsonObjectCompute(SB), $136-24
 	WORD $0x00000000
 	RET
 
-TEXT ·jsonStringExpandAndAppend(SB), NOSPLIT, $120-32
+TEXT ·jsonStringExpandAndAppend(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25252,7 +25252,7 @@ TEXT ·jsonTranslateTextToBlob(SB), $152-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·json5Whitespace(SB), NOSPLIT, $56-24
+TEXT ·json5Whitespace(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25478,7 +25478,7 @@ TEXT ·jsonIs4HexB(SB), NOSPLIT, $0-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $120-40
+TEXT ·jsonBlobChangePayloadSize(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25679,7 +25679,7 @@ TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $120-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_strnicmp(SB), NOSPLIT, $56-40
+TEXT ·sqlite3_strnicmp(SB), $56-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -25744,7 +25744,7 @@ TEXT ·sqlite3_strnicmp(SB), NOSPLIT, $56-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·jsonAppendString(SB), NOSPLIT, $136-32
+TEXT ·jsonAppendString(SB), $136-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -26807,7 +26807,7 @@ TEXT ·jsonAppendSqlValue(SB), $136-24
 	WORD $0x00000000
 	RET
 
-TEXT ·jsonArgIsJsonb(SB), NOSPLIT, $88-32
+TEXT ·jsonArgIsJsonb(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

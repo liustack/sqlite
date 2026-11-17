@@ -1743,7 +1743,7 @@ TEXT ·jsonParseFuncArg(SB), $208-40
 	BYTE $0xff
 	RET
 
-TEXT ·jsonBlobMakeEditable(SB), NOSPLIT, $112-32
+TEXT ·jsonBlobMakeEditable(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -1886,7 +1886,7 @@ TEXT ·jsonBlobMakeEditable(SB), NOSPLIT, $112-32
 	BYTE $0xff
 	RET
 
-TEXT ·jsonConvertTextToBlob(SB), NOSPLIT, $128-32
+TEXT ·jsonConvertTextToBlob(SB), $128-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -3295,7 +3295,7 @@ TEXT ·jsonLookupStep(SB), $208-48
 	BYTE $0xff
 	RET
 
-TEXT ·jsonBlobEdit(SB), NOSPLIT, $160-48
+TEXT ·jsonBlobEdit(SB), $160-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -3719,7 +3719,7 @@ TEXT ·jsonBlobEdit(SB), NOSPLIT, $160-48
 	QUAD $0xfffff408fffff52a
 	RET
 
-TEXT ·jsonLabelCompareEscaped(SB), NOSPLIT, $112-64
+TEXT ·jsonLabelCompareEscaped(SB), $112-64
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -3868,7 +3868,7 @@ TEXT ·jsonLabelCompareEscaped(SB), NOSPLIT, $112-64
 	BYTE $0x00
 	RET
 
-TEXT ·jsonAfterEditSizeAdjust(SB), NOSPLIT, $64-24
+TEXT ·jsonAfterEditSizeAdjust(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -3989,7 +3989,7 @@ TEXT ·jsonCreateEditSubstructure(SB), $64-40
 	BYTE $0x00
 	RET
 
-TEXT ·jsonbArrayCount(SB), NOSPLIT, $80-32
+TEXT ·jsonbArrayCount(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -5226,7 +5226,7 @@ TEXT ·jsonInsertIntoBlob(SB), $160-40
 	QUAD $0xffffeafeffffeace
 	RET
 
-TEXT ·jsonReturnParse(SB), NOSPLIT, $80-24
+TEXT ·jsonReturnParse(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -7271,7 +7271,7 @@ TEXT ·jsonMergePatch(SB), $320-56
 	BYTE $0xff
 	RET
 
-TEXT ·jsonReturnFromBlob(SB), NOSPLIT, $160-40
+TEXT ·jsonReturnFromBlob(SB), $160-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -7905,7 +7905,7 @@ TEXT ·jsonReturnFromBlob(SB), NOSPLIT, $160-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3DecOrHexToI64(SB), NOSPLIT, $96-32
+TEXT ·sqlite3DecOrHexToI64(SB), $96-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -8171,7 +8171,7 @@ TEXT ·sqlite3DecOrHexToI64(SB), NOSPLIT, $96-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3_result_double(SB), NOSPLIT, $32-24
+TEXT ·sqlite3_result_double(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -13759,7 +13759,7 @@ TEXT ·sqlite3NotPureFunc(SB), $96-24
 	BYTE $0x00
 	RET
 
-TEXT ·parseHhMmSs(SB), NOSPLIT, $112-32
+TEXT ·parseHhMmSs(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -14165,7 +14165,7 @@ TEXT ·toLocaltime(SB), $112-32
 	QUAD $0x3f50624dd2f1a9fc
 	RET
 
-TEXT ·computeYMD_HMS(SB), NOSPLIT, $32-16
+TEXT ·computeYMD_HMS(SB), $32-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -21603,7 +21603,7 @@ TEXT ·findConstraintFunc(SB), $160-32
 	BYTE $0xbb
 	RET
 
-TEXT ·sqlite3GetToken(SB), NOSPLIT, $112-32
+TEXT ·sqlite3GetToken(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -22753,7 +22753,7 @@ TEXT ·quotedCompare(SB), $128-64
 	BYTE $0xff
 	RET
 
-TEXT ·keywordCode(SB), NOSPLIT, $96-40
+TEXT ·keywordCode(SB), $96-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -22879,7 +22879,7 @@ TEXT ·keywordCode(SB), NOSPLIT, $96-40
 	BYTE $0x00
 	RET
 
-TEXT ·getWhitespace(SB), NOSPLIT, $80-24
+TEXT ·getWhitespace(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c

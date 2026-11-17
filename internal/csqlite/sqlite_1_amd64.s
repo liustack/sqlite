@@ -7099,7 +7099,7 @@ TEXT ·applyNumericAffinity(SB), $80-24
 	QUAD $0x7fffffffffffffff
 	RET
 
-TEXT ·vdbeReleaseAndSetInt64(SB), NOSPLIT, $32-24
+TEXT ·vdbeReleaseAndSetInt64(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -8096,7 +8096,7 @@ TEXT ·patternCompare(SB), $176-48
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3Utf8Read(SB), NOSPLIT, $64-24
+TEXT ·sqlite3Utf8Read(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -8263,7 +8263,7 @@ TEXT ·sqlite3RowSetClear(SB), $80-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeMemMakeWriteable(SB), NOSPLIT, $96-24
+TEXT ·sqlite3VdbeMemMakeWriteable(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -8353,7 +8353,7 @@ TEXT ·sqlite3VdbeMemMakeWriteable(SB), NOSPLIT, $96-24
 	BYTE $0x00
 	RET
 
-TEXT ·createAggContext(SB), NOSPLIT, $96-32
+TEXT ·createAggContext(SB), $96-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -8771,7 +8771,7 @@ TEXT ·percentCompute(SB), $96-24
 	QUAD $0x4530000000000000
 	RET
 
-TEXT ·sqlite3_realloc64(SB), NOSPLIT, $64-32
+TEXT ·sqlite3_realloc64(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -8808,7 +8808,7 @@ TEXT ·sqlite3_realloc64(SB), NOSPLIT, $64-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3_result_error_nomem(SB), NOSPLIT, $64-16
+TEXT ·sqlite3_result_error_nomem(SB), $64-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -9752,7 +9752,7 @@ TEXT ·kahanBabuskaNeumaierStepInt64(SB), NOSPLIT, $0-24
 	QUAD $0x7fffffffffffffff
 	RET
 
-TEXT ·sqlite3_value_blob(SB), NOSPLIT, $96-24
+TEXT ·sqlite3_value_blob(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -9839,7 +9839,7 @@ TEXT ·sqlite3_value_blob(SB), NOSPLIT, $96-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3MemCompare(SB), NOSPLIT, $48-40
+TEXT ·sqlite3MemCompare(SB), $48-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -9920,7 +9920,7 @@ TEXT ·sqlite3MemCompare(SB), NOSPLIT, $48-40
 	QUAD $0x43e0000000000000
 	RET
 
-TEXT ·sqlite3_result_value(SB), NOSPLIT, $96-24
+TEXT ·sqlite3_result_value(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -10026,7 +10026,7 @@ TEXT ·vdbeCompareMemString(SB), $64-40
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3BlobCompare(SB), NOSPLIT, $80-32
+TEXT ·sqlite3BlobCompare(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -11869,7 +11869,7 @@ TEXT ·sqlite3_value_dup(SB), $64-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3_compileoption_used(SB), NOSPLIT, $96-24
+TEXT ·sqlite3_compileoption_used(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -16594,7 +16594,7 @@ TEXT ·jsonObjectCompute(SB), $128-24
 	QUAD $0xfffff997e958246c
 	RET
 
-TEXT ·jsonStringExpandAndAppend(SB), NOSPLIT, $112-32
+TEXT ·jsonStringExpandAndAppend(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -20481,7 +20481,7 @@ TEXT ·jsonTranslateTextToBlob(SB), $192-32
 	BYTE $0xff
 	RET
 
-TEXT ·json5Whitespace(SB), NOSPLIT, $64-24
+TEXT ·json5Whitespace(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -20654,7 +20654,7 @@ TEXT ·jsonIs4HexB(SB), NOSPLIT, $0-32
 	BYTE $0x00
 	RET
 
-TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $128-40
+TEXT ·jsonBlobChangePayloadSize(SB), $128-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -20766,7 +20766,7 @@ TEXT ·jsonBlobChangePayloadSize(SB), NOSPLIT, $128-40
 	BYTE $0xff
 	RET
 
-TEXT ·jsonAppendString(SB), NOSPLIT, $128-32
+TEXT ·jsonAppendString(SB), $128-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -21586,7 +21586,7 @@ TEXT ·jsonAppendSqlValue(SB), $144-24
 	BYTE $0xff
 	RET
 
-TEXT ·jsonArgIsJsonb(SB), NOSPLIT, $80-32
+TEXT ·jsonArgIsJsonb(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -22866,7 +22866,7 @@ TEXT ·jsonTranslateBlobToText(SB), $192-40
 	QUAD $0xfffff378fffff3f0
 	RET
 
-TEXT ·jsonAppendRawNZ(SB), NOSPLIT, $32-32
+TEXT ·jsonAppendRawNZ(SB), $32-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c

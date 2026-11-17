@@ -1512,7 +1512,7 @@ TEXT ·jsonTranslateBlobToText(SB), $168-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·jsonAppendRawNZ(SB), NOSPLIT, $56-32
+TEXT ·jsonAppendRawNZ(SB), $56-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4627,7 +4627,7 @@ TEXT ·jsonParseFuncArg(SB), $184-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·jsonBlobMakeEditable(SB), NOSPLIT, $104-32
+TEXT ·jsonBlobMakeEditable(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4837,7 +4837,7 @@ TEXT ·jsonBlobMakeEditable(SB), NOSPLIT, $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·jsonConvertTextToBlob(SB), NOSPLIT, $120-32
+TEXT ·jsonConvertTextToBlob(SB), $120-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -6534,7 +6534,7 @@ TEXT ·jsonLookupStep(SB), $200-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·jsonBlobEdit(SB), NOSPLIT, $136-48
+TEXT ·jsonBlobEdit(SB), $136-48
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -7037,7 +7037,7 @@ TEXT ·jsonBlobEdit(SB), NOSPLIT, $136-48
 	WORD $0x17ffff06
 	RET
 
-TEXT ·jsonAfterEditSizeAdjust(SB), NOSPLIT, $56-24
+TEXT ·jsonAfterEditSizeAdjust(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -7232,7 +7232,7 @@ TEXT ·jsonCreateEditSubstructure(SB), $88-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·jsonbArrayCount(SB), NOSPLIT, $72-32
+TEXT ·jsonbArrayCount(SB), $72-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -8722,7 +8722,7 @@ TEXT ·jsonInsertIntoBlob(SB), $152-40
 	WORD $0x17fffefa
 	RET
 
-TEXT ·jsonReturnParse(SB), NOSPLIT, $88-24
+TEXT ·jsonReturnParse(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -11387,7 +11387,7 @@ TEXT ·jsonMergePatch(SB), $280-56
 	MOVD R0, ret+48(FP)
 	RET
 
-TEXT ·jsonReturnFromBlob(SB), NOSPLIT, $152-40
+TEXT ·jsonReturnFromBlob(SB), $152-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12202,7 +12202,7 @@ TEXT ·jsonReturnFromBlob(SB), NOSPLIT, $152-40
 	WORD $0x00000000
 	RET
 
-TEXT ·sqlite3DecOrHexToI64(SB), NOSPLIT, $88-32
+TEXT ·sqlite3DecOrHexToI64(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -12619,7 +12619,7 @@ TEXT ·sqlite3DecOrHexToI64(SB), NOSPLIT, $88-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·sqlite3_result_double(SB), NOSPLIT, $56-24
+TEXT ·sqlite3_result_double(SB), $56-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20022,7 +20022,7 @@ TEXT ·sqlite3NotPureFunc(SB), $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·parseHhMmSs(SB), NOSPLIT, $104-32
+TEXT ·parseHhMmSs(SB), $104-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -20581,7 +20581,7 @@ TEXT ·toLocaltime(SB), $104-32
 	MOVD R0, ret+24(FP)
 	RET
 
-TEXT ·computeYMD_HMS(SB), NOSPLIT, $40-16
+TEXT ·computeYMD_HMS(SB), $40-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21

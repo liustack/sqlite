@@ -4912,7 +4912,7 @@ TEXT ·codeExprOrVector(SB), $144-40
 	BYTE $0x00
 	RET
 
-TEXT ·disableTerm(SB), NOSPLIT, $64-24
+TEXT ·disableTerm(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -6386,7 +6386,7 @@ TEXT ·codeAllEqualityTerms(SB), $224-56
 	QUAD $0xffffffb1fffffd58
 	RET
 
-TEXT ·sqlite3ExprCanBeNull(SB), NOSPLIT, $48-24
+TEXT ·sqlite3ExprCanBeNull(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -6430,7 +6430,7 @@ TEXT ·sqlite3ExprCanBeNull(SB), NOSPLIT, $48-24
 	BYTE $0xf2
 	RET
 
-TEXT ·updateRangeAffinityStr(SB), NOSPLIT, $112-32
+TEXT ·updateRangeAffinityStr(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -6554,7 +6554,7 @@ TEXT ·updateRangeAffinityStr(SB), NOSPLIT, $112-32
 	BYTE $0xff
 	RET
 
-TEXT ·codeApplyAffinity(SB), NOSPLIT, $112-40
+TEXT ·codeApplyAffinity(SB), $112-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -7374,7 +7374,7 @@ TEXT ·whereApplyPartialIndexConstraints(SB), $112-32
 	BYTE $0x00
 	RET
 
-TEXT ·whereLoopIsOneRow(SB), NOSPLIT, $64-24
+TEXT ·whereLoopIsOneRow(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -7418,7 +7418,7 @@ TEXT ·whereLoopIsOneRow(SB), NOSPLIT, $64-24
 	BYTE $0x00
 	RET
 
-TEXT ·whereExprIsReady(SB), NOSPLIT, $80-48
+TEXT ·whereExprIsReady(SB), $80-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -9113,7 +9113,7 @@ TEXT ·sqlite3WhereExplainBloomFilter(SB), $144-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3ExprIsSingleTableConstraint(SB), NOSPLIT, $96-48
+TEXT ·sqlite3ExprIsSingleTableConstraint(SB), $96-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -9217,7 +9217,7 @@ TEXT ·exprSelectWalkTableConstant(SB), NOSPLIT, $0-32
 	BYTE $0x00
 	RET
 
-TEXT ·termCanDriveIndex(SB), NOSPLIT, $80-40
+TEXT ·termCanDriveIndex(SB), $80-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -9295,7 +9295,7 @@ TEXT ·termCanDriveIndex(SB), NOSPLIT, $80-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ExprCompareCollSeq(SB), NOSPLIT, $64-32
+TEXT ·sqlite3ExprCompareCollSeq(SB), $64-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -9330,7 +9330,7 @@ TEXT ·sqlite3ExprCompareCollSeq(SB), NOSPLIT, $64-32
 	BYTE $0x00
 	RET
 
-TEXT ·columnIsGoodIndexCandidate(SB), NOSPLIT, $80-32
+TEXT ·columnIsGoodIndexCandidate(SB), $80-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -11774,7 +11774,7 @@ TEXT ·whereLoopInsert(SB), $176-32
 	BYTE $0xff
 	RET
 
-TEXT ·whereIsCoveringIndex(SB), NOSPLIT, $96-40
+TEXT ·whereIsCoveringIndex(SB), $96-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -12175,7 +12175,7 @@ TEXT ·whereIsCoveringIndexWalkCallback(SB), $112-32
 	BYTE $0xe6
 	RET
 
-TEXT ·sqlite3ExprIsInteger(SB), NOSPLIT, $96-48
+TEXT ·sqlite3ExprIsInteger(SB), $96-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -12367,7 +12367,7 @@ TEXT ·exprNodePatternLengthEst(SB), $80-32
 	BYTE $0xec
 	RET
 
-TEXT ·sqlite3_value_int64(SB), NOSPLIT, $32-24
+TEXT ·sqlite3_value_int64(SB), $32-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -12703,7 +12703,7 @@ TEXT ·freeIndexInfo(SB), $80-24
 	BYTE $0x00
 	RET
 
-TEXT ·whereAddLimitExpr(SB), NOSPLIT, $112-48
+TEXT ·whereAddLimitExpr(SB), $112-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -12913,7 +12913,7 @@ TEXT ·whereAddLimitExpr(SB), NOSPLIT, $112-48
 	BYTE $0xff
 	RET
 
-TEXT ·exprMightBeIndexed2(SB), NOSPLIT, $160-48
+TEXT ·exprMightBeIndexed2(SB), $160-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -13076,7 +13076,7 @@ TEXT ·exprMightBeIndexed2(SB), NOSPLIT, $160-48
 	BYTE $0xf2
 	RET
 
-TEXT ·termIsEquivalence(SB), NOSPLIT, $80-40
+TEXT ·termIsEquivalence(SB), $80-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -13139,7 +13139,7 @@ TEXT ·termIsEquivalence(SB), NOSPLIT, $80-40
 	BYTE $0x00
 	RET
 
-TEXT ·exprCommute(SB), NOSPLIT, $80-24
+TEXT ·exprCommute(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -13201,7 +13201,7 @@ TEXT ·exprCommute(SB), NOSPLIT, $80-24
 	QUAD $0x00eb018837040234
 	RET
 
-TEXT ·sqlite3ExprForVectorField(SB), NOSPLIT, $80-48
+TEXT ·sqlite3ExprForVectorField(SB), $80-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -13324,7 +13324,7 @@ TEXT ·checkConstraintExprNode(SB), NOSPLIT, $0-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3FkRequired(SB), NOSPLIT, $144-48
+TEXT ·sqlite3FkRequired(SB), $144-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -14010,7 +14010,7 @@ TEXT ·sqlite3RowidConstraint(SB), $112-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3GenerateRowIndexDelete(SB), NOSPLIT, $176-56
+TEXT ·sqlite3GenerateRowIndexDelete(SB), $176-56
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000c024a48b4c
@@ -16075,7 +16075,7 @@ TEXT ·codeRowTrigger(SB), $224-48
 	QUAD $0x0000004700000084
 	RET
 
-TEXT ·sqlite3FkOldmask(SB), NOSPLIT, $192-32
+TEXT ·sqlite3FkOldmask(SB), $192-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000d024a48b4c
@@ -16450,7 +16450,7 @@ TEXT ·sqlite3FkOldmask(SB), NOSPLIT, $192-32
 	QUAD $0x3f8000003f800000
 	RET
 
-TEXT ·codeReturningTrigger(SB), NOSPLIT, $272-40
+TEXT ·codeReturningTrigger(SB), $272-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000012024a48b4c
@@ -21050,7 +21050,7 @@ TEXT ·sqlite3GenerateColumnNames(SB), $208-24
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ProcessReturningSubqueries(SB), NOSPLIT, $96-24
+TEXT ·sqlite3ProcessReturningSubqueries(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -21543,7 +21543,7 @@ TEXT ·sqlite3LocateTableItem(SB), $112-32
 	BYTE $0x00
 	RET
 
-TEXT ·xferCompatibleIndex(SB), NOSPLIT, $112-32
+TEXT ·xferCompatibleIndex(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -21660,7 +21660,7 @@ TEXT ·xferCompatibleIndex(SB), NOSPLIT, $112-32
 	BYTE $0x00
 	RET
 
-TEXT ·xferCompatibleCheck(SB), NOSPLIT, $112-32
+TEXT ·xferCompatibleCheck(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c

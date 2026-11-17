@@ -954,7 +954,7 @@ TEXT ·fixBoundingBox(SB), $208-32
 	BYTE $0x00
 	RET
 
-TEXT ·rtreeSearchPointPop(SB), NOSPLIT, $96-16
+TEXT ·rtreeSearchPointPop(SB), $96-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -9263,7 +9263,7 @@ TEXT ·fts5VocabRowidMethod(SB), NOSPLIT, $0-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3Fts5PoslistNext64(SB), NOSPLIT, $80-48
+TEXT ·sqlite3Fts5PoslistNext64(SB), $80-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -9388,7 +9388,7 @@ TEXT ·sqlite3Fts5PoslistNext64(SB), NOSPLIT, $80-48
 	BYTE $0xff
 	RET
 
-TEXT ·fts5VocabInstanceNewTerm(SB), NOSPLIT, $128-24
+TEXT ·fts5VocabInstanceNewTerm(SB), $128-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -10662,7 +10662,7 @@ TEXT ·fts5SegIterNextPage(SB), $80-24
 	BYTE $0x00
 	RET
 
-TEXT ·fts5SegIterLoadNPos(SB), NOSPLIT, $64-24
+TEXT ·fts5SegIterLoadNPos(SB), $64-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -11340,7 +11340,7 @@ TEXT ·fts5SegIterReverseNewPage(SB), $96-24
 	BYTE $0xff
 	RET
 
-TEXT ·fts5MultiIterIsDeleted(SB), NOSPLIT, $96-24
+TEXT ·fts5MultiIterIsDeleted(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -12163,7 +12163,7 @@ TEXT ·fts5LeafRead(SB), $64-32
 	BYTE $0x00
 	RET
 
-TEXT ·fts5SegIterReverseInitPage(SB), NOSPLIT, $112-24
+TEXT ·fts5SegIterReverseInitPage(SB), $112-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -12387,7 +12387,7 @@ TEXT ·fts5SegIterReverseInitPage(SB), NOSPLIT, $112-24
 	BYTE $0xeb
 	RET
 
-TEXT ·fts5DlidxLvlNext(SB), NOSPLIT, $96-24
+TEXT ·fts5DlidxLvlNext(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -22367,7 +22367,7 @@ TEXT ·fts5SegIterNext(SB), $144-32
 	BYTE $0xff
 	RET
 
-TEXT ·fts5SegIterLoadTerm(SB), NOSPLIT, $144-32
+TEXT ·fts5SegIterLoadTerm(SB), $144-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c

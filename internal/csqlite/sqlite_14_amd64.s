@@ -1324,7 +1324,7 @@ TEXT ·sqlite3FkCheck(SB), $336-56
 	QUAD $0x0000000000000000
 	RET
 
-TEXT ·sqlite3CompleteInsertion(SB), NOSPLIT, $176-80
+TEXT ·sqlite3CompleteInsertion(SB), $176-80
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000c024a48b4c
@@ -1500,7 +1500,7 @@ TEXT ·sqlite3CompleteInsertion(SB), NOSPLIT, $176-80
 	BYTE $0x00
 	RET
 
-TEXT ·autoIncrementEnd(SB), NOSPLIT, $144-16
+TEXT ·autoIncrementEnd(SB), $144-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -1843,7 +1843,7 @@ TEXT ·sqlite3CodeChangeCount(SB), $112-32
 	BYTE $0x00
 	RET
 
-TEXT ·fkLookupParent(SB), NOSPLIT, $384-80
+TEXT ·fkLookupParent(SB), $384-80
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000019024a48b4c
@@ -7372,7 +7372,7 @@ TEXT ·whereLoopClearUnion(SB), $64-24
 	BYTE $0xff
 	RET
 
-TEXT ·explainAppendTerm(SB), NOSPLIT, $160-56
+TEXT ·explainAppendTerm(SB), $160-56
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -12095,7 +12095,7 @@ TEXT ·isDistinctRedundant(SB), $160-48
 	BYTE $0xdf
 	RET
 
-TEXT ·whereScanNext(SB), NOSPLIT, $160-24
+TEXT ·whereScanNext(SB), $160-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000b024a48b4c
@@ -12544,7 +12544,7 @@ TEXT ·whereScanNext(SB), NOSPLIT, $160-24
 	BYTE $0xdf
 	RET
 
-TEXT ·whereScanInitIndexExpr(SB), NOSPLIT, $48-24
+TEXT ·whereScanInitIndexExpr(SB), $48-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -15566,7 +15566,7 @@ TEXT ·whereLoopAddOr(SB), $416-40
 	QUAD $0x0000000000000000
 	RET
 
-TEXT ·whereInterstageHeuristic(SB), NOSPLIT, $64-16
+TEXT ·whereInterstageHeuristic(SB), $64-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -15629,7 +15629,7 @@ TEXT ·whereInterstageHeuristic(SB), NOSPLIT, $64-16
 	BYTE $0x00
 	RET
 
-TEXT ·whereReverseScanOrder(SB), NOSPLIT, $64-16
+TEXT ·whereReverseScanOrder(SB), $64-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
@@ -15665,7 +15665,7 @@ TEXT ·whereReverseScanOrder(SB), NOSPLIT, $64-16
 	QUAD $0x00eb000001808089
 	RET
 
-TEXT ·whereOmitNoopJoin(SB), NOSPLIT, $176-24
+TEXT ·whereOmitNoopJoin(SB), $176-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000c024a48b4c
@@ -16030,7 +16030,7 @@ TEXT ·whereOmitNoopJoin(SB), NOSPLIT, $176-24
 	BYTE $0x00
 	RET
 
-TEXT ·whereCheckIfBloomFilterIsUseful(SB), NOSPLIT, $128-16
+TEXT ·whereCheckIfBloomFilterIsUseful(SB), $128-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -16163,7 +16163,7 @@ TEXT ·whereCheckIfBloomFilterIsUseful(SB), NOSPLIT, $128-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3VdbeChangeP4(SB), NOSPLIT, $48-32
+TEXT ·sqlite3VdbeChangeP4(SB), $48-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c

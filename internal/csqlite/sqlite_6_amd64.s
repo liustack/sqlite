@@ -9251,7 +9251,7 @@ TEXT ·sqlite3IdListAppend(SB), $160-40
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3CreateColumnExpr(SB), NOSPLIT, $48-48
+TEXT ·sqlite3CreateColumnExpr(SB), $48-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
@@ -9325,7 +9325,7 @@ TEXT ·sqlite3CreateColumnExpr(SB), NOSPLIT, $48-48
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ExprFunction(SB), NOSPLIT, $112-48
+TEXT ·sqlite3ExprFunction(SB), $112-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -9401,7 +9401,7 @@ TEXT ·sqlite3ExprFunction(SB), NOSPLIT, $112-48
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3PExpr(SB), NOSPLIT, $80-48
+TEXT ·sqlite3PExpr(SB), $80-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -9520,7 +9520,7 @@ TEXT ·sqlite3PExpr(SB), NOSPLIT, $80-48
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3ExprAnd(SB), NOSPLIT, $80-40
+TEXT ·sqlite3ExprAnd(SB), $80-40
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -9691,7 +9691,7 @@ TEXT ·sqlite3SetJoinExpr(SB), $96-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3ExprAlloc(SB), NOSPLIT, $128-48
+TEXT ·sqlite3ExprAlloc(SB), $128-48
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -9901,7 +9901,7 @@ TEXT ·sqlite3ExprAlloc(SB), NOSPLIT, $128-48
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3ExprSetHeightAndFlags(SB), NOSPLIT, $128-24
+TEXT ·sqlite3ExprSetHeightAndFlags(SB), $128-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -10125,7 +10125,7 @@ TEXT ·sqlite3ExprSetHeightAndFlags(SB), NOSPLIT, $128-24
 	BYTE $0x00
 	RET
 
-TEXT ·heightOfSelect(SB), NOSPLIT, $80-24
+TEXT ·heightOfSelect(SB), $80-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
@@ -11752,7 +11752,7 @@ TEXT ·sqlite3InitOne(SB), $224-48
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3PragmaVtabRegister(SB), NOSPLIT, $144-32
+TEXT ·sqlite3PragmaVtabRegister(SB), $144-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000a024a48b4c
@@ -11855,7 +11855,7 @@ TEXT ·sqlite3PragmaVtabRegister(SB), NOSPLIT, $144-32
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3JsonVtabRegister(SB), NOSPLIT, $112-32
+TEXT ·sqlite3JsonVtabRegister(SB), $112-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -15026,7 +15026,7 @@ TEXT ·jsonEachRowid(SB), NOSPLIT, $0-32
 	BYTE $0x00
 	RET
 
-TEXT ·jsonEachPathLength(SB), NOSPLIT, $112-24
+TEXT ·jsonEachPathLength(SB), $112-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -15129,7 +15129,7 @@ TEXT ·jsonEachPathLength(SB), NOSPLIT, $112-24
 	BYTE $0x00
 	RET
 
-TEXT ·jsonAppendPathName(SB), NOSPLIT, $112-16
+TEXT ·jsonAppendPathName(SB), $112-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
@@ -17308,7 +17308,7 @@ TEXT ·sqlite3RunParser(SB), $192-32
 	BYTE $0xff
 	RET
 
-TEXT ·apiHandleError(SB), NOSPLIT, $32-32
+TEXT ·apiHandleError(SB), $32-32
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c3024648b4c
@@ -17774,7 +17774,7 @@ TEXT ·yyGrowStack(SB), $144-24
 	BYTE $0xff
 	RET
 
-TEXT ·sqlite3FinishCoding(SB), NOSPLIT, $176-16
+TEXT ·sqlite3FinishCoding(SB), $176-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x000000c024a48b4c
@@ -18492,7 +18492,7 @@ TEXT ·sqlite3FinishCoding(SB), NOSPLIT, $176-16
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3BeginTransaction(SB), NOSPLIT, $128-24
+TEXT ·sqlite3BeginTransaction(SB), $128-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x0000009024a48b4c
@@ -18618,7 +18618,7 @@ TEXT ·sqlite3BeginTransaction(SB), NOSPLIT, $128-24
 	BYTE $0x00
 	RET
 
-TEXT ·sqlite3EndTransaction(SB), NOSPLIT, $96-24
+TEXT ·sqlite3EndTransaction(SB), $96-24
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c7024648b4c
@@ -20445,7 +20445,7 @@ TEXT ·sqlite3StartTable(SB), $224-64
 	BYTE $0xff
 	RET
 
-TEXT ·disableLookaside(SB), NOSPLIT, $64-16
+TEXT ·disableLookaside(SB), $64-16
 	NO_LOCAL_POINTERS
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c

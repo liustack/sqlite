@@ -2016,7 +2016,7 @@ TEXT ·wherePathSolver(SB), $344-24
 	WORD $0x17fffff2
 	RET
 
-TEXT ·sqlite3WhereExplainOneScan(SB), NOSPLIT, $120-40
+TEXT ·sqlite3WhereExplainOneScan(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4307,7 +4307,7 @@ TEXT ·whereLoopAddBtreeIndex(SB), $376-48
 	MOVD R0, ret+40(FP)
 	RET
 
-TEXT ·indexInAffinityOk(SB), NOSPLIT, $104-40
+TEXT ·indexInAffinityOk(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4477,7 +4477,7 @@ TEXT ·indexInAffinityOk(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·minMaxQuery(SB), NOSPLIT, $104-40
+TEXT ·minMaxQuery(SB), $104-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4649,7 +4649,7 @@ TEXT ·minMaxQuery(SB), NOSPLIT, $104-40
 	MOVD R0, ret+32(FP)
 	RET
 
-TEXT ·sqlite3_str_appendchar(SB), NOSPLIT, $88-32
+TEXT ·sqlite3_str_appendchar(SB), $88-32
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -4711,7 +4711,7 @@ TEXT ·sqlite3_str_appendchar(SB), NOSPLIT, $88-32
 	WORD $0x14000001
 	RET
 
-TEXT ·rtreeSearchPointNew(SB), NOSPLIT, $120-40
+TEXT ·rtreeSearchPointNew(SB), $120-40
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -5672,7 +5672,7 @@ TEXT ·sqlite3VdbeExplain(SB), $120-40
 	WORD $0x14000001
 	RET
 
-TEXT ·jsonLabelCompareEscaped_block(SB), NOSPLIT, $88-24
+TEXT ·jsonLabelCompareEscaped_block(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22326,7 +22326,7 @@ TEXT ·sqlite3AlterAddConstraint_block(SB), $184-16
 	WORD $0x17ffff29
 	RET
 
-TEXT ·sqlite3VdbeAddOp4_block(SB), NOSPLIT, $104-24
+TEXT ·sqlite3VdbeAddOp4_block(SB), $104-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22425,7 +22425,7 @@ TEXT ·sqlite3VdbeAddOp4_block(SB), NOSPLIT, $104-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·sqlite3VdbeAddOp4Int_block(SB), NOSPLIT, $40-24
+TEXT ·sqlite3VdbeAddOp4Int_block(SB), $40-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22469,7 +22469,7 @@ TEXT ·sqlite3VdbeAddOp4Int_block(SB), NOSPLIT, $40-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·addOp4IntSlow_block(SB), NOSPLIT, $88-24
+TEXT ·addOp4IntSlow_block(SB), $88-24
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
@@ -22522,7 +22522,7 @@ TEXT ·addOp4IntSlow_block(SB), NOSPLIT, $88-24
 	MOVD R0, ret+16(FP)
 	RET
 
-TEXT ·codeCompare_block(SB), NOSPLIT, $136-16
+TEXT ·codeCompare_block(SB), $136-16
 	NO_LOCAL_POINTERS
 	MOVD a0+0(FP), R20
 	MOVD a1+8(FP), R21
