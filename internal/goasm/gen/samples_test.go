@@ -101,7 +101,7 @@ func TestSampleRuns(t *testing.T) {
 		{"nosplit.c", nil, nil, 4, false},
 		{"vecpool.c", nil, []string{"-align64", "mixa:40,mixb:8,mixc:16,mixd:24"}, 12, false},
 		{"trap.c", nil, nil, 2, false},
-		{"narrow_va.c", nil, []string{"-varargs-block", "-non-format-variadic", "tagged,tagged2,small,oddsum,forward,forward2"}, 12, false},
+		{"narrow_va.c", nil, []string{"-varargs-block"}, 12, false},
 		{"postlink.c", []string{"postlink_lib.c"}, []string{"-leaves", "pl_sum", "-postlink-opt-args", postLinkSpecialize}, 5, false},
 	} {
 		name := strings.TrimSuffix(s.file, ".c")
