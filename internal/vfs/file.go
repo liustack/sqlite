@@ -138,6 +138,9 @@ func OpenWith(name string, flags int, o OpenOptions) (f *File, outFlags int, rc 
 		}
 	}
 	f.fd = fd
+	if isCreate && !isDelete {
+		tell(ChangeCreate, name, 0, nil)
+	}
 
 	// A journal or WAL made by root is given to the owner of the database,
 	// or the owner could no longer open the database.
@@ -384,6 +387,7 @@ func (f *File) WriteAt(p []byte, off int64) int {
 	if rc := f.faultOf(OpWrite); rc != OK {
 		return rc
 	}
+	all, at := p, off
 	for len(p) > 0 {
 		n, err := unix.Pwrite(f.fd, p, off)
 		if err == unix.EINTR {
@@ -398,6 +402,7 @@ func (f *File) WriteAt(p []byte, off int64) int {
 		p = p[n:]
 		off += int64(n)
 	}
+	tell(ChangeWrite, f.path, at, all)
 	return OK
 }
 
@@ -426,6 +431,7 @@ func (f *File) Truncate(size int64) int {
 	if f.journal && size < f.dirty {
 		f.dirty = size
 	}
+	tell(ChangeTruncate, f.path, size, nil)
 	return OK
 }
 
@@ -467,6 +473,7 @@ func (f *File) sync(flags int) int {
 	if rc := f.faultOf(OpSync); rc != OK {
 		return rc
 	}
+	tell(ChangeSync, f.path, 0, nil)
 	if err := fullFsync(f.fd, flags&0x0F == SyncFull); err != nil {
 		return IOErrFsync
 	}
@@ -474,6 +481,7 @@ func (f *File) sync(flags int) int {
 		// As os_unix, a directory that cannot be opened or synced is
 		// not an error: some systems cannot sync a directory.
 		if dir, err := openDirectory(f.path); err == nil {
+			tell(ChangeDirSync, f.path, 0, nil)
 			fullFsync(dir, false)
 			unix.Close(dir)
 		}
@@ -531,6 +539,9 @@ func (f *File) SizeHint(size int64) int {
 		err := allocate(f.fd, f.st.Size, n, int64(f.st.Blksize))
 		if err != nil && err != unix.EINVAL {
 			return IOErrWrite
+		}
+		if err == nil {
+			tell(ChangeTruncate, f.path, n, nil)
 		}
 	}
 	return OK
@@ -597,10 +608,12 @@ func Delete(name string, syncDir bool) int {
 	if err != nil {
 		return IOErrDelete
 	}
+	tell(ChangeDelete, name, 0, nil)
 	if syncDir {
 		// As os_unix, a directory that cannot be opened is not an error.
 		if dir, err := openDirectory(name); err == nil {
 			defer unix.Close(dir)
+			tell(ChangeDirSync, name, 0, nil)
 			if fullFsync(dir, false) != nil {
 				return IOErrDirFsync
 			}

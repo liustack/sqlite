@@ -1,9 +1,10 @@
 ---
-summary: 'The checks every commit passes, the check of the generated engine, the tests of the S3 client and the replica, the tests of the capture of changes for replication, the tests of the generator that run LLVM, and the ones that only run on linux/amd64'
+summary: 'The checks every commit passes, the check of the generated engine, the tests that play a power loss, the tests of the S3 client and the replica, the tests of the capture of changes for replication, the tests of the generator that run LLVM, and the ones that only run on linux/amd64'
 read_when:
   - Getting ready to commit
   - Changing the generator, its LLVM pass, engine/ or engine/flags.sh
   - A test of internal/goasm/gen fails
+  - Changing how internal/vfs writes, syncs, cuts or deletes a file, or a test of power loss fails
   - Changing replica or replica/internal/s3, or running their tests against MinIO
   - Changing replica/internal/capture or internal/replhook
 ---
@@ -19,6 +20,18 @@ make check
 It runs, in order: `engine/vendor.sh --verify` and `engine/libc/vendor.sh --verify` (the vendored C is the pinned release), `go build ./...`, `gofmt -l -s` over the Go files git knows or would add (prints nothing, and leaves out `.build/`), `go vet -asmdecl=false ./...`, `scripts/docs-list.sh --check`, `go test -count=1 ./...`, and the tests of the driver, the VFS, the C API and the replicator again under the race detector. With `SQLITE3` set to a sqlite3 shell, `TestInteropShell` has it write the same database as the driver at the same time. CI sets it on every target. The `-asmdecl=false` leaves out the check of the declarations of generated assembly, which the generator's own checks cover.
 
 CI runs `make check`'s tests on the five targets (darwin/amd64 on an arm64 Mac, under Rosetta) with the lowest supported Go and with Go 1.27. `scripts/go-versions.sh` runs them with each Go release the module supports, and the weekly workflow `go-latest` runs it on every target (see [upstream.md](upstream.md#moving-to-a-new-go)).
+
+## Power loss
+
+`TestCrash` kills a process, which loses nothing the process wrote. `TestPowerLoss` and `TestPowerLossGroupCommit` (`powerloss_test.go`, linux and darwin) check that each sync comes where SQLite needs it. They keep a log of everything the VFS does to the files of a database while a program writes (`vfs.SetTrace`): each file made or deleted, each write, cut and sync. Then, at many moments of the log, they build the files a power loss at that moment could leave and open them. What was synced is there. Of what was not, nothing arrived, or all of it, or what was done before some moment, or any part: of each write all its sectors, none, the first ones or any of them, a file longer than the data that arrived with anything in the rest, and a name that changed since its directory was synced with its old file, its new one or none.
+
+Each database must pass `integrity_check`. In `TestPowerLoss` it must hold the transactions up to some number, each whole with the bytes it wrote, and that number is at least the last commit that returned, less what the case may lose. In `TestPowerLossGroupCommit` each row must have the bytes it wrote, no row of a goroutine may be there without the ones that goroutine inserted before it, and where commits are durable every row whose merged insert returned must be there. The cases are WAL with `synchronous` FULL and NORMAL, WAL started over by `_wal_limit`, and the rollback journal as DELETE (EXTRA, FULL, NORMAL), TRUNCATE and PERSIST. Three of them hold less, as SQLite documents:
+
+- DELETE with FULL deletes the journal and does not sync its directory, so a power loss can bring back the database of before the last commit, and no older one. EXTRA syncs it.
+- WAL with NORMAL syncs the WAL at a checkpoint, so the commits since the last one can be lost.
+- DELETE with NORMAL writes the number of records into the header of the journal before it syncs them, and the checksum of a record looks at one byte in 200. A power loss that keeps the header and a part of a record can damage the database. The test found this within 50,000 power losses, so in this case the writes arrive in the order they were made, each whole.
+
+`POWERLOSS_POINTS` sets the number of moments (300, and 60 with `-short`), and `POWERLOSS_KEEP` names a directory that gets the files of a power loss that fails, as they were before they were opened. A change to how the VFS writes or syncs must keep these tests red for a sync left out: taking out the sync of the WAL, of the database, of the journal, of the directory of a new journal, or of the directory after a delete each fails them with 60 moments. The sync of the header of a WAL that starts over is needed only for some orders of arrival: 300 or 500 moments found it missing in 14 runs of 16.
 
 ## The S3 client and the replica
 
