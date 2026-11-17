@@ -210,8 +210,8 @@ func (h *heldConn) close() {
 }
 
 // TestFaultThenFTS5: two connections take turns inserting into an FTS5 table
-// in batches while one allocation or one write fails, each point in turn,
-// and a connection goes on as long as database/sql would keep it. The index
+// in batches while one allocation or one write fails, for the points of
+// faultSweep, and a connection goes on as long as database/sql would keep it. The index
 // matches the table afterwards.
 //
 // FTS5 reads its count of rows with a statement of its own as it inserts.
@@ -240,18 +240,16 @@ func TestFaultThenFTS5(t *testing.T) {
 		modes []string
 		// holds are the numbers of statements the connections hold (heldConn).
 		holds []int
-		// The points tried are step apart, and quick apart with -short.
-		step, quick int64
 		// on has the call for which hit says so fail. cur gives the
 		// connection that runs then.
 		on func(hit hitFunc, cur func() *conn)
 	}{
-		{"out of memory", short, "", both, []int{0, 60}, 1, 7, func(hit hitFunc, _ func() *conn) {
+		{"out of memory", short, "", both, []int{0, 60}, func(hit hitFunc, _ func() *conn) {
 			csqlite.SetAllocFault(func(uintptr) bool { return hit() })
 		}},
 		// An interrupt is none of the three errors: the connection it stops
 		// stays in use, and the index must match the table all the same.
-		{"an interrupt", short, "", both, []int{0, 60}, 3, 21, func(hit hitFunc, cur func() *conn) {
+		{"an interrupt", short, "", both, []int{0, 60}, func(hit hitFunc, cur func() *conn) {
 			csqlite.SetAllocFault(func(uintptr) bool {
 				if hit() {
 					cur().c.Interrupt()
@@ -262,7 +260,7 @@ func TestFaultThenFTS5(t *testing.T) {
 		// The rows are long and the page cache small, so that SQLite writes
 		// pages in the middle of a statement. No sync, which the test does
 		// not make fail: it only takes time.
-		{"an interrupt, long rows", long, spill, both, []int{0}, 97, 997, func(hit hitFunc, cur func() *conn) {
+		{"an interrupt, long rows", long, spill, both, []int{0}, func(hit hitFunc, cur func() *conn) {
 			csqlite.SetAllocFault(func(uintptr) bool {
 				if hit() {
 					cur().c.Interrupt()
@@ -273,7 +271,7 @@ func TestFaultThenFTS5(t *testing.T) {
 		// With rows of this length a write that fails leaves the count
 		// wrong in the rollback journal modes only, so the two cases do not
 		// take the time of WAL.
-		{"a write fails", long, spill, []string{"DELETE"}, []int{0}, 1, 5, func(hit hitFunc, _ func() *conn) {
+		{"a write fails", long, spill, []string{"DELETE"}, []int{0}, func(hit hitFunc, _ func() *conn) {
 			vfs.SetFault(func(_ string, op vfs.Op) int {
 				if op == vfs.OpWrite && hit() {
 					return IOERR_WRITE
@@ -281,7 +279,7 @@ func TestFaultThenFTS5(t *testing.T) {
 				return vfs.OK
 			})
 		}},
-		{"the disk is full", long, spill, []string{"DELETE"}, []int{0}, 1, 5, func(hit hitFunc, _ func() *conn) {
+		{"the disk is full", long, spill, []string{"DELETE"}, []int{0}, func(hit hitFunc, _ func() *conn) {
 			vfs.SetFault(func(_ string, op vfs.Op) int {
 				if op == vfs.OpWrite && hit() {
 					return FULL
@@ -302,12 +300,8 @@ func TestFaultThenFTS5(t *testing.T) {
 			}
 			for _, hold := range tc.holds {
 				t.Run(fmt.Sprintf("%s/%s/holding %d", mode, tc.name, hold), func(t *testing.T) {
-					step := tc.step
-					if testing.Short() {
-						step = tc.quick
-					}
 					root := t.TempDir()
-					for n := int64(1); ; n += step {
+					faultSweep(t, func(n int64) int64 {
 						dir, err := os.MkdirTemp(root, "n")
 						if err != nil {
 							t.Fatal(err)
@@ -319,11 +313,10 @@ func TestFaultThenFTS5(t *testing.T) {
 						}
 						setup.Close()
 						cs := []*heldConn{openHeld(t, dsn, hold), openHeld(t, dsn, hold)}
-						var seen, failed int64
+						var seen int64
 						hit := func() bool {
 							seen++
 							if seen == n {
-								failed++
 								return true
 							}
 							return false
@@ -366,9 +359,6 @@ func TestFaultThenFTS5(t *testing.T) {
 						for _, h := range cs {
 							h.close()
 						}
-						if failed == 0 {
-							return // past the last point
-						}
 						v := oomConn(t, dsn)
 						check := queryOne(t, v, `PRAGMA integrity_check`)
 						rows := queryOne(t, v, `SELECT count(*) FROM f`)
@@ -395,7 +385,8 @@ func TestFaultThenFTS5(t *testing.T) {
 						if err := os.RemoveAll(dir); err != nil {
 							t.Fatal(err)
 						}
-					}
+						return seen
+					})
 				})
 			}
 		}

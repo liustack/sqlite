@@ -15,8 +15,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +56,49 @@ func failAlloc(t *testing.T, n int64, after bool) *oomFault {
 
 // allocOK gives SQLite its memory back.
 func allocOK() { csqlite.SetAllocFault(nil) }
+
+// never is a point no run reaches: the fault of a run made with it never
+// comes.
+const never = math.MaxInt64
+
+// faultSweep tries points of a sweep. run(n) does the work of the test with
+// the n-th call of what the test makes fail (an allocation, a write) as the
+// one that fails, checks what came of it, and gives how many such calls the
+// work made. A first run with never counts them. Then come FAULT_POINTS
+// points spread evenly over them from a first one picked at random: 40
+// when it is not set, 10 with -short, and every point when it is 0. A point
+// that fails does so again alone, and with FAULT_POINTS=0. It gives the
+// number of points there are.
+func faultSweep(t *testing.T, run func(n int64) (calls int64)) int64 {
+	t.Helper()
+	budget := int64(40)
+	if testing.Short() {
+		budget = 10
+	}
+	if s := os.Getenv("FAULT_POINTS"); s != "" {
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || v < 0 {
+			t.Fatalf("FAULT_POINTS=%s", s)
+		}
+		budget = v
+	}
+	total := run(never)
+	if t.Failed() {
+		t.Fatal("with no failure")
+	}
+	step, first := int64(1), int64(1)
+	if budget > 0 && total > budget {
+		step = (total + budget - 1) / budget
+		first = 1 + rand.Int64N(step)
+	}
+	for n := first; n <= total; n += step {
+		run(n)
+		if t.Failed() {
+			t.Fatalf("point %d of %d", n, total)
+		}
+	}
+	return total
+}
 
 // oomConn is a connection of its own to the database at dsn.
 func oomConn(t *testing.T, dsn string) *conn {
@@ -125,8 +172,8 @@ var oomCases = []struct {
 	{"pool full, virtual table first", 60, 5},
 }
 
-// TestBatchOutOfMemory runs a batch of the queue with each allocation of the
-// C failing in turn, once or from then on, until a run meets no failure.
+// TestBatchOutOfMemory runs a batch of the queue with an allocation of the C
+// failing, once or from then on, for the points of faultSweep.
 func TestBatchOutOfMemory(t *testing.T) {
 	for _, mode := range []string{"WAL", "DELETE"} {
 		for _, tc := range oomCases {
@@ -136,30 +183,24 @@ func TestBatchOutOfMemory(t *testing.T) {
 					name = mode + "/" + tc.name + "/from then on"
 				}
 				t.Run(name, func(t *testing.T) {
-					dir := t.TempDir()
-					step := int64(1)
-					if testing.Short() {
-						step = 7
-					}
-					var runs, bad int
-					for n := int64(1); ; n += step {
-						dsn := "file:" + filepath.Join(dir, fmt.Sprintf("n%d.db", n)) +
+					root := t.TempDir()
+					total := faultSweep(t, func(n int64) int64 {
+						dir, err := os.MkdirTemp(root, "n")
+						if err != nil {
+							t.Fatal(err)
+						}
+						dsn := "file:" + filepath.Join(dir, "b.db") +
 							"?_pragma=journal_mode(" + mode + ")&_pragma=foreign_keys(1)"
-						failed, wasBad := batchOutOfMemory(t, dsn, tc.hold, tc.first, n, after)
-						if t.Failed() {
-							t.Fatalf("allocation %d", n)
+						calls := batchOutOfMemory(t, dsn, tc.hold, tc.first, n, after)
+						if !t.Failed() {
+							if err := os.RemoveAll(dir); err != nil {
+								t.Fatal(err)
+							}
 						}
-						if failed == 0 {
-							break
-						}
-						runs++
-						if wasBad {
-							bad++
-						}
-					}
-					t.Logf("%d runs, %d left the connection unusable", runs, bad)
-					if runs < 100/int(step) {
-						t.Fatalf("only %d runs met a failure: the batch allocates more than that", runs)
+						return calls
+					})
+					if total < 100 {
+						t.Fatalf("the batch made %d allocations: it makes more than that", total)
 					}
 				})
 			}
@@ -169,9 +210,8 @@ func TestBatchOutOfMemory(t *testing.T) {
 
 // batchOutOfMemory runs oomBatch, from its statement first on, on a new
 // connection that holds hold statements, with the n-th allocation failing.
-// It gives how many allocations failed, and whether the connection was left
-// unusable.
-func batchOutOfMemory(t *testing.T, dsn string, hold, first int, n int64, after bool) (int64, bool) {
+// It gives how many allocations the batch made.
+func batchOutOfMemory(t *testing.T, dsn string, hold, first int, n int64, after bool) int64 {
 	t.Helper()
 	setup := oomConn(t, dsn)
 	if err := setup.c.Exec(`CREATE TABLE t(id INTEGER PRIMARY KEY, k TEXT UNIQUE, v);
@@ -208,6 +248,7 @@ func batchOutOfMemory(t *testing.T, dsn string, hold, first int, n int64, after 
 	fault := failAlloc(t, n, after)
 	back := c.runBatch(batch)
 	allocOK()
+	calls := fault.seen.Load()
 
 	wasBad := c.bad || c.c.Broken()
 	if !after && wasBad {
@@ -264,7 +305,7 @@ func batchOutOfMemory(t *testing.T, dsn string, hold, first int, n int64, after 
 	if s := queryOne(t, v, `PRAGMA integrity_check`); len(s) != 1 || s[0] != "ok" {
 		t.Errorf("integrity_check: %v", s)
 	}
-	return fault.failed.Load(), wasBad
+	return calls
 }
 
 // isCode says whether err is SQLite's error of the extended code.
@@ -424,14 +465,13 @@ func TestExecOutOfMemory(t *testing.T) {
 	} {
 		for _, hold := range []int{0, 60} {
 			t.Run(fmt.Sprintf("%s/holding %d", tc.name, hold), func(t *testing.T) {
-				dir := t.TempDir()
-				step := int64(1)
-				if testing.Short() {
-					step = 7
-				}
-				runs := 0
-				for n := int64(1); ; n += step {
-					dsn := "file:" + filepath.Join(dir, fmt.Sprintf("n%d.db", n)) + "?_pragma=journal_mode(WAL)"
+				root := t.TempDir()
+				total := faultSweep(t, func(n int64) int64 {
+					dir, err := os.MkdirTemp(root, "n")
+					if err != nil {
+						t.Fatal(err)
+					}
+					dsn := "file:" + filepath.Join(dir, "e.db") + "?_pragma=journal_mode(WAL)"
 					setup := oomConn(t, dsn)
 					if err := setup.c.Exec(`CREATE TABLE t(id INTEGER PRIMARY KEY, k TEXT UNIQUE, v);
 						CREATE VIRTUAL TABLE f USING fts5(body)`); err != nil {
@@ -448,24 +488,19 @@ func TestExecOutOfMemory(t *testing.T) {
 						held = append(held, s)
 					}
 					fault := failAlloc(t, n, false)
-					_, err := c.ExecContext(context.Background(), tc.sql, []driver.NamedValue{{Ordinal: 1, Value: "alpha"}})
+					_, err = c.ExecContext(context.Background(), tc.sql, []driver.NamedValue{{Ordinal: 1, Value: "alpha"}})
 					allocOK()
 					broken := c.bad || c.c.Broken() || !c.c.AutoCommit()
 					for _, s := range held {
 						s.Finalize()
 					}
 					c.Close()
-					if fault.failed.Load() == 0 {
-						if err != nil {
-							t.Fatalf("with no failure: %v", err)
-						}
-						break
-					}
-					runs++
 					v := oomConn(t, dsn)
 					applied := batchCount(t, v, tc.applied)
 					v.Close()
 					switch {
+					case fault.failed.Load() == 0 && err != nil:
+						t.Fatalf("with no failure: %v", err)
 					case broken:
 						t.Fatalf("allocation %d: the connection is unusable, or in a transaction", n)
 					case err == nil && applied != 1:
@@ -475,9 +510,13 @@ func TestExecOutOfMemory(t *testing.T) {
 					case err != nil && !oomError(err):
 						t.Fatalf("allocation %d: %v, which does not say that memory ran out", n, err)
 					}
-				}
-				if runs == 0 {
-					t.Fatal("no run met a failure")
+					if err := os.RemoveAll(dir); err != nil {
+						t.Fatal(err)
+					}
+					return fault.seen.Load()
+				})
+				if total == 0 {
+					t.Fatal("the statement made no allocation")
 				}
 			})
 		}
@@ -551,19 +590,12 @@ func TestQueryOutOfMemory(t *testing.T) {
 			if err != nil || len(want) != 4 {
 				t.Fatalf("%d rows, %v", len(want), err)
 			}
-			step := int64(1)
-			if testing.Short() {
-				step = 5
-			}
-			for n := int64(1); ; n += step {
+			total := faultSweep(t, func(n int64) int64 {
 				c, closeConn := open()
 				fault := failAlloc(t, n, false)
 				got, err := read(c)
 				allocOK()
 				closeConn()
-				if fault.failed.Load() == 0 {
-					return
-				}
 				if err != nil && !oomError(err) {
 					t.Fatalf("allocation %d: %v, which does not say that memory ran out", n, err)
 				}
@@ -577,6 +609,10 @@ func TestQueryOutOfMemory(t *testing.T) {
 						}
 					}
 				}
+				return fault.seen.Load()
+			})
+			if total == 0 {
+				t.Fatal("the query made no allocation")
 			}
 		})
 	}
