@@ -106,10 +106,15 @@ func TestWALLimit(t *testing.T) {
 			}
 		}
 	})
+	// For a second and a half, and on a slow machine until the WAL has
+	// been past the limit and started over once.
 	var most int64
-	for end := time.Now().Add(1500 * time.Millisecond); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+	for start := time.Now(); ; time.Sleep(20 * time.Millisecond) {
 		if st, err := os.Stat(path + "-wal"); err == nil {
 			most = max(most, st.Size())
+		}
+		if d := time.Since(start); d > 30*time.Second || d > 1500*time.Millisecond && l.walRestarts.Load() > 0 {
+			break
 		}
 	}
 	close(stop)
