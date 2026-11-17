@@ -9,6 +9,7 @@ package bench
 
 import (
 	"net/url"
+	"strconv"
 
 	_ "modernc.org/sqlite"
 )
@@ -22,10 +23,15 @@ const DriverTag = "modernc"
 // DSN opens path with the same settings as every other driver, and
 // synchronous (NORMAL or FULL).
 func DSN(path, synchronous string) string {
+	return DSNBusy(path, synchronous, 5000)
+}
+
+// DSNBusy is DSN with a busy timeout of busyMS milliseconds.
+func DSNBusy(path, synchronous string, busyMS int) string {
 	q := url.Values{}
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "synchronous("+synchronous+")")
-	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "busy_timeout("+strconv.Itoa(busyMS)+")")
 	q.Add("_pragma", "foreign_keys(0)")
 	return "file:" + path + "?" + q.Encode()
 }

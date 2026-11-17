@@ -133,7 +133,10 @@ func threads(a []string) error {
 			return err
 		}
 	}
-	db, err := sql.Open(bench.DriverName, bench.DSN(path, syncMode))
+	// With 64 writers and synchronous=FULL, SQLite's busy handler can keep
+	// one writer of a driver that uses it waiting for more than the 5 s of
+	// the other benchmarks, and its write then fails. Here it waits.
+	db, err := sql.Open(bench.DriverName, bench.DSNBusy(path, syncMode, 60000))
 	if err != nil {
 		return err
 	}
@@ -149,6 +152,7 @@ func threads(a []string) error {
 	var stop atomic.Bool
 	var reads, writes, errs atomic.Int64
 	var ready, wg sync.WaitGroup
+	var failed sync.Once // the first write that fails says why
 	start := make(chan struct{})
 	for i := range nr {
 		ready.Add(1)
@@ -189,6 +193,7 @@ func threads(a []string) error {
 			var k int64
 			for !stop.Load() {
 				if err := write(); err != nil {
+					failed.Do(func() { fmt.Fprintln(os.Stderr, "native: write:", err) })
 					errs.Add(1)
 					continue
 				}
