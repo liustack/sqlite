@@ -806,26 +806,43 @@ func (s *Stmt) ColumnInt64(i int) int64 { return int64(sqlite3_column_int64(s.c.
 
 func (s *Stmt) ColumnDouble(i int) float64 { return sqlite3_column_double(s.c.sp, s.p, uintptr(i)) }
 
-// ColumnText is the text of column i, copied.
-func (s *Stmt) ColumnText(i int) string {
+// ColumnText is the text of column i, copied. It fails when SQLite has no
+// memory for it: it allocates to give as UTF-8 a text it holds as UTF-16
+// (a database in UTF-16) or a value that is no text.
+func (s *Stmt) ColumnText(i int) (string, error) {
 	p := sqlite3_column_text(s.c.sp, s.p, uintptr(i))
-	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
-	if p == 0 || n == 0 {
-		return ""
+	if p == 0 {
+		return "", s.columnErr()
 	}
-	return string(bytesAt(p, n))
+	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
+	if n == 0 {
+		return "", nil
+	}
+	return string(bytesAt(p, n)), nil
 }
 
-// ColumnBlob is the bytes of column i, copied: nil for NULL.
-func (s *Stmt) ColumnBlob(i int) []byte {
+// ColumnBlob is the bytes of column i, copied: nil for NULL and for a blob
+// of no bytes. It fails when SQLite has no memory for it.
+func (s *Stmt) ColumnBlob(i int) ([]byte, error) {
 	p := sqlite3_column_blob(s.c.sp, s.p, uintptr(i))
-	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
 	if p == 0 {
-		return nil
+		return nil, s.columnErr()
 	}
+	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
 	b := make([]byte, n)
 	copy(b, bytesAt(p, n))
-	return b
+	return b, nil
+}
+
+// columnErr is the error of a call that gave no pointer for a column: out
+// of memory, or nil when the value is NULL or empty. SQLite gives NULL for
+// both and tells them apart by the connection's error code only, which a
+// step that gave a row left at SQLITE_ROW.
+func (s *Stmt) columnErr() error {
+	if int32(sqlite3_errcode(s.c.sp, s.c.db))&0xff == sqliteNoMem {
+		return s.c.err(sqliteNoMem)
+	}
+	return nil
 }
 
 // sideStacks are shadow stacks for calls made beside a connection's own,

@@ -510,8 +510,12 @@ func integrityCheck(f *os.File) error {
 		if err != nil {
 			return err
 		}
-		if !row || s.ColumnText(0) != "ok" {
-			return fmt.Errorf("replica: the restored database fails integrity_check: %s", s.ColumnText(0))
+		said, err := s.ColumnText(0)
+		if err != nil {
+			return err
+		}
+		if !row || said != "ok" {
+			return fmt.Errorf("replica: the restored database fails integrity_check: %s", said)
 		}
 		return nil
 	}()

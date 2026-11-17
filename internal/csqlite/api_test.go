@@ -49,13 +49,13 @@ func TestSelectOne(t *testing.T) {
 	if v := s.ColumnInt64(0); v != 1 {
 		t.Errorf("column 0: %d", v)
 	}
-	if v := s.ColumnText(1); v != "two" {
+	if v, err := s.ColumnText(1); err != nil || v != "two" {
 		t.Errorf("column 1: %q", v)
 	}
 	if v := s.ColumnDouble(2); v != 3.5 {
 		t.Errorf("column 2: %v", v)
 	}
-	if v := s.ColumnBlob(3); string(v) != "\x04\x05" {
+	if v, err := s.ColumnBlob(3); err != nil || string(v) != "\x04\x05" {
 		t.Errorf("column 3: %x", v)
 	}
 	if v := s.ColumnType(4); v != TypeNull {

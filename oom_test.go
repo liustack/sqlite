@@ -13,7 +13,10 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -354,5 +357,103 @@ func TestExecOutOfMemory(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestQueryOutOfMemory: a query reads rows while one allocation of the C
+// fails, each in turn. Each row it gives without an error is the row of the
+// database, also when the next one fails: never a value cut short or empty
+// in place of the one in the database. In a UTF-16 database SQLite allocates
+// as the driver asks for a text, to give it as UTF-8.
+func TestQueryOutOfMemory(t *testing.T) {
+	const q = `SELECT k, v, b, zeroblob(70000), printf('%s-%d', substr(v, 1, 20), k), CAST(k AS TEXT), b || zeroblob(10) FROM q ORDER BY k`
+	// read runs q on c and gives the rows it read, with the error that
+	// ended it.
+	read := func(c *conn) ([][]driver.Value, error) {
+		r, err := c.QueryContext(context.Background(), q, nil)
+		if err != nil {
+			return nil, err
+		}
+		defer r.Close()
+		var out [][]driver.Value
+		for {
+			row := make([]driver.Value, len(r.Columns()))
+			if err := r.Next(row); err == io.EOF {
+				return out, nil
+			} else if err != nil {
+				return out, err
+			}
+			out = append(out, row)
+		}
+	}
+	for _, tc := range []struct {
+		encoding string
+		hold     int
+	}{{"UTF-8", 0}, {"UTF-8", 60}, {"UTF-16", 0}, {"UTF-16", 60}} {
+		hold := tc.hold
+		t.Run(fmt.Sprintf("%s/holding %d", tc.encoding, hold), func(t *testing.T) {
+			// No PRAGMA in the DSN: the encoding is set before anything
+			// else makes the file.
+			dsn := "file:" + filepath.Join(t.TempDir(), "q.db")
+			setup := oomConn(t, dsn)
+			if err := setup.c.Exec(`PRAGMA encoding = '` + tc.encoding + `'; CREATE TABLE q(k INTEGER PRIMARY KEY, v TEXT, b BLOB);
+				INSERT INTO q VALUES (1, 'short', x'0102'), (2, printf('%.*c', 9000, 'y'), randomblob(9000)), (3, '', x''), (4, 'héllo', zeroblob(3000))`); err != nil {
+				t.Fatal(err)
+			}
+			if enc := queryOne(t, setup, "PRAGMA encoding"); !strings.HasPrefix(enc[0].(string), tc.encoding) {
+				t.Fatalf("the database is in %v", enc[0])
+			}
+			setup.Close()
+			open := func() (*conn, func()) {
+				c := oomConn(t, dsn)
+				var held []*csqlite.Stmt
+				for i := range hold {
+					s, _, err := c.c.Prepare(fmt.Sprintf("SELECT %d, k FROM q WHERE k = ?", i))
+					if err != nil {
+						t.Fatal(err)
+					}
+					held = append(held, s)
+				}
+				return c, func() {
+					for _, s := range held {
+						s.Finalize()
+					}
+					c.Close()
+				}
+			}
+			c, closeConn := open()
+			want, err := read(c)
+			closeConn()
+			if err != nil || len(want) != 4 {
+				t.Fatalf("%d rows, %v", len(want), err)
+			}
+			step := int64(1)
+			if testing.Short() {
+				step = 5
+			}
+			for n := int64(1); ; n += step {
+				c, closeConn := open()
+				fault := failAlloc(t, n, false)
+				got, err := read(c)
+				allocOK()
+				closeConn()
+				if fault.failed.Load() == 0 {
+					return
+				}
+				if err != nil && !oomError(err) {
+					t.Fatalf("allocation %d: %v, which does not say that memory ran out", n, err)
+				}
+				if err == nil && len(got) != len(want) {
+					t.Fatalf("allocation %d: the query gave no error and %d rows of %d", n, len(got), len(want))
+				}
+				for i := range got {
+					for j := range got[i] {
+						if !reflect.DeepEqual(got[i][j], want[i][j]) {
+							t.Fatalf("allocation %d: row %d came without an error, and its column %d is %.40v, not %.40v", n, i, j, got[i][j], want[i][j])
+						}
+					}
+				}
+			}
+		})
 	}
 }

@@ -295,7 +295,7 @@ func pragma(c *csqlite.Conn, p string) (string, error) {
 	if row, err := s.Step(); err != nil || !row {
 		return "", fmt.Errorf("PRAGMA %s: no value (%v)", p, err)
 	}
-	return s.ColumnText(0), nil
+	return s.ColumnText(0)
 }
 
 // release gives back what Open took, but the lock of the staging folder

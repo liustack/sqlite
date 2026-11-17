@@ -34,7 +34,7 @@ func TestOverflowReadSkipsPageCache(t *testing.T) {
 	if row, err := s.Step(); err != nil || !row {
 		t.Fatalf("Step = %v, %v", row, err)
 	}
-	if got := s.ColumnText(0); got != text {
+	if got, err := s.ColumnText(0); err != nil || got != text {
 		t.Fatalf("read %d bytes, want %d", len(got), len(text))
 	}
 	a := c.args()
