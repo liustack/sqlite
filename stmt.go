@@ -131,7 +131,7 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	r, err := s.run(ctx, args)
 	c.endWrite()
 	if s.changesConn {
-		c.readBusyTimeout()
+		c.changed()
 	}
 	return r, err
 }
@@ -156,12 +156,15 @@ func (s *stmt) prepareAgain() error {
 	return nil
 }
 
-// readBusyTimeout reads busy_timeout again after a statement that may have
-// set it: the file's write lock waits as long as SQLite would.
-func (c *conn) readBusyTimeout() {
+// changed reads again what the driver keeps of the settings of c, after a
+// statement that changes the connection: busy_timeout, as the file's write
+// lock waits as long as SQLite would, and who runs the automatic checkpoints
+// (checkpoint.go).
+func (c *conn) changed() {
 	if ms, err := pragmaInt(c.c, "busy_timeout"); err == nil {
 		c.busyTimeout = time.Duration(ms) * time.Millisecond
 	}
+	c.takeCheckpoints()
 }
 
 // run binds args and steps the statement once, with the write lock held if
@@ -233,14 +236,16 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, erro
 		return nil, err
 	}
 	row, err := s.s.Step()
+	// Also when it failed: SQLite prepares a PRAGMA again as it steps it,
+	// and sets the value as it does.
+	if s.changesConn {
+		c.changed()
+	}
 	if err != nil {
 		stop()
 		s.s.Reset()
 		c.endWrite()
 		return nil, ctxErr(ctx, err)
-	}
-	if s.changesConn {
-		c.readBusyTimeout()
 	}
 	s.busy = true
 	s.columns()

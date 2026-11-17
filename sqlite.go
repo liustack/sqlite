@@ -35,6 +35,11 @@
 //     as long as they last. 67108864 (64 MiB) by default, 0 for no limit.
 //
 // A connection waits 5 seconds for a lock unless a _pragma sets busy_timeout.
+//
+// In WAL mode the driver runs the automatic checkpoints of its connections:
+// one each time the WAL has grown by wal_autocheckpoint frames, where SQLite
+// runs one after every commit once the WAL is that long. PRAGMA
+// wal_autocheckpoint reads and sets it as before.
 package sqlite
 
 import (
@@ -200,6 +205,7 @@ func (c *Connector) setUp(conn *conn) error {
 		return err
 	}
 	conn.busyTimeout = time.Duration(ms) * time.Millisecond
+	conn.takeCheckpoints()
 	// A connection SQLite opened read-only, as when the file is, runs
 	// differently from the others of its key. So does one the DSN gave
 	// defer_foreign_keys, which SQLite turns off at the end of each

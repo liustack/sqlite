@@ -65,6 +65,14 @@ type writeLock struct {
 	// walTries counts the tries to start the WAL over, and walRestarts
 	// those that did.
 	walTries, walRestarts atomic.Int64
+	// walAt is the length of the WAL in frames at the last automatic
+	// checkpoint the driver ran (checkpoint.go), and walSalt the salt of
+	// the WAL then, which changes when the WAL starts over. Only the
+	// holder of the lock reads and writes them. walCheckpoints counts
+	// those checkpoints.
+	walAt          int64
+	walSalt        uint32
+	walCheckpoints atomic.Int64
 }
 
 // batchStats counts what group commit does on one file, for the benchmarks
@@ -254,7 +262,7 @@ func (l *writeLock) release(c *conn) {
 	}
 	// The WAL as it is now, which c knows once it has read it. A
 	// connection that never did wrote nothing there.
-	if frames, _, ok := walNow(c); ok {
+	if frames, salt, ok := walNow(c); ok {
 		if f := l.committed.Load(); f != nil {
 			l.mu.Unlock()
 			(*f)(frames, c.walLimit)
@@ -263,6 +271,14 @@ func (l *writeLock) release(c *conn) {
 		if c.walOver(l, int64(frames)) {
 			l.mu.Unlock()
 			c.restartWAL(l)
+			l.mu.Lock()
+		}
+		// Also after the WAL limit looked: it may have found the WAL under
+		// the limit, and past it a checkpoint that waited for readers in
+		// vain leaves this one little or nothing to copy.
+		if c.walDue(l, int64(frames), salt) {
+			l.mu.Unlock()
+			c.checkpoint(l, int64(frames))
 			l.mu.Lock()
 		}
 	}

@@ -254,6 +254,8 @@ const (
 	writesMain  = 1
 	private     = 2
 	changesConn = 4
+	// 8 is guarded (replica.go).
+	readsWALAuto = 16 // the statement reads PRAGMA wal_autocheckpoint
 )
 
 // err is the error of result code r, with the connection's message.
@@ -353,6 +355,19 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	*w = 0
 	r := int32(sqlite3_prepare_v2(a.top, c.db, z, uintptr(len(sql)), pStmt, pTail))
 	kind := *w
+	if kind&readsWALAuto != 0 && int32(go_wal_give(a.top, c.db)) != 0 {
+		// SQLite codes what PRAGMA wal_autocheckpoint reads into the
+		// statement as it prepares it, and reads 0 while the automatic
+		// checkpoints are taken from it (TakeAutoCheckpoint). So the
+		// statement is prepared once more with SQLite's own in place.
+		if p := *(*uintptr)(at(pStmt)); r == OK && p != 0 {
+			sqlite3_finalize(a.top, p)
+		}
+		*w = 0
+		r = int32(sqlite3_prepare_v2(a.top, c.db, z, uintptr(len(sql)), pStmt, pTail))
+		kind = *w
+		go_wal_take(a.top, c.db)
+	}
 	c.justChanged = kind&changesConn != 0
 	if c.justChanged {
 		c.changed = true
@@ -433,6 +448,32 @@ func (c *Conn) BusyTimeout(ms int) error {
 		return err
 	}
 	return c.err(int(int32(sqlite3_busy_timeout(c.sp, c.db, uintptr(ms)))))
+}
+
+// TakeAutoCheckpoint takes the automatic checkpoints of the connection from
+// SQLite, which runs none of them from then on: the caller does. n is the
+// wal_autocheckpoint the connection had, 0 for none. ok is false when they
+// were taken already. PRAGMA wal_autocheckpoint=N gives them back to SQLite
+// with N, as soon as it is prepared, and a call after it takes them again
+// and tells N. PRAGMA wal_autocheckpoint reads the same either way.
+func (c *Conn) TakeAutoCheckpoint() (n int, ok bool) {
+	if c.brokenErr() != nil {
+		return 0, false
+	}
+	n = int(int32(go_wal_take(c.sp, c.db)))
+	return n, n >= 0
+}
+
+// GiveAutoCheckpoint gives the automatic checkpoints of the connection back
+// to SQLite, with the wal_autocheckpoint they were taken with. It says
+// whether they were taken.
+func (c *Conn) GiveAutoCheckpoint() bool {
+	return c.brokenErr() == nil && int32(go_wal_give(c.sp, c.db)) != 0
+}
+
+// Attached says the connection has a database attached.
+func (c *Conn) Attached() bool {
+	return c.brokenErr() == nil && int32(go_attached(c.sp, c.db)) != 0
 }
 
 // Stmt is a prepared statement.
@@ -561,11 +602,18 @@ func (s *Stmt) Step() (bool, error) {
 		sqlite3_reset(s.c.sp, s.p)
 		return false, ErrRolledBack
 	}
+	// A statement that reads PRAGMA wal_autocheckpoint is prepared again by
+	// SQLite each time it runs, so it runs with SQLite's own automatic
+	// checkpoints in place, as it was prepared (Prepare).
+	given := s.kind&readsWALAuto != 0 && int32(go_wal_give(s.c.sp, s.c.db)) != 0
 	r := int32(sqlite3_step(s.c.sp, s.p))
 	// A callback that panicked during the step leaves no trace in r: the
 	// row it gave, or its end, may be wrong.
 	if err := s.c.brokenErr(); err != nil {
 		return false, err
+	}
+	if given {
+		go_wal_take(s.c.sp, s.c.db)
 	}
 	switch r {
 	case Row:
