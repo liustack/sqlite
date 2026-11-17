@@ -81,7 +81,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 // prepareOne prepares a query of one statement, which may be followed by
 // spaces and comments. It returns the statement's own text.
 func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
-	if c.c.Broken() {
+	if c.retired() {
 		return nil, "", driver.ErrBadConn
 	}
 	s, tail, err := c.prepare(query)
@@ -166,7 +166,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if c.c.Broken() {
+	if c.retired() {
 		return nil, driver.ErrBadConn
 	}
 	t := &tx{c: c, readOnly: opts.ReadOnly}
@@ -268,15 +268,20 @@ func (t *tx) Commit() error { return t.end("COMMIT") }
 
 func (t *tx) Rollback() error { return t.end("ROLLBACK") }
 
+// errExecCut is the error of a statement of an Exec, after its first, that
+// its connection no longer runs (retired, or the batch it led would not roll
+// back).
+var errExecCut = errors.New("sqlite: the connection can no longer be used: the statements of the Exec before this one ran, and this one and those after it did not")
+
 // ExecContext runs every statement of query in turn. The arguments go to the
 // statements in order: each takes as many as it has parameters. A statement
 // that fails ends it: the statements before it stay done.
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	if c.c.Broken() {
+	if c.retired() {
 		return nil, driver.ErrBadConn
 	}
 	var res result
-	for {
+	for first := true; ; first = false {
 		s, tail, err := c.prepare(query)
 		if err != nil {
 			return nil, err
@@ -297,6 +302,11 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		r, err := st.exec(ctx, part)
 		st.Close() // st.s, which prepareAgain may have replaced
 		if err != nil {
+			if !first && errors.Is(err, driver.ErrBadConn) {
+				// database/sql would run the whole Exec again on another
+				// connection, and the statements before this one ran.
+				err = errExecCut
+			}
 			return nil, err
 		}
 		res = *r
@@ -340,7 +350,21 @@ func (c *conn) ResetSession(ctx context.Context) error {
 }
 
 func (c *conn) IsValid() bool {
-	return !c.closed && !c.bad && !c.c.Broken() && !c.stopped()
+	return !c.closed && !c.bad && !c.c.Broken() && !c.c.Spent() && !c.stopped()
+}
+
+// retired says c starts nothing more: it is broken, or SQLite ran out of
+// memory, failed an I/O or found the disk full on it (csqlite.Conn.Spent)
+// and it is out of its transaction. database/sql drops such a connection
+// (IsValid), and what reaches it anyway is refused before it runs, so
+// database/sql runs it on another connection.
+//
+// A transaction the error left open goes on to its end: SQLite then undid
+// the one statement, as for any other error, and a program may make room
+// after SQLITE_FULL and go on. A transaction of database/sql the error ended
+// keeps answering that it ended (txEnded) until database/sql is done with it.
+func (c *conn) retired() bool {
+	return c.c.Broken() || c.c.Spent() && c.tx == nil && c.c.AutoCommit()
 }
 
 // stopped says a failed sync stopped the WAL or the rollback journal of a

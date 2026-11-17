@@ -10,6 +10,7 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -283,6 +285,128 @@ func oomError(err error) bool {
 		return oomError(errors.Unwrap(err))
 	}
 	return e.Code() == NOMEM || e.ExtendedCode() == IOERR_NOMEM
+}
+
+// TestMergeOutOfMemory: many goroutines insert through database/sql while
+// one allocation of the C in every few hundred fails, whichever goroutine
+// asks for it: in a statement of a batch, in the batch's own statements, on
+// the connection that leads it or one that waits. Every caller told that its
+// row committed finds it once, and no caller told that it failed finds its
+// row.
+func TestMergeOutOfMemory(t *testing.T) {
+	path := mPath(t)
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(20000)"
+	db := mOpen(t, dsn)
+	const writers, each = 16, 200
+	db.SetMaxOpenConns(writers)
+	db.SetMaxIdleConns(writers)
+	mExec(t, db, `CREATE TABLE t(k TEXT, v BLOB); CREATE VIRTUAL TABLE f USING fts5(k)`)
+
+	every := int64(211)
+	if testing.Short() {
+		every = 97
+	}
+	var seen, failed atomic.Int64
+	csqlite.SetAllocFault(func(uintptr) bool {
+		if seen.Add(1)%every == 0 {
+			failed.Add(1)
+			return true
+		}
+		return false
+	})
+	t.Cleanup(allocOK)
+
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		ok   = map[string]bool{}
+		errs = map[string]error{}
+	)
+	for g := range writers {
+		wg.Go(func() {
+			for i := range each {
+				k := fmt.Sprintf("g%dx%d", g, i)
+				var err error
+				if g%2 == 0 {
+					_, err = db.Exec(`INSERT INTO t VALUES (?, ?)`, k, make([]byte, 100+37*i))
+				} else {
+					_, err = db.Exec(`INSERT INTO f VALUES (?)`, k)
+				}
+				mu.Lock()
+				if err == nil {
+					ok[k] = true
+				} else {
+					errs[k] = err
+				}
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	allocOK()
+	if failed.Load() < 20 {
+		t.Fatalf("%d allocations failed of %d: too few to test anything", failed.Load(), seen.Load())
+	}
+
+	check := func(db *sql.DB, when string) {
+		t.Helper()
+		have := map[string]int{}
+		rows, err := db.Query(`SELECT k FROM t UNION ALL SELECT k FROM f`)
+		if err != nil {
+			t.Fatalf("%s: %v", when, err)
+		}
+		for rows.Next() {
+			var k string
+			rows.Scan(&k)
+			have[k]++
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("%s: %v", when, err)
+		}
+		var lost, ghost, twice int
+		for k, n := range have {
+			if n > 1 {
+				twice++
+			}
+			if !ok[k] {
+				ghost++
+				t.Logf("%s: %s was told %v", when, k, errs[k])
+			}
+		}
+		for k := range ok {
+			if have[k] == 0 {
+				lost++
+			}
+		}
+		if lost+ghost+twice > 0 {
+			t.Errorf("%s: of %d told committed and %d told failed, %d rows told committed are missing, %d told failed are there, %d are there twice",
+				when, len(ok), len(errs), lost, ghost, twice)
+		}
+	}
+	kinds := map[string]int{}
+	for _, err := range errs {
+		if !oomError(err) {
+			kinds[err.Error()]++
+		}
+	}
+	if len(kinds) > 0 {
+		t.Errorf("errors that do not say that memory ran out: %v", kinds)
+	}
+	t.Logf("%d of %d allocations failed: %d inserts committed, %d failed", failed.Load(), seen.Load(), len(ok), len(errs))
+	if len(ok) == 0 || len(errs) == 0 {
+		t.Errorf("%d committed and %d failed: want some of each", len(ok), len(errs))
+	}
+	check(db, "after the failures")
+	db.Close()
+	db2 := mOpen(t, dsn)
+	check(db2, "opened again")
+	var ic string
+	if err := db2.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+		t.Fatalf("integrity_check: %q %v", ic, err)
+	}
+	if _, err := db2.Exec(`INSERT INTO f(f) VALUES ('integrity-check')`); err != nil {
+		t.Fatalf("the integrity check of the fts5 table: %v", err)
+	}
 }
 
 // TestExecOutOfMemory runs one statement alone on a connection, as Exec

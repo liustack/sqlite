@@ -137,6 +137,18 @@ fsync 失败时，Linux 会把没写进磁盘的页标成干净。这些页还�
 
 提交返回错误，不一定代表写入不在库里。提交的最后一步是结束日志，这时数据库已经写完并同步过。有三种情况这一步还要再同步一次日志：`journal_mode=PERSIST`，`journal_mode=DELETE` 加 `locking_mode=EXCLUSIVE`，以及 `journal_mode=TRUNCATE` 加 `synchronous=FULL`。这次同步失败时提交返回错误，写入却在库里。跨多个数据库（`ATTACH`）的事务这时不返回错误，因为把几个数据库串在一起的那个日志一删掉，SQLite 就当它已经提交。
 
+## 内存不足、I/O 错误、磁盘满之后
+
+语句遇到内存不足、读写文件失败或磁盘满时，SQLite 只要没法单独撤销这一条语句，就当场回滚整个事务。出错的如果是扩展在程序的语句内部跑的语句，也一样回滚，而程序的那条语句这时还没跑完。FTS5 插入时就用这样一条语句读它的行数统计。这次读失败时，回滚先发生，FTS5 随后把没读到的统计（零）标成已读。这个连接下一次往这张表插入，就把这份统计写进文件，索引从此和表对不上：`PRAGMA integrity_check` 报 malformed inverted index。这是 SQLite 3.54.1 发布版本的行为，驱动不改 SQLite 的 C 代码。
+
+所以只要有语句在准备或执行时返回过 `SQLITE_NOMEM`、`SQLITE_IOERR` 或 `SQLITE_FULL`（不论扩展码），这个连接就不再接新的语句：
+
+- `database/sql` 从连接池取出或放回它时丢弃它（`IsValid`）。顶替它的新连接一切都从文件重新读。
+- 仍然到了这个连接上的语句、prepare 或事务，执行前就得到 `driver.ErrBadConn`，由 `database/sql` 换个连接执行。一次 `Exec` 里有多条语句时，第一条之后的语句拿到的是驱动自己的错误：否则 `database/sql` 会把整个 `Exec` 重跑一遍，而前面的语句已经执行过。这个连接也不再领合并提交的批。
+- 出错后还开着的事务照常进行到结束：这种情况下 SQLite 只撤销了那一条语句，和别的错误一样，所以程序可以在 `SQLITE_FULL` 之后腾出空间接着做。事务结束后连接才被丢弃。
+
+代价：每出一次这类错误，连接池换掉一个连接。程序自己一直拿着的 `sql.Conn` 在下一次调用时得到 `driver.ErrBadConn`，并被 `database/sql` 关闭。中断（context 结束）不会留下这种状态，连接照常使用。驱动自己做的检查点失败也一样：它不跑语句。
+
 ## 合并提交
 
 许多 goroutine 各自在 autocommit 模式下写一行，每个都要付一次提交的代价，而 SQLite 同一时刻只有一个写入者，它们还要互相等。驱动把许多调用者的 autocommit DML 收到一起，放进一个事务里执行，只提交一次。规则写在 [AGENTS.md](../AGENTS.md#hard-constraints)：只合并主数据库上的 autocommit DML，每条语句一个 SAVEPOINT，每个调用者拿到自己的结果，调用要等提交之后才返回。

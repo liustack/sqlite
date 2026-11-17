@@ -37,7 +37,7 @@ read_when:
    - 准备过会改连接的语句：设值的 PRAGMA、ATTACH、DETACH、建或删临时对象。从准备那一刻算，不管它有没有执行、准备有没有成功
    - 以只读方式打开
    - DSN 里打开了 `defer_foreign_keys`（SQLite 每个事务结束会关掉它，同一 DSN 的连接因此不一样）
-7. **暂时不能合并的连接**，状态结束后恢复：在事务中（包括只读事务、还没读完的查询持有的读快照）。已关闭、已出错、已失效的连接不替别人跑。
+7. **暂时不能合并的连接**，状态结束后恢复：在事务中（包括只读事务、还没读完的查询持有的读快照）。已关闭、已出错、已失效的连接不替别人跑，返回过 `SQLITE_NOMEM`、`SQLITE_IOERR` 或 `SQLITE_FULL` 的连接也不替别人跑（见 [architecture.zh-CN.md](architecture.zh-CN.md#内存不足io-错误磁盘满之后)）。
 
 ## 三、一批怎么跑
 
@@ -71,6 +71,7 @@ read_when:
 | 虚表写索引失败，事务还在 | 撤销这条语句，记下它的错误。最终结果看这一批的结局 |
 | 一条语句或驱动自己的 `SAVEPOINT`、`ROLLBACK TO`、`RELEASE`、写索引让整个事务结束了（被中断、IO 错误、磁盘满、内存不够、`OR ROLLBACK`、`RAISE(ROLLBACK)`、排序规则 panic 等） | 当时在执行的请求拿到结束事务的那个错误。它之前执行过的请求，不管当时成功还是单条失败，全部改拿 `SQLITE_ABORT_ROLLBACK`（516），`Unwrap()` 指向结束事务的那个错误。它之后还没执行的请求放回队列，保留原来的序号 |
 | 驱动的 `ROLLBACK` 也失败，事务还在 | 按上一行给结果。这个连接标为作废，事务还开着，它就一直拿着写锁。`database/sql` 丢弃它时关闭它，关闭会回滚事务并交还写锁。领这一批、自己没执行的那个拿到锁的请求得到 `driver.ErrBadConn`，由 `database/sql` 换个连接执行 |
+| 语句返回 `SQLITE_NOMEM`、`SQLITE_IOERR` 或 `SQLITE_FULL` | 按上面各行给结果，看事务是结束了还是继续。这个连接把这一批跑完，之后不再领别的批。领这一批、自己没执行的那个拿到锁的请求得到 `driver.ErrBadConn`，由 `database/sql` 换个连接执行 |
 | 第 10 条切批 | 已执行的部分照常提交，没执行的放回队列 |
 | `COMMIT` 成功 | 每个执行过的请求拿到它自己记下的结果：成功的拿到 `RowsAffected` 和 `LastInsertId`，单条失败的拿到自己的错误 |
 | `COMMIT` 失败 | 这一批执行过的请求全部拿到 COMMIT 的错误，包括之前单条失败的。不重跑 |
@@ -105,7 +106,7 @@ if errors.As(err, &e) && e.ExtendedCode() == sqlite.ABORT_ROLLBACK {
 }
 ```
 
-驱动不把这类错误包成 `driver.ErrBadConn`，否则 `database/sql` 会自动重试，又成了重跑。唯一给 `driver.ErrBadConn` 的，是连接作废、自己又没执行过的请求（见第四节）。
+驱动不把这类错误包成 `driver.ErrBadConn`，否则 `database/sql` 会自动重试，又成了重跑。唯一给 `driver.ErrBadConn` 的，是连接作废或不再使用、自己又什么都没做的请求（见第四节）。这个请求如果是一次 `Exec` 里第一条之后的语句，拿到的是驱动自己的错误，否则 `database/sql` 会把前面的语句重跑一遍。
 
 ## 七、改这部分代码时必须守住的
 

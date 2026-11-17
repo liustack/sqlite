@@ -123,6 +123,9 @@ type Conn struct {
 	// justChanged says the last Prepare was of such a statement, whether it
 	// failed or not.
 	justChanged bool
+	// spent says a call on the connection failed with SQLITE_NOMEM,
+	// SQLITE_IOERR or SQLITE_FULL (Spent).
+	spent bool
 }
 
 // args builds the strings and out-parameters of one call on the shadow
@@ -259,8 +262,31 @@ const (
 	readsWALAuto = 16 // the statement reads PRAGMA wal_autocheckpoint
 )
 
-// err is the error of result code r, with the connection's message.
+// Spent says SQLite ran out of memory, failed to read or write a file or
+// found the disk full on the connection. These are the errors that make
+// SQLite roll a transaction back at once, also when the statement that
+// failed is one an extension runs inside a statement of the caller, which is
+// still running. FTS5 then goes on with what it had read before the rollback
+// and keeps it for its next write: the count of rows it failed to read, as
+// zero. SQLite tells no one that this happened, so a connection that gave
+// one of these errors is not to start anything more.
+//
+// A checkpoint the driver runs itself (Checkpoint) does not count: it runs
+// no statement, so no extension is in the middle of one.
+func (c *Conn) Spent() bool { return c.spent }
+
+// err is the error of result code r, with the connection's message. It
+// marks the connection spent for the codes of Spent.
 func (c *Conn) err(r int) error {
+	switch r & 0xff {
+	case sqliteNoMem, sqliteIOErr, sqliteFull:
+		c.spent = true
+	}
+	return c.errOf(r)
+}
+
+// errOf is the error of result code r, with the connection's message.
+func (c *Conn) errOf(r int) error {
 	if msg := c.st.collatePanic; msg != "" {
 		// go_collate_failed made SQLite stop with SQLITE_NOMEM and roll
 		// back what the statement did.

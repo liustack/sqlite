@@ -111,7 +111,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 
 func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, error) {
 	c := s.c
-	if c.c.Broken() {
+	if c.retired() {
 		return nil, driver.ErrBadConn
 	}
 	if err := c.txEnded(); err != nil {
@@ -211,7 +211,7 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 // after a change of the schema), and a context done before then stops it.
 func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, error) {
 	c := s.c
-	if c.c.Broken() {
+	if c.retired() {
 		return nil, driver.ErrBadConn
 	}
 	if err := c.txEnded(); err != nil {

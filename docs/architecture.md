@@ -146,6 +146,18 @@ The cost: the write whose sync failed returns an error, and the next ones go on.
 
 An error from a commit does not always mean the write is absent. The last step of a commit ends the journal, after the database was written and synced, and syncs it again in three cases: `journal_mode=PERSIST`, `journal_mode=DELETE` with `locking_mode=EXCLUSIVE`, and `journal_mode=TRUNCATE` with `synchronous=FULL`. When that sync fails the commit returns an error, and the write is there. A transaction over several databases (`ATTACH`) returns no error then, as SQLite takes it as committed once the journal that ties the databases together is deleted.
 
+## After out of memory, an I/O error or a full disk
+
+When a statement runs out of memory, fails to read or write a file or finds the disk full, SQLite rolls the whole transaction back at once, unless it can undo the statement alone. It does so too when the statement that failed is one an extension runs inside a statement of the program, which is still running. FTS5 reads its count of rows with such a statement as it inserts. When that read fails, the rollback comes first, and FTS5 then marks the count it failed to read (zero) as read. The next insert of the connection into that table writes the count to the file, and the index no longer matches the table: `PRAGMA integrity_check` reports a malformed inverted index. This is SQLite 3.54.1 as released, and the driver does not edit SQLite's C.
+
+So a connection on which a statement gave `SQLITE_NOMEM`, `SQLITE_IOERR` or `SQLITE_FULL`, with any extended code, as it was prepared or as it ran, is given no more statements:
+
+- `database/sql` drops it when it takes it from its pool or gives it back (`IsValid`). The connection opened in its place reads everything from the file.
+- A statement, a prepare or a transaction that reaches it anyway gets `driver.ErrBadConn` before it runs, so `database/sql` runs it on another connection. A later statement of an `Exec` of several gets an error of the driver instead: `database/sql` would run the whole `Exec` again, and the statements before it ran. The connection leads no batch of group commit.
+- A transaction the error left open goes on to its end: SQLite then undid the one statement, as it does for any other error, so a program can make room after `SQLITE_FULL` and go on. The connection goes once the transaction is over.
+
+The cost: each such error costs the pool one connection, and a `sql.Conn` the program keeps gets `driver.ErrBadConn` at its next call and is closed by `database/sql`. An interrupt (a context that ends) leaves no such state, and its connection stays. So does the connection of a checkpoint the driver runs itself that fails: it runs no statement.
+
 ## Group commit
 
 Many goroutines that each write one row in autocommit mode each pay for a commit, and with one writer at a time in SQLite they wait for each other. The driver takes the autocommit DML of many callers, runs it as one transaction and commits once. The rules are in [AGENTS.md](../AGENTS.md#hard-constraints): only autocommit DML on the main database, a SAVEPOINT per statement, each caller its own result, and the call returns only after the commit.

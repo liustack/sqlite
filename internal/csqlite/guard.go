@@ -36,6 +36,7 @@ var ErrBroken = errors.New("sqlite: connection is broken")
 const (
 	sqliteIOErr = 10
 	sqliteNoMem = 7
+	sqliteFull  = 13
 )
 
 // failWith is deferred by a callback that returns a result: it recovers a
