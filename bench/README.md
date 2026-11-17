@@ -86,7 +86,7 @@ go run ./cmd/benchrun native -count 2 -secs 1    # a quick look
 go run ./cmd/benchrun publish -from results/native-linux-amd64 -name native-linux-amd64
 ```
 
-It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another), and a C compiler for cgo to build mattn/go-sqlite3. The C side is `native/c/engine.c` and `native/c/threads.c`, built at `-O2` with `engine/sqlite3.c` and the options of `engine/sqlite.c`, less the two lines that join SQLite to the Go host, so that SQLite uses its own VFS and mutexes. The Go side is `native/main.go`, built once with each driver's tag. Its columns:
+It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another), and a C compiler for cgo to build mattn/go-sqlite3. `-build-only` and `-no-build` split it as they split `benchrun run`, to build away from the cores being timed. The C side is `native/c/engine.c` and `native/c/threads.c`, built at `-O2` with `engine/sqlite3.c` and the options of `engine/sqlite.c`, less the two lines that join SQLite to the Go host, so that SQLite uses its own VFS and mutexes. The Go side is `native/main.go`, built once with each driver's tag. Its columns:
 
 | Column | How it reads |
 | --- | --- |
