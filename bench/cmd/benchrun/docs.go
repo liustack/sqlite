@@ -67,9 +67,9 @@ var readme = map[string][]readmeRow{
 		{"linux-amd64-1thread", "Aggregate", "Join and group", "连表加分组"},
 		{"linux-amd64-1thread", "Real/query", "Find a user with 400 comments", "查一个用户和他的 400 条评论"},
 		{"linux-amd64-1thread", "Large/size=200k", "Read 100 rows of 200 KB text", "读 100 行 200 KB 的文本"},
-		{"linux-amd64-8threads", "PointParallel", "Read by key, 8 threads", "按主键读，8 线程"},
-		{"linux-amd64-8threads", "InsertParallel/g=8", "Insert, 8 goroutines at once", "8 个 goroutine 同时插入"},
-		{"linux-amd64-8threads", "InsertParallel/g=64", "Insert, 64 goroutines at once", "64 个 goroutine 同时插入"},
+		{"linux-amd64-4threads", "PointParallel", "Read by key, 4 threads", "按主键读，4 线程"},
+		{"linux-amd64-4threads", "InsertParallel/g=8", "Insert, 8 goroutines at once", "8 个 goroutine 同时插入"},
+		{"linux-amd64-4threads", "InsertParallel/g=64", "Insert, 64 goroutines at once", "64 个 goroutine 同时插入"},
 		{"linux-amd64-1thread", "InsertParallelFull/g=64", "Insert, 64 goroutines, `synchronous=FULL`", "64 个 goroutine 同时插入，`synchronous=FULL`"},
 	},
 	"darwin-arm64": {

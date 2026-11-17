@@ -170,9 +170,9 @@ sequenceDiagram
 
 | 写入者 | mattn（cgo） | 本驱动 |
 | --- | --- | --- |
-| 1 | 9.7 µs | 9.1 µs |
-| 8 | 9.0 µs | 3.4 µs |
-| 64 | 16.8 µs | 1.4 µs |
+| 1 | 6.1 µs | 6.2 µs |
+| 8 | 6.7 µs | 3.2 µs |
+| 64 | 10.3 µs | 1.1 µs |
 
 更多驱动和 linux 的数字见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md)。
 
@@ -215,7 +215,7 @@ sequenceDiagram
 
 ## 让引擎更快
 
-引擎比 clang 编出来的同一份 C 慢：在 Apple M4 上，引擎内部的计算要用 1.16 到 1.57 倍的时间（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#和-c-版-sqlite-比)）。其中一部分是这条路线本身的代价。liustack/quickjs 用同样的方式编译它的 C，量过同一份 C、同样的选项下差 11% 到 13%，来自经过 Go 栈的参数和结果、放在影子栈上的取过地址的局部变量，以及每次调用多出来的几条指令。想要赢回一些时，照 quickjs 试过又放弃的那些路得出的规矩做：
+引擎比 clang 编出来的同一份 C 慢：在 Apple M4 上，引擎内部的计算最多要用 1.45 倍的时间，几何平均 1.18 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#和-c-版-sqlite-比)）。其中一部分是这条路线本身的代价。liustack/quickjs 用同样的方式编译它的 C，量过同一份 C、同样的选项下差 11% 到 13%，来自经过 Go 栈的参数和结果、放在影子栈上的取过地址的局部变量，以及每次调用多出来的几条指令。想要赢回一些时，照 quickjs 试过又放弃的那些路得出的规矩做：
 
 - **不用 Go 的私有实现。** 不用 `go:linkname` 接进 runtime，不依赖 Go 怎么用某个寄存器，不依赖 Go 团队可能在某个版本里改掉的东西。否则每个 Go 版本都要重新核对，哪一版都可能让驱动坏掉。
 - **引擎留在 goroutine 的栈上。** 像 cgo、wazero、purego 那样让它跑在自己的栈上，C 里的一次出错就会结束整个进程，而不是让这一次调用 panic。
@@ -252,6 +252,6 @@ quickjs 也守同样的规矩，还写了它是怎么得出这些规矩的：[�
 ## 没有走的路
 
 - **cgo**（mattn/go-sqlite3）：每次构建、每个目标平台都要 C 编译器，交叉编译也难。免去这些正是这个项目存在的原因。
-- **把 C 翻译成 Go**（modernc.org/sqlite，用 ccgo 做的）：不用 cgo，但比 cgo 慢：点查询要 1.2 到 1.4 倍的时间，join 要 1.6 到 2.4 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md)）。slowjs 之前为 QuickJS 走过这条路，也是因为同样的原因离开了。
+- **把 C 翻译成 Go**（modernc.org/sqlite，用 ccgo 做的）：不用 cgo，但比 cgo 慢：点查询要 1.2 到 1.4 倍的时间，join 要 1.7 到 2.3 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md)）。slowjs 之前为 QuickJS 走过这条路，也是因为同样的原因离开了。
 - **WebAssembly**（ncruces/go-sqlite3）：SQLite 先编成 wasm，再由 wasm2go 翻译成 Go。不用 cgo，但 C 到 CPU 之间多绕了一层机器模型。
 - **用 purego 加载共享库**：没法得到单个静态二进制，SQLite 版本取决于系统，每次调用的开销也更大。

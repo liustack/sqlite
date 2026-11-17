@@ -1,0 +1,763 @@
+{
+  "name": "linux-amd64-4threads",
+  "meta": [
+    {
+      "k": "date",
+      "v": "2026-11-17"
+    },
+    {
+      "k": "commit",
+      "v": "abf3e08"
+    },
+    {
+      "k": "go",
+      "v": "1.27.4"
+    },
+    {
+      "k": "os",
+      "v": "Linux 7.0.0-1017-gcp x86_64"
+    },
+    {
+      "k": "cpu",
+      "v": "AMD EPYC 7B13"
+    },
+    {
+      "k": "threads",
+      "v": "4"
+    },
+    {
+      "k": "gomaxprocs",
+      "v": "4"
+    },
+    {
+      "k": "modules",
+      "v": "github.com/mattn/go-sqlite3 v1.14.52 modernc.org/sqlite v1.61.1 github.com/ncruces/go-sqlite3 v0.36.0"
+    },
+    {
+      "k": "count",
+      "v": "6"
+    },
+    {
+      "k": "benchtime",
+      "v": "1s"
+    },
+    {
+      "k": "bench",
+      "v": "Parallel|Readers|ReadWrite"
+    },
+    {
+      "k": "drivers",
+      "v": "liustack,mattn,modernc,ncruces"
+    },
+    {
+      "k": "load_before",
+      "v": "0.50 1.00 0.77"
+    },
+    {
+      "k": "load_after",
+      "v": "2.25 2.05 1.39"
+    },
+    {
+      "k": "minutes",
+      "v": "7.7"
+    }
+  ],
+  "drivers": [
+    "liustack",
+    "mattn",
+    "modernc",
+    "ncruces"
+  ],
+  "rows": [
+    {
+      "bench": "PointParallel",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.00000151,
+          "lo": 0.00000134,
+          "hi": 0.00000159,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.0000028530000000000005,
+          "lo": 0.0000024890000000000002,
+          "hi": 0.000003203,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.0000035045,
+          "lo": 0.000003323,
+          "hi": 0.000004462000000000001,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.0000025135,
+          "lo": 0.000002268,
+          "hi": 0.0000029020000000000003,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "PointParallel",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 14,
+          "lo": 14,
+          "hi": 14,
+          "n": 6
+        },
+        "mattn": {
+          "median": 18,
+          "lo": 18,
+          "hi": 18,
+          "n": 6
+        },
+        "modernc": {
+          "median": 30,
+          "lo": 30,
+          "hi": 30,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 19,
+          "lo": 19,
+          "hi": 19,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallel/g=1",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.0000229395,
+          "lo": 0.000022864,
+          "hi": 0.000022976,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.0000227665,
+          "lo": 0.000022451000000000002,
+          "hi": 0.000022986,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.000025299000000000003,
+          "lo": 0.000024208000000000003,
+          "hi": 0.000025601,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.00002354,
+          "lo": 0.000023224,
+          "hi": 0.000023963,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallel/g=1",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 5,
+          "lo": 5,
+          "hi": 5,
+          "n": 6
+        },
+        "mattn": {
+          "median": 5,
+          "lo": 5,
+          "hi": 5,
+          "n": 6
+        },
+        "modernc": {
+          "median": 6,
+          "lo": 6,
+          "hi": 6,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 5,
+          "lo": 5,
+          "hi": 5,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallel/g=8",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.000010184,
+          "lo": 0.000009901,
+          "hi": 0.000010576,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.0000215025,
+          "lo": 0.000017672,
+          "hi": 0.000022947000000000002,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.0000256565,
+          "lo": 0.000025134,
+          "hi": 0.000026595000000000002,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.000023665,
+          "lo": 0.000023161,
+          "hi": 0.000023863000000000002,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallel/g=8",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 10,
+          "lo": 10,
+          "hi": 10,
+          "n": 6
+        },
+        "mattn": {
+          "median": 6,
+          "lo": 6,
+          "hi": 6,
+          "n": 6
+        },
+        "modernc": {
+          "median": 7,
+          "lo": 7,
+          "hi": 7,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 6,
+          "lo": 6,
+          "hi": 6,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallel/g=64",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.000003377,
+          "lo": 0.00000317,
+          "hi": 0.0000034500000000000004,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.000022236000000000002,
+          "lo": 0.000020415,
+          "hi": 0.000023272,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.0000290215,
+          "lo": 0.000028024,
+          "hi": 0.000031167,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.000028587000000000003,
+          "lo": 0.000028127,
+          "hi": 0.000029455000000000002,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallel/g=64",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 11,
+          "lo": 11,
+          "hi": 11,
+          "n": 6
+        },
+        "mattn": {
+          "median": 6,
+          "lo": 6,
+          "hi": 6,
+          "n": 6
+        },
+        "modernc": {
+          "median": 7,
+          "lo": 7,
+          "hi": 7,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 7,
+          "lo": 7,
+          "hi": 8,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallelFull/g=1",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.0012203115000000001,
+          "lo": 0.001198028,
+          "hi": 0.001331416,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.0012480810000000003,
+          "lo": 0.0011904910000000001,
+          "hi": 0.0013329020000000002,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.001249307,
+          "lo": 0.001182499,
+          "hi": 0.001291854,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.0012555585,
+          "lo": 0.001166392,
+          "hi": 0.0014897290000000002,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallelFull/g=1",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 5,
+          "lo": 5,
+          "hi": 5,
+          "n": 6
+        },
+        "mattn": {
+          "median": 5,
+          "lo": 5,
+          "hi": 5,
+          "n": 6
+        },
+        "modernc": {
+          "median": 6,
+          "lo": 6,
+          "hi": 6,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 5,
+          "lo": 5,
+          "hi": 5,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallelFull/g=8",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.0003116315,
+          "lo": 0.000282306,
+          "hi": 0.000326868,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.001742868,
+          "lo": 0.001582424,
+          "hi": 0.0020449260000000003,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.002121239,
+          "lo": 0.00169213,
+          "hi": 0.0024599070000000003,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.0013034830000000002,
+          "lo": 0.001221552,
+          "hi": 0.0014607390000000002,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallelFull/g=8",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 10,
+          "lo": 10,
+          "hi": 10,
+          "n": 6
+        },
+        "mattn": {
+          "median": 6,
+          "lo": 6,
+          "hi": 6,
+          "n": 6
+        },
+        "modernc": {
+          "median": 7,
+          "lo": 7,
+          "hi": 7,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 15,
+          "lo": 15,
+          "hi": 16,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallelFull/g=64",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.000028044,
+          "lo": 0.000025024000000000003,
+          "hi": 0.00003006,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.022953718,
+          "lo": 0.020471243,
+          "hi": 0.025456193000000002,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.020553919000000004,
+          "lo": 0.016507405,
+          "hi": 0.031540232,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.001347087,
+          "lo": 0.0012631130000000002,
+          "hi": 0.0014163910000000001,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "InsertParallelFull/g=64",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 11,
+          "lo": 11,
+          "hi": 11,
+          "n": 6
+        },
+        "mattn": {
+          "median": 44,
+          "lo": 44,
+          "hi": 44,
+          "n": 6
+        },
+        "modernc": {
+          "median": 54,
+          "lo": 54,
+          "hi": 54,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 95.5,
+          "lo": 88,
+          "hi": 102,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "Readers/g=2",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.017611479,
+          "lo": 0.01731181,
+          "hi": 0.018073212,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.038644482,
+          "lo": 0.038513852,
+          "hi": 0.039397999,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.041127292,
+          "lo": 0.040602246,
+          "hi": 0.041737074000000006,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.026719427500000004,
+          "lo": 0.026668443,
+          "hi": 0.027345187000000003,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "Readers/g=2",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 400008.5,
+          "lo": 400008,
+          "hi": 400009,
+          "n": 6
+        },
+        "mattn": {
+          "median": 799756,
+          "lo": 799756,
+          "hi": 799756,
+          "n": 6
+        },
+        "modernc": {
+          "median": 799767,
+          "lo": 799767,
+          "hi": 799767,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 400025,
+          "lo": 400024,
+          "hi": 400025,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "Readers/g=4",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.0100482265,
+          "lo": 0.009713568,
+          "hi": 0.010773979000000001,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.020801643,
+          "lo": 0.020333061000000003,
+          "hi": 0.021607413000000002,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.0230208585,
+          "lo": 0.021394099,
+          "hi": 0.024086997000000002,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.014612338,
+          "lo": 0.014028529000000001,
+          "hi": 0.014932965000000001,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "Readers/g=4",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 400009,
+          "lo": 400009,
+          "hi": 400009,
+          "n": 6
+        },
+        "mattn": {
+          "median": 799758,
+          "lo": 799757,
+          "hi": 799758,
+          "n": 6
+        },
+        "modernc": {
+          "median": 799769,
+          "lo": 799769,
+          "hi": 799770,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 400033,
+          "lo": 400031,
+          "hi": 400034,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "Readers/g=8",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.009698625500000002,
+          "lo": 0.008859635000000001,
+          "hi": 0.010054706,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.021310229,
+          "lo": 0.02082395,
+          "hi": 0.022831623000000002,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.0227044145,
+          "lo": 0.021851576,
+          "hi": 0.023065585000000003,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.014437131,
+          "lo": 0.014092691000000001,
+          "hi": 0.01485897,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "Readers/g=8",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 400011,
+          "lo": 400011,
+          "hi": 400011,
+          "n": 6
+        },
+        "mattn": {
+          "median": 799763,
+          "lo": 799763,
+          "hi": 799764,
+          "n": 6
+        },
+        "modernc": {
+          "median": 799775,
+          "lo": 799775,
+          "hi": 799776,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 400056.5,
+          "lo": 400056,
+          "hi": 400059,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "ReadWrite",
+      "unit": "sec/op",
+      "cells": {
+        "liustack": {
+          "median": 0.0000026930000000000003,
+          "lo": 0.0000025340000000000002,
+          "hi": 0.000003202,
+          "n": 6
+        },
+        "mattn": {
+          "median": 0.000004518500000000001,
+          "lo": 0.000003854,
+          "hi": 0.000005372,
+          "n": 6
+        },
+        "modernc": {
+          "median": 0.0000068635000000000004,
+          "lo": 0.0000067090000000000005,
+          "hi": 0.000008564000000000001,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 0.000004181,
+          "lo": 0.0000034380000000000004,
+          "hi": 0.000004859,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "ReadWrite",
+      "unit": "writes/s",
+      "cells": {
+        "liustack": {
+          "median": 17209,
+          "lo": 14252,
+          "hi": 17504,
+          "n": 6
+        },
+        "mattn": {
+          "median": 14357.5,
+          "lo": 13627,
+          "hi": 16159,
+          "n": 6
+        },
+        "modernc": {
+          "median": 4462.5,
+          "lo": 4200,
+          "hi": 4946,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 26998,
+          "lo": 25845,
+          "hi": 28606,
+          "n": 6
+        }
+      }
+    },
+    {
+      "bench": "ReadWrite",
+      "unit": "allocs/op",
+      "cells": {
+        "liustack": {
+          "median": 15,
+          "lo": 15,
+          "hi": 15,
+          "n": 6
+        },
+        "mattn": {
+          "median": 19,
+          "lo": 19,
+          "hi": 19,
+          "n": 6
+        },
+        "modernc": {
+          "median": 31,
+          "lo": 31,
+          "hi": 31,
+          "n": 6
+        },
+        "ncruces": {
+          "median": 19,
+          "lo": 19,
+          "hi": 19,
+          "n": 6
+        }
+      }
+    }
+  ]
+}
