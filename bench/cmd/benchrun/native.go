@@ -51,6 +51,8 @@ func cmdNative(args []string) error {
 	secs := fs.Int("secs", 3, "seconds of each run of threads")
 	cc := fs.String("cc", "", "the C compiler (default: clang of scripts/llvm-bin.sh)")
 	out := fs.String("out", filepath.Join("results", "native-"+runtime.GOOS+"-"+runtime.GOARCH), "where the results go")
+	buildOnly := fs.Bool("build-only", false, "build the programs, run nothing")
+	noBuild := fs.Bool("no-build", false, "use the programs of an earlier -build-only")
 	fs.Parse(args)
 	if *cc == "" {
 		*cc = filepath.Join(strings.TrimSpace(output("../scripts/llvm-bin.sh")), "clang")
@@ -62,8 +64,13 @@ func cmdNative(args []string) error {
 			return err
 		}
 	}
-	if err := buildNative(*cc, bin); err != nil {
-		return err
+	if !*noBuild {
+		if err := buildNative(*cc, bin); err != nil {
+			return err
+		}
+	}
+	if *buildOnly {
+		return nil
 	}
 	sql, err := filepath.Abs(filepath.Join("native", "engine.sql"))
 	if err != nil {

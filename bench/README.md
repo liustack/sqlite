@@ -86,7 +86,7 @@ go run ./cmd/benchrun native -count 2 -secs 1    # a quick look
 go run ./cmd/benchrun publish -from results/native-linux-amd64 -name native-linux-amd64
 ```
 
-It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another), and a C compiler for cgo to build mattn/go-sqlite3. The C side is `native/c/engine.c` and `native/c/threads.c`, built at `-O2` with `engine/sqlite3.c` and the options of `engine/sqlite.c`, less the two lines that join SQLite to the Go host, so that SQLite uses its own VFS and mutexes. The Go side is `native/main.go`, built once with each driver's tag. Its columns:
+It needs clang (LLVM 22 from `scripts/llvm-bin.sh` by default, `-cc` for another), and a C compiler for cgo to build mattn/go-sqlite3. `-build-only` and `-no-build` split it as they split `benchrun run`, to build away from the cores being timed. The C side is `native/c/engine.c` and `native/c/threads.c`, built at `-O2` with `engine/sqlite3.c` and the options of `engine/sqlite.c`, less the two lines that join SQLite to the Go host, so that SQLite uses its own VFS and mutexes. The Go side is `native/main.go`, built once with each driver's tag. Its columns:
 
 | Column | How it reads |
 | --- | --- |
@@ -105,4 +105,4 @@ Writers do the same: through database/sql each calls `db.Exec`, and without it e
 | `PointInsert/g=8` | 8 readers as in `Point` and 8 writers that insert one row each time |
 | `InsertFull/g=64` | 64 writers, `synchronous=FULL` |
 
-The threads run `-secs` seconds each time, and the rates count every thread's ops. In C the writes queue on a mutex of the process, which is faster than SQLite's busy handler. A read that does not return its 100 bytes, or a write that fails, fails the run.
+The threads run `-secs` seconds each time, and the rates count every thread's ops. In C the writes queue on a mutex of the process, which is faster than SQLite's busy handler. A read that does not return its 100 bytes, or a write that fails, fails the run. The busy timeout is 60 s here, not the 5 s of the other benchmarks: SQLite's busy handler sleeps between tries, up to 100 ms, and a writer that just committed can take the lock again before a sleeper wakes, so with 64 writers and `synchronous=FULL` on a slow disk a writer of mattn can wait more than 5 s, and its write would fail with `database is locked`. liustack/sqlite has one writer for a file and the C program queues on a mutex, so neither waits there.
