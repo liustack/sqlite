@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -337,6 +338,18 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	if err := c.brokenErr(); err != nil {
 		return nil, "", err
 	}
+	if noStatement(sql) {
+		// What follows the last statement of an Exec. SQLite would copy it
+		// to find that out, and a copy that got no memory would fail the
+		// Exec after its statements committed.
+		return nil, "", nil
+	}
+	return c.prepare(sql)
+}
+
+// prepare is Prepare once the connection is known to work and sql is given
+// to SQLite.
+func (c *Conn) prepare(sql string) (s *Stmt, tail string, err error) {
 	a := c.args()
 	pStmt := a.word()
 	pTail := a.word()
@@ -395,6 +408,38 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 		writes = false
 	}
 	return &Stmt{c: c, p: p, kind: kind, writes: writes}, tail, nil
+}
+
+// noStatement says that sql holds nothing but white space, semicolons and
+// whole comments, as SQLite's tokenizer reads them: SQLite would prepare no
+// statement from it. Anything it is not sure of is left to SQLite.
+func noStatement(sql string) bool {
+	for i := 0; i < len(sql); i++ {
+		switch sql[i] {
+		case ' ', '\t', '\n', '\f', '\r', ';':
+		case '-':
+			if i+1 == len(sql) || sql[i+1] != '-' {
+				return false
+			}
+			n := strings.IndexByte(sql[i:], '\n')
+			if n < 0 {
+				return true
+			}
+			i += n
+		case '/':
+			if i+1 == len(sql) || sql[i+1] != '*' {
+				return false
+			}
+			n := strings.Index(sql[i+2:], "*/")
+			if n < 0 {
+				return false
+			}
+			i += n + 3
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // rollbacks is how many transactions SQLite has rolled back on the

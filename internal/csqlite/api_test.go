@@ -284,3 +284,46 @@ func TestSchemaRetryIsNotRolledBack(t *testing.T) {
 		t.Fatalf("t has %s rows", v)
 	}
 }
+
+// TestNoStatement: Prepare gives SQLite no text that holds no statement, and
+// SQLite finds no statement in any text it is not given.
+func TestNoStatement(t *testing.T) {
+	c := open(t, ":memory:")
+	for sql, want := range map[string]bool{
+		"":                           true,
+		" \t\r\n\f":                  true,
+		";":                          true,
+		" ; ;\n":                     true,
+		"-- a comment":               true,
+		"-- a comment\n":             true,
+		"-- one\n-- two\n ;":         true,
+		"/* a comment */":            true,
+		"/**/":                       true,
+		" /* one */ -- two\n/***/;":  true,
+		"/* a * and a / */ ;":        true,
+		"SELECT 1":                   false,
+		" ; SELECT 1":                false,
+		"-- a comment\nSELECT 1":     false,
+		"/* a comment */ SELECT 1":   false,
+		"-":                          false,
+		"- - a":                      false,
+		"/":                          false,
+		"/ * a */":                   false,
+		"/* never closed":            false,
+		"/*/":                        false,
+		"\v":                         false,
+		"\x00":                       false,
+		"-- a comment\x00\nSELECT 1": false,
+	} {
+		if got := noStatement(sql); got != want {
+			t.Errorf("noStatement(%q) = %v, want %v", sql, got, want)
+		}
+		if !want {
+			continue
+		}
+		s, tail, err := c.prepare(sql)
+		if s != nil || err != nil {
+			t.Errorf("SQLite prepares %q: statement %v, tail %q, %v", sql, s != nil, tail, err)
+		}
+	}
+}
