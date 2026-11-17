@@ -111,7 +111,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 
 func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, error) {
 	c := s.c
-	if c.c.Broken() {
+	if c.retired() {
 		return nil, driver.ErrBadConn
 	}
 	if err := c.txEnded(); err != nil {
@@ -211,7 +211,7 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 // after a change of the schema), and a context done before then stops it.
 func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, error) {
 	c := s.c
-	if c.c.Broken() {
+	if c.retired() {
 		return nil, driver.ErrBadConn
 	}
 	if err := c.txEnded(); err != nil {
@@ -483,39 +483,50 @@ func (r *rows) Next(dest []driver.Value) error {
 		return err
 	}
 	for i := range dest {
-		dest[i] = r.value(i)
+		v, err := r.value(i)
+		if err != nil {
+			return err
+		}
+		dest[i] = v
 	}
 	return nil
 }
 
-// value is column i of the row as a driver.Value.
-func (r *rows) value(i int) driver.Value {
+// value is column i of the row as a driver.Value. It fails when SQLite has
+// no memory to give a text or a blob.
+func (r *rows) value(i int) (driver.Value, error) {
 	s := r.s.s
 	switch s.ColumnType(i) {
 	case csqlite.TypeInteger:
 		v := s.ColumnInt64(i)
 		if r.isTime(i) {
-			return time.Unix(v, 0).UTC()
+			return time.Unix(v, 0).UTC(), nil
 		}
-		return v
+		return v, nil
 	case csqlite.TypeFloat:
-		return s.ColumnDouble(i)
+		return s.ColumnDouble(i), nil
 	case csqlite.TypeText:
-		v := s.ColumnText(i)
+		v, err := s.ColumnText(i)
+		if err != nil {
+			return nil, err
+		}
 		if r.isTime(i) {
 			if t, ok := parseTime(v); ok {
-				return t
+				return t, nil
 			}
 		}
-		return v
+		return v, nil
 	case csqlite.TypeBlob:
-		b := s.ColumnBlob(i)
+		b, err := s.ColumnBlob(i)
+		if err != nil {
+			return nil, err
+		}
 		if b == nil {
 			b = []byte{}
 		}
-		return b
+		return b, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (r *rows) isTime(i int) bool { return r.s.isTime[i] }

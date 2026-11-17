@@ -158,8 +158,27 @@ func realloc(sp, p, n uintptr) (ret uintptr) {
 	return q
 }
 
+// allocFault is the function SetAllocFault set, nil when none is.
+var allocFault atomic.Pointer[func(n uintptr) bool]
+
+// SetAllocFault has every malloc and realloc of the C ask f first, with the
+// bytes asked for: when f says true the C gets no memory, as when the system
+// has none to give. It is for tests that check what SQLite and the driver do
+// when memory runs out. f is called from every goroutine that allocates. nil
+// turns it off.
+func SetAllocFault(f func(n uintptr) bool) {
+	if f == nil {
+		allocFault.Store(nil)
+		return
+	}
+	allocFault.Store(&f)
+}
+
 func alloc(n uintptr) uintptr {
 	if n > 1<<40 {
+		return 0
+	}
+	if f := allocFault.Load(); f != nil && (*f)(n) {
 		return 0
 	}
 	t := n + header

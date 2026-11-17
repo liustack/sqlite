@@ -59,7 +59,11 @@ func TestScanColumnMatchesNext(t *testing.T) {
 		for _, mk := range dests {
 			got, want := mk(), mk()
 			gerr := rs.ScanColumn(ctx, i, got)
-			werr := sql.ConvertAssign(ctx, want, rs.value(i))
+			v, err := rs.value(i)
+			if err != nil {
+				t.Fatal(err)
+			}
+			werr := sql.ConvertAssign(ctx, want, v)
 			if fmt.Sprint(gerr) != fmt.Sprint(werr) || !reflect.DeepEqual(got, want) {
 				t.Errorf("column %d into %T: got %v (%v), want %v (%v)", i, got,
 					reflect.ValueOf(got).Elem(), gerr, reflect.ValueOf(want).Elem(), werr)

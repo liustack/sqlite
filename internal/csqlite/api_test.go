@@ -49,13 +49,13 @@ func TestSelectOne(t *testing.T) {
 	if v := s.ColumnInt64(0); v != 1 {
 		t.Errorf("column 0: %d", v)
 	}
-	if v := s.ColumnText(1); v != "two" {
+	if v, err := s.ColumnText(1); err != nil || v != "two" {
 		t.Errorf("column 1: %q", v)
 	}
 	if v := s.ColumnDouble(2); v != 3.5 {
 		t.Errorf("column 2: %v", v)
 	}
-	if v := s.ColumnBlob(3); string(v) != "\x04\x05" {
+	if v, err := s.ColumnBlob(3); err != nil || string(v) != "\x04\x05" {
 		t.Errorf("column 3: %x", v)
 	}
 	if v := s.ColumnType(4); v != TypeNull {
@@ -282,5 +282,48 @@ func TestSchemaRetryIsNotRolledBack(t *testing.T) {
 	}
 	if v := mustOne(t, a, "SELECT count(*) FROM t"); v != "1" {
 		t.Fatalf("t has %s rows", v)
+	}
+}
+
+// TestNoStatement: Prepare gives SQLite no text that holds no statement, and
+// SQLite finds no statement in any text it is not given.
+func TestNoStatement(t *testing.T) {
+	c := open(t, ":memory:")
+	for sql, want := range map[string]bool{
+		"":                           true,
+		" \t\r\n\f":                  true,
+		";":                          true,
+		" ; ;\n":                     true,
+		"-- a comment":               true,
+		"-- a comment\n":             true,
+		"-- one\n-- two\n ;":         true,
+		"/* a comment */":            true,
+		"/**/":                       true,
+		" /* one */ -- two\n/***/;":  true,
+		"/* a * and a / */ ;":        true,
+		"SELECT 1":                   false,
+		" ; SELECT 1":                false,
+		"-- a comment\nSELECT 1":     false,
+		"/* a comment */ SELECT 1":   false,
+		"-":                          false,
+		"- - a":                      false,
+		"/":                          false,
+		"/ * a */":                   false,
+		"/* never closed":            false,
+		"/*/":                        false,
+		"\v":                         false,
+		"\x00":                       false,
+		"-- a comment\x00\nSELECT 1": false,
+	} {
+		if got := noStatement(sql); got != want {
+			t.Errorf("noStatement(%q) = %v, want %v", sql, got, want)
+		}
+		if !want {
+			continue
+		}
+		s, tail, err := c.prepare(sql)
+		if s != nil || err != nil {
+			t.Errorf("SQLite prepares %q: statement %v, tail %q, %v", sql, s != nil, tail, err)
+		}
 	}
 }

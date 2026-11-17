@@ -34,7 +34,7 @@ func one(t *testing.T, c *Conn, sql string) (string, error) {
 	if !row {
 		t.Fatalf("%s: no row", sql)
 	}
-	return s.ColumnText(0), nil
+	return s.ColumnText(0)
 }
 
 func mustOne(t *testing.T, c *Conn, sql string) string {
@@ -272,7 +272,7 @@ func TestFunctionDeepInTriggers(t *testing.T) {
 		if n == 900 {
 			want = "xxx"
 		}
-		if got := s.ColumnText(1); got != want {
+		if got, err := s.ColumnText(1); err != nil || got != want {
 			t.Fatalf("row %d: %q, want %q", n, got, want)
 		}
 		rows++

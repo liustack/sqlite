@@ -158,5 +158,5 @@ func (c *Conn) Checkpoint(mode int) (log, ckpt int, err error) {
 	z := a.str("main")
 	r := int32(sqlite3_wal_checkpoint_v2(a.top, c.db, z, uintptr(mode), pLog, pCkpt))
 	log, ckpt = int(*(*int32)(at(pLog))), int(*(*int32)(at(pCkpt)))
-	return log, ckpt, c.err(int(r))
+	return log, ckpt, c.errOf(int(r)) // not c.err: see Spent
 }

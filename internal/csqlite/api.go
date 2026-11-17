@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -122,6 +123,9 @@ type Conn struct {
 	// justChanged says the last Prepare was of such a statement, whether it
 	// failed or not.
 	justChanged bool
+	// spent says a call on the connection failed with SQLITE_NOMEM,
+	// SQLITE_IOERR or SQLITE_FULL (Spent).
+	spent bool
 }
 
 // args builds the strings and out-parameters of one call on the shadow
@@ -258,8 +262,31 @@ const (
 	readsWALAuto = 16 // the statement reads PRAGMA wal_autocheckpoint
 )
 
-// err is the error of result code r, with the connection's message.
+// Spent says SQLite ran out of memory, failed to read or write a file or
+// found the disk full on the connection. These are the errors that make
+// SQLite roll a transaction back at once, also when the statement that
+// failed is one an extension runs inside a statement of the caller, which is
+// still running. FTS5 then goes on with what it had read before the rollback
+// and keeps it for its next write: the count of rows it failed to read, as
+// zero. SQLite tells no one that this happened, so a connection that gave
+// one of these errors is not to start anything more.
+//
+// A checkpoint the driver runs itself (Checkpoint) does not count: it runs
+// no statement, so no extension is in the middle of one.
+func (c *Conn) Spent() bool { return c.spent }
+
+// err is the error of result code r, with the connection's message. It
+// marks the connection spent for the codes of Spent.
 func (c *Conn) err(r int) error {
+	switch r & 0xff {
+	case sqliteNoMem, sqliteIOErr, sqliteFull:
+		c.spent = true
+	}
+	return c.errOf(r)
+}
+
+// errOf is the error of result code r, with the connection's message.
+func (c *Conn) errOf(r int) error {
 	if msg := c.st.collatePanic; msg != "" {
 		// go_collate_failed made SQLite stop with SQLITE_NOMEM and roll
 		// back what the statement did.
@@ -337,6 +364,18 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 	if err := c.brokenErr(); err != nil {
 		return nil, "", err
 	}
+	if noStatement(sql) {
+		// What follows the last statement of an Exec. SQLite would copy it
+		// to find that out, and a copy that got no memory would fail the
+		// Exec after its statements committed.
+		return nil, "", nil
+	}
+	return c.prepare(sql)
+}
+
+// prepare is Prepare once the connection is known to work and sql is given
+// to SQLite.
+func (c *Conn) prepare(sql string) (s *Stmt, tail string, err error) {
 	a := c.args()
 	pStmt := a.word()
 	pTail := a.word()
@@ -395,6 +434,38 @@ func (c *Conn) Prepare(sql string) (s *Stmt, tail string, err error) {
 		writes = false
 	}
 	return &Stmt{c: c, p: p, kind: kind, writes: writes}, tail, nil
+}
+
+// noStatement says that sql holds nothing but white space, semicolons and
+// whole comments, as SQLite's tokenizer reads them: SQLite would prepare no
+// statement from it. Anything it is not sure of is left to SQLite.
+func noStatement(sql string) bool {
+	for i := 0; i < len(sql); i++ {
+		switch sql[i] {
+		case ' ', '\t', '\n', '\f', '\r', ';':
+		case '-':
+			if i+1 == len(sql) || sql[i+1] != '-' {
+				return false
+			}
+			n := strings.IndexByte(sql[i:], '\n')
+			if n < 0 {
+				return true
+			}
+			i += n
+		case '/':
+			if i+1 == len(sql) || sql[i+1] != '*' {
+				return false
+			}
+			n := strings.Index(sql[i+2:], "*/")
+			if n < 0 {
+				return false
+			}
+			i += n + 3
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // rollbacks is how many transactions SQLite has rolled back on the
@@ -761,26 +832,43 @@ func (s *Stmt) ColumnInt64(i int) int64 { return int64(sqlite3_column_int64(s.c.
 
 func (s *Stmt) ColumnDouble(i int) float64 { return sqlite3_column_double(s.c.sp, s.p, uintptr(i)) }
 
-// ColumnText is the text of column i, copied.
-func (s *Stmt) ColumnText(i int) string {
+// ColumnText is the text of column i, copied. It fails when SQLite has no
+// memory for it: it allocates to give as UTF-8 a text it holds as UTF-16
+// (a database in UTF-16) or a value that is no text.
+func (s *Stmt) ColumnText(i int) (string, error) {
 	p := sqlite3_column_text(s.c.sp, s.p, uintptr(i))
-	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
-	if p == 0 || n == 0 {
-		return ""
+	if p == 0 {
+		return "", s.columnErr()
 	}
-	return string(bytesAt(p, n))
+	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
+	if n == 0 {
+		return "", nil
+	}
+	return string(bytesAt(p, n)), nil
 }
 
-// ColumnBlob is the bytes of column i, copied: nil for NULL.
-func (s *Stmt) ColumnBlob(i int) []byte {
+// ColumnBlob is the bytes of column i, copied: nil for NULL and for a blob
+// of no bytes. It fails when SQLite has no memory for it.
+func (s *Stmt) ColumnBlob(i int) ([]byte, error) {
 	p := sqlite3_column_blob(s.c.sp, s.p, uintptr(i))
-	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
 	if p == 0 {
-		return nil
+		return nil, s.columnErr()
 	}
+	n := int(int32(sqlite3_column_bytes(s.c.sp, s.p, uintptr(i))))
 	b := make([]byte, n)
 	copy(b, bytesAt(p, n))
-	return b
+	return b, nil
+}
+
+// columnErr is the error of a call that gave no pointer for a column: out
+// of memory, or nil when the value is NULL or empty. SQLite gives NULL for
+// both and tells them apart by the connection's error code only, which a
+// step that gave a row left at SQLITE_ROW.
+func (s *Stmt) columnErr() error {
+	if int32(sqlite3_errcode(s.c.sp, s.c.db))&0xff == sqliteNoMem {
+		return s.c.err(sqliteNoMem)
+	}
+	return nil
 }
 
 // sideStacks are shadow stacks for calls made beside a connection's own,

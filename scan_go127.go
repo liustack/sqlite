@@ -54,13 +54,19 @@ func (r *rows) ScanColumn(ctx driver.ScanContext, i int, dest any) error {
 		case csqlite.TypeText:
 			switch d := dest.(type) {
 			case *string:
-				*d = s.ColumnText(i)
-				return nil
+				v, err := s.ColumnText(i)
+				*d = v
+				return err
 			case *sql.NullString:
-				d.String, d.Valid = s.ColumnText(i), true
-				return nil
+				v, err := s.ColumnText(i)
+				d.String, d.Valid = v, err == nil
+				return err
 			}
 		}
 	}
-	return sql.ConvertAssign(ctx, dest, r.value(i))
+	v, err := r.value(i)
+	if err != nil {
+		return err
+	}
+	return sql.ConvertAssign(ctx, dest, v)
 }

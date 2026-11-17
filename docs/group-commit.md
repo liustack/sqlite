@@ -37,7 +37,7 @@ The driver decides this for its callers, who do not know they were merged. The r
    - it prepared a statement that changes the connection: a PRAGMA that sets something, ATTACH, DETACH, creating or dropping a temporary object. This counts from the prepare, whether the statement ran or its prepare succeeded
    - it was opened read-only
    - its DSN turns `defer_foreign_keys` on (SQLite turns it off at the end of each transaction, so connections of the same DSN differ)
-7. **A connection that cannot merge for a while**, until that state ends: one in a transaction (a read-only one too, and the read snapshot of a query not yet read to its end). A connection that is closed, failed or broken runs nothing for others.
+7. **A connection that cannot merge for a while**, until that state ends: one in a transaction (a read-only one too, and the read snapshot of a query not yet read to its end). A connection that is closed, failed or broken runs nothing for others, and neither does one that gave `SQLITE_NOMEM`, `SQLITE_IOERR` or `SQLITE_FULL` (see [architecture.md](architecture.md#after-out-of-memory-an-io-error-or-a-full-disk)).
 
 ## 3. How a batch runs
 
@@ -63,7 +63,7 @@ Each request taken into a batch ends one way only, once: it gets its result, or 
 | --- | --- |
 | Still in the queue, its context ends or it waits past the busy timeout | Taken out of the queue, gets the error of its context or `SQLITE_BUSY`. It never ran and touches no one else. A request that goes back to the queue after its caller stopped waiting there is not taken out again: it waits for its answer from the next batch or the lock |
 | Taken into the batch, its context ends before its statement starts | Does not run. Gets the error of its context alone, and is no part of the batch. The call returns as its context ends: it does not wait for its turn |
-| Taken into the batch, its prepare or its bind fails | Did not run. Gets its own error alone, and is no part of the batch |
+| Taken into the batch, its prepare or its bind fails | Did not run. Gets its own error alone, and is no part of the batch. A prepare can end the whole transaction: SQLite runs statements of its own as it prepares one (it reads the schema, and a virtual table reads its tables), and one of those that runs out of memory rolls the transaction back. The batch then ends as in the row below for a statement that ends the whole transaction |
 | Refused as it is prepared again (rule 4) | Once its `SAVEPOINT` is undone, it goes back to the queue, and in its turn runs on its caller's connection. It did nothing, so this is not running it again. If the undo fails, as below for a transaction that ended |
 | `BEGIN IMMEDIATE` fails | No statement ran. The whole batch gets the error of BEGIN |
 | A statement fails and the transaction goes on (a constraint, for example) | Its own error and the rows SQLite kept of it (`OR FAIL` keeps the rows before the failure) are kept. What it finally gets depends on how the batch ends |
@@ -71,6 +71,7 @@ Each request taken into a batch ends one way only, once: it gets its result, or 
 | Writing a virtual table's index fails and the transaction goes on | The statement is undone and keeps its error. What it finally gets depends on how the batch ends |
 | A statement, or a `SAVEPOINT`, `ROLLBACK TO`, `RELEASE` or index write of the driver, ends the whole transaction (an interrupt, an IO error, a full disk, out of memory, `OR ROLLBACK`, `RAISE(ROLLBACK)`, a panic in a collation) | The request running then gets the error that ended the transaction. Every request that ran before it, whether it succeeded or failed alone, gets `SQLITE_ABORT_ROLLBACK` (516) instead, whose `Unwrap()` is the error that ended the transaction. The requests after it have not run: they go back to the queue in their place |
 | The driver's `ROLLBACK` fails too, and the transaction is still open | Results as in the row above. The connection is marked bad and keeps the write lock while its transaction is open. When `database/sql` drops it, it is closed, which rolls the transaction back and gives the lock back. A request handed the lock that led this batch and did not run gets `driver.ErrBadConn`, so that `database/sql` runs it on another connection |
+| A statement gives `SQLITE_NOMEM`, `SQLITE_IOERR` or `SQLITE_FULL` | Results by the rows above, as the transaction ended or went on. The connection runs this batch to its end and leads no other. A request handed the lock that led this batch and did not run gets `driver.ErrBadConn`, so that `database/sql` runs it on another connection |
 | Rule 10 ends the batch | What ran commits as usual. What did not run goes back to the queue |
 | `COMMIT` succeeds | Each request that ran gets what it kept: `RowsAffected` and `LastInsertId` when it succeeded, its own error when it failed alone |
 | `COMMIT` fails | Every request of the batch that ran gets the error of COMMIT, those that failed alone too. Nothing runs again |
@@ -105,7 +106,7 @@ if errors.As(err, &e) && e.ExtendedCode() == sqlite.ABORT_ROLLBACK {
 }
 ```
 
-The driver never turns these errors into `driver.ErrBadConn`: `database/sql` would try the statement again by itself, which is running it again. The one `driver.ErrBadConn` is for a request that never ran, on a connection that went bad (section 4).
+The driver never turns these errors into `driver.ErrBadConn`: `database/sql` would try the statement again by itself, which is running it again. The one `driver.ErrBadConn` is for a request that did nothing, on a connection that went bad or is not used again (section 4). When that request is a later statement of an `Exec` of several, it gets an error of the driver instead, since `database/sql` would run the statements before it again.
 
 ## 7. What a change to this code must keep
 

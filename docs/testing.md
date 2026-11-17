@@ -33,6 +33,18 @@ Each database must pass `integrity_check`. In `TestPowerLoss` it must hold the t
 
 `POWERLOSS_POINTS` sets the number of moments (300, and 60 with `-short`), and `POWERLOSS_KEEP` names a directory that gets the files of a power loss that fails, as they were before they were opened. A change to how the VFS writes or syncs must keep these tests red for a sync left out: taking out the sync of the WAL, of the database, of the journal, of the directory of a new journal, or of the directory after a delete each fails them with 60 moments. The sync of the header of a WAL that starts over is needed only for some orders of arrival: 300 or 500 moments found it missing in 14 runs of 16.
 
+## Out of memory and failed writes
+
+The tests of `oom_test.go` take memory away from SQLite while the driver writes: `csqlite.SetAllocFault` fails the allocations a test picks. Whatever allocation fails, a caller told that its statement committed finds what it wrote, a caller told that it failed finds nothing of it, no statement runs twice, and the file passes `integrity_check`.
+
+- `TestBatchOutOfMemory` runs one batch of group commit with one of its allocations failing, and with every allocation from that one on failing. `TestExecOutOfMemory` runs a statement alone with one of its allocations failing. `TestQueryOutOfMemory` reads rows that way, from a UTF-8 and a UTF-16 database: a row that comes without an error is the row of the database.
+- `TestMergeOutOfMemory` has 16 goroutines insert through `database/sql` while one allocation in every few hundred fails.
+- `TestFaultThenFTS5` (`spent_test.go`) has two connections take turns inserting into an FTS5 table while one allocation fails, one write fails, one write finds the disk full or an interrupt arrives, and checks that the index still matches the table. `TestSpentConnection`, `TestSpentInTransaction` and `TestSpentBetweenStatements` check the rule that keeps it so, and `TestCheckpointFailureKeepsConnection` what the rule leaves out (see [architecture.md](architecture.md#after-out-of-memory-an-io-error-or-a-full-disk)).
+
+SQLite serves most small allocations of a connection from a pool of its own, which the hook does not see. So these tests also run on a connection that holds 60 prepared statements, which fills the pool: a batch then makes about 400 allocations that can fail instead of 160.
+
+A point is one allocation or one write that fails. Each test first counts the points of its work, then tries `FAULT_POINTS` of them, spread evenly from a first one picked at random: 40 when it is not set, 10 with `-short`, and every point with `FAULT_POINTS=0`, which takes about four minutes. A point that fails does so again with `FAULT_POINTS=0`. A change to `runBatch`, to when a connection is dropped or to how a row is read must keep them red with `FAULT_POINTS=0` for each of the faults they found: going on with a batch whose prepare ended the transaction, preparing the empty text after the last statement of an `Exec`, using a connection again after `SQLITE_NOMEM`, `SQLITE_IOERR` or `SQLITE_FULL`, answering `driver.ErrBadConn` for a later statement of an `Exec`, and giving an empty text for one SQLite had no memory to convert.
+
 ## The S3 client and the replica
 
 The tests of `replica` and `replica/internal/s3` that need a store run against MinIO when `MINIO` names a minio binary, and are skipped otherwise. MinIO no longer publishes binaries, so build the release CI uses:
