@@ -28,6 +28,8 @@ type conn struct {
 	busyTimeout time.Duration
 	walLimit    int64            // the WAL is started over once it is longer, in bytes: 0 for never (wallimit.go)
 	replicated  bool             // the file was replicated when the connection opened: its replicator checkpoints
+	walEvery    int64            // an automatic checkpoint each so many frames of WAL: 0 for none (checkpoint.go)
+	walSQLite   bool             // SQLite runs the automatic checkpoints of the connection, not the driver
 	cache       map[string]*stmt // statements of the queue (writer.go)
 	control     map[string]*stmt // BEGIN, SAVEPOINT, COMMIT and the like of a batch (writer.go)
 	queries     map[string]*stmt // statements of QueryContext (cache.go)
@@ -106,12 +108,13 @@ func (c *conn) prepareOne(query string) (*csqlite.Stmt, string, error) {
 // prepare prepares the first statement of query. SQLite runs a PRAGMA that
 // sets something as it prepares it, whether the statement runs, or even
 // prepares without an error, or not. So after a statement that changes the
-// connection, the write lock reads busy_timeout again, and the statements
-// kept for queries go: they were prepared with the settings of before.
+// connection, the driver reads its settings again (changed), and the
+// statements kept for queries go: they were prepared with the settings of
+// before.
 func (c *conn) prepare(query string) (*csqlite.Stmt, string, error) {
 	s, tail, err := c.c.Prepare(query)
 	if c.c.JustChanged() {
-		c.readBusyTimeout()
+		c.changed()
 		c.dropQueries()
 	}
 	return s, tail, err

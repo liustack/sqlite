@@ -106,10 +106,15 @@ func TestWALLimit(t *testing.T) {
 			}
 		}
 	})
+	// For a second and a half, and on a slow machine until the WAL has
+	// been past the limit and started over once.
 	var most int64
-	for end := time.Now().Add(1500 * time.Millisecond); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+	for start := time.Now(); ; time.Sleep(20 * time.Millisecond) {
 		if st, err := os.Stat(path + "-wal"); err == nil {
 			most = max(most, st.Size())
+		}
+		if d := time.Since(start); d > 30*time.Second || d > 1500*time.Millisecond && l.walRestarts.Load() > 0 {
+			break
 		}
 	}
 	close(stop)
@@ -241,8 +246,8 @@ func TestWALLimitReplicated(t *testing.T) {
 }
 
 // A connection that writes only its temporary tables takes the file's write
-// lock too, and has not looked at the WAL since it opened. What it knows of
-// the WAL is old, and must not make the others try again at each commit.
+// lock too, and does not look at the WAL again. What it knows of the WAL is
+// old, and must not make the others try again at each commit.
 func TestWALLimitTempWriter(t *testing.T) {
 	const limit = 1 << 20
 	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_wal_limit=1048576")
@@ -262,6 +267,12 @@ func TestWALLimitTempWriter(t *testing.T) {
 	}
 	defer w.Close()
 	mExec(t, w, `UPDATE t SET v = randomblob(1000) WHERE k = 0`)
+	// It reads the WAL once, of one frame: what it knows of it from then on
+	// is a short WAL, not none.
+	var rows int
+	if err := temp.QueryRowContext(ctx, `SELECT count(*) FROM t`).Scan(&rows); err != nil || rows != 2000 {
+		t.Fatalf("%d rows, %v", rows, err)
+	}
 	reader := walReader(t, db)
 	defer reader.Rollback()
 	tries0 := l.walTries.Load()

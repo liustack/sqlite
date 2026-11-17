@@ -96,6 +96,20 @@ When the readers do not end in time, as with a read transaction that stays open,
 
 A replicated file follows the same rule in its replicator, which runs every checkpoint of that file (see [Replication](#replication)).
 
+## Automatic checkpoints
+
+SQLite runs an automatic checkpoint after every commit that leaves the WAL at `wal_autocheckpoint` frames or more (1000 by default). With no reader that is once each 1000 frames: the checkpoint copies them all, and the next writer starts the WAL over. While reads overlap the WAL stays longer than that, so every commit runs a checkpoint, and each syncs the WAL for the few frames the readers let it copy. Where a sync is slow the writer spends most of its time there: on linux/amd64 (4 cores, a network disk whose sync takes about 1 ms), one writer beside three readers that scan a 2 MB table spent 13 of 20 seconds in 12,000 syncs.
+
+So the driver runs the automatic checkpoints of its connections: the connection that gives the write lock back runs one each time the WAL has grown by `wal_autocheckpoint` frames since the last one the driver ran. With no reader that is when SQLite runs its own. In the run above the writer made 3.5 times as many writes (471,000 against 134,000 in 20 seconds) with 570 syncs, and 99% of them took under 0.3 ms against 2.5 ms. The readers read 12% less (32,500 scans against 36,800), as more frames wait in the WAL for them to look through: a smaller `wal_autocheckpoint` gives reads back for writes. With `synchronous=FULL`, where every commit syncs the WAL anyway, the writes are 10% more. On an Apple M4, where a sync costs little, the numbers do not move.
+
+What a program sees of it:
+
+- `wal_autocheckpoint` keeps its meaning, in the DSN (`_pragma=wal_autocheckpoint(N)`) and as a PRAGMA run on a connection: one checkpoint each N frames, and none with 0.
+- `PRAGMA wal_autocheckpoint` reads what was set, as before.
+- A checkpoint that cannot run, as when its connection has a query open, does not count as one: the next commit that finds one due tries again.
+- A connection with an attached database has SQLite's own automatic checkpoints until it detaches: they cover every database of the connection, and the driver's only the main one.
+- Writers of other processes checkpoint as SQLite does, and the checkpoints of a replicated file are its replicator's.
+
 ## When a sync of the WAL fails
 
 When an fsync fails, Linux marks the pages it could not write clean. They still read back from memory and the next fsync succeeds, but once the kernel drops them they read back as the disk holds them. With `synchronous=NORMAL`, SQLite syncs the WAL only when it checkpoints, so after that sync fails, the next checkpoint copies frames that may not be on disk into the database. SQLite's own VFS lets it, and the database is damaged once the pages are dropped.

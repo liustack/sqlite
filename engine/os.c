@@ -402,6 +402,11 @@ char *go_strdup(const char *z) { return sqlite3_mprintf("%s", z); }
 /* GO_GUARDED: goClassify refused a PRAGMA that would take the checkpoints
    of a replicated database from the replicator (goGuarded). */
 #define GO_GUARDED 8
+/* GO_WAL_AUTO: the statement reads PRAGMA wal_autocheckpoint. SQLite codes
+   the value into the statement as it prepares it, so the host prepares and
+   steps such a statement with SQLite's own WAL hook in place
+   (go_wal_give). */
+#define GO_WAL_AUTO 16
 
 static int isMain(const char *db) { return db && strcmp(db, "main") == 0; }
 static int isTemp(const char *db) { return db && strcmp(db, "temp") == 0; }
@@ -520,6 +525,7 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
        pragma reads its setting. */
     *flags |= GO_PRIVATE;
     if (b && !infoPragma(a)) *flags |= GO_STATE;
+    if (!b && sqlite3_stricmp(a, "wal_autocheckpoint") == 0) *flags |= GO_WAL_AUTO;
     if (w->guard && goGuarded(w->db, a, b, db)) {
       w->flags |= GO_GUARDED;
       return SQLITE_DENY;
@@ -646,6 +652,52 @@ unsigned long long go_wal_now(sqlite3 *db) {
   h = walIndexHdr(w);
   return (unsigned long long)h->aSalt[0] << 32 | h->mxFrame;
 }
+
+/* ---- automatic checkpoints ---- */
+
+/* The driver runs the automatic checkpoints of a connection itself, from
+   the connection that gives the write lock of the file back (checkpoint.go
+   of the root package). goWalHook is the WAL hook of such a connection, in
+   the place of SQLite's own: it does nothing, and that it is the hook is
+   how such a connection is known. Its argument is the wal_autocheckpoint
+   the connection had when the driver took over, for go_wal_give. */
+static int goWalHook(void *arg, sqlite3 *db, const char *zDb, int nFrame) {
+  (void)arg;
+  (void)db;
+  (void)zDb;
+  (void)nFrame;
+  return SQLITE_OK;
+}
+
+/* go_wal_take takes the automatic checkpoints of db from SQLite. It returns
+   the wal_autocheckpoint db had, 0 for none, or -1 when they were taken
+   already. PRAGMA wal_autocheckpoint=N gives them back to SQLite, as
+   go_wal_give does. */
+int go_wal_take(sqlite3 *db) {
+  int n;
+  if (db->xWalCallback == goWalHook) return -1;
+  n = db->xWalCallback == sqlite3WalDefaultHook ? SQLITE_PTR_TO_INT(db->pWalArg) : 0;
+  sqlite3_wal_hook(db, goWalHook, SQLITE_INT_TO_PTR(n));
+  return n;
+}
+
+/* go_wal_give gives the automatic checkpoints of db back to SQLite, with
+   the wal_autocheckpoint they were taken with. It returns 0 when they were
+   SQLite's already. */
+int go_wal_give(sqlite3 *db) {
+  if (db->xWalCallback != goWalHook) return 0;
+  sqlite3_wal_autocheckpoint(db, SQLITE_PTR_TO_INT(db->pWalArg));
+  return 1;
+}
+
+/* go_attached says db has a database attached: 0 is main and 1 is temp. */
+int go_attached(sqlite3 *db) { return db->nDb > 2; }
+
+/* go_busy_timeout is the busy timeout of db in milliseconds, 0 for none,
+   as PRAGMA busy_timeout reads it. It reads a field: the host asks after a
+   statement that may have set it and failed, and SQLite may refuse a
+   statement then, as while an interrupt is pending. */
+int go_busy_timeout(sqlite3 *db) { return db->busyTimeout; }
 
 /* go_page_count is the size of the main database of db in pages, as its
    read transaction sees it. */
