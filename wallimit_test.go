@@ -239,3 +239,46 @@ func TestWALLimitReplicated(t *testing.T) {
 		t.Fatalf("the WAL is %d bytes, %v: something ran a checkpoint", st.Size(), err)
 	}
 }
+
+// A connection that writes only its temporary tables takes the file's write
+// lock too, and has not looked at the WAL since it opened. What it knows of
+// the WAL is old, and must not make the others try again at each commit.
+func TestWALLimitTempWriter(t *testing.T) {
+	const limit = 1 << 20
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_wal_limit=1048576")
+	db.SetMaxOpenConns(3)
+	walTable(t, db)
+	l := walLock(t, db)
+	ctx := context.Background()
+	temp, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer temp.Close()
+	mExec(t, temp, `CREATE TEMP TABLE tt(x)`)
+	w, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	mExec(t, w, `UPDATE t SET v = randomblob(1000) WHERE k = 0`)
+	reader := walReader(t, db)
+	defer reader.Rollback()
+	tries0 := l.walTries.Load()
+	k := 0
+	for ; l.walTries.Load() == tries0; k++ {
+		if k > 2*limit/4120 {
+			t.Fatal("no try to start the WAL over past the limit")
+		}
+		mExec(t, w, `UPDATE t SET v = randomblob(1000) WHERE k = ?`, k%2000)
+	}
+	// The next try comes a quarter of the limit later: 63 frames.
+	for range 30 {
+		mExec(t, temp, `INSERT INTO tt VALUES (1)`)
+		mExec(t, w, `UPDATE t SET v = randomblob(1000) WHERE k = ?`, k%2000)
+		k++
+	}
+	if tries := l.walTries.Load() - tries0; tries != 1 {
+		t.Fatalf("%d tries in 30 writes after the first, beside a connection that writes its temporary table, want 1", tries)
+	}
+}

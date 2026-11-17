@@ -212,11 +212,11 @@ func TestWALHeaderChange(t *testing.T) {
 	}
 }
 
-// WALFrames is the length of the WAL a commit left, with no transaction
-// open, also once the WAL started over.
-func TestWALFrames(t *testing.T) {
+// WALNow is the WAL as it is now, with no transaction open: also for a
+// connection that has not looked at it since, and once the WAL started over.
+func TestWALNow(t *testing.T) {
 	w, r, _ := walDB(t)
-	if n := r.WALFrames(); n != 0 {
+	if n, _, ok := r.WALNow(); ok {
 		t.Fatalf("%d frames before the connection read the WAL", n)
 	}
 	beginRead(t, r)
@@ -225,17 +225,27 @@ func TestWALFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec(t, r, "COMMIT")
-	if n := w.WALFrames(); n != h.MaxFrame || n == 0 {
-		t.Fatalf("%d frames after the commits, the WAL has %d", n, h.MaxFrame)
+	n, salt, ok := w.WALNow()
+	if !ok || n != h.MaxFrame || n == 0 {
+		t.Fatalf("%d frames after the commits (%v), the WAL has %d", n, ok, h.MaxFrame)
+	}
+	// r does not look at the WAL again, and still gets what w wrote since.
+	exec(t, w, "INSERT INTO t VALUES (randomblob(3000))")
+	more, _, _ := w.WALNow()
+	if more <= n {
+		t.Fatalf("%d frames after a commit, %d before", more, n)
+	}
+	if got, s, ok := r.WALNow(); !ok || got != more || s != salt {
+		t.Fatalf("the connection that did not look gets %d frames of WAL %x (%v), want %d of %x", got, s, ok, more, salt)
 	}
 	exec(t, w, "PRAGMA wal_checkpoint(PASSIVE)")
 	exec(t, w, "INSERT INTO t VALUES (1)")
-	if n := w.WALFrames(); n != 1 {
-		t.Fatalf("%d frames after the WAL started over with one", n)
+	if n, s, ok := r.WALNow(); !ok || n != 1 || s == salt {
+		t.Fatalf("%d frames of WAL %x (%v) after the WAL started over with one, want 1 of another than %x", n, s, ok, salt)
 	}
 	mem := open(t, ":memory:")
 	exec(t, mem, "CREATE TABLE t(x); INSERT INTO t VALUES (1)")
-	if n := mem.WALFrames(); n != 0 {
+	if n, _, ok := mem.WALNow(); ok {
 		t.Fatalf("%d frames without a WAL", n)
 	}
 }
