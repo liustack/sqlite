@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -28,7 +29,8 @@ import (
 // conflicting with another of the process is refused here, and the kernel
 // is asked only when the process's lock on a slot changes. With one lock
 // owner per process, the kernel's lock list on the file stays short, and
-// most read marks are taken with no system call at all.
+// most read marks are taken with no system call at all. The count of a
+// slot is atomic: see ShmLock for what changes it without the mutex.
 type shmNode struct {
 	id   fileID // of the database file
 	path string
@@ -36,18 +38,18 @@ type shmNode struct {
 	nRef int // Files using the node, under shmNodes
 
 	mu       sync.Mutex
-	readOnly bool          // the -shm could only be opened for reading
-	unlocked bool          // read-only and no one had it open: the DMS lock is not held
-	lock     [ShmNLock]int // per slot: shared holders in the process, or -1 for exclusive
-	idle     uint16        // slots the process keeps locked with no holder: read slots kept for the next reader, and slots whose unlock failed
-	idleExcl uint16        // idle slots locked for writing in the kernel: their exclusive unlock failed
-	others   bool          // another process had the -shm open when last looked: no idle slots
-	regions  []uintptr     // address of each region mapped
-	maps     []mapping     // what to unmap
-	fl       unix.Flock_t  // space for the fcntl argument
-	timer    *time.Timer   // releases the idle slots
-	armed    bool          // timer is set to run
-	closed   bool          // the descriptor is closed: the timer does nothing
+	readOnly bool                   // the -shm could only be opened for reading
+	unlocked bool                   // read-only and no one had it open: the DMS lock is not held
+	lock     [ShmNLock]atomic.Int32 // per slot: shared holders in the process, or -1 for exclusive
+	idle     uint16                 // slots the process keeps locked with no holder: read slots kept for the next reader, and slots whose unlock failed
+	idleExcl uint16                 // idle slots locked for writing in the kernel: their exclusive unlock failed
+	others   bool                   // another process had the -shm open when last looked: no idle slots
+	regions  []uintptr              // address of each region mapped
+	maps     []mapping              // what to unmap
+	fl       unix.Flock_t           // space for the fcntl argument
+	timer    *time.Timer            // releases the idle slots
+	armed    bool                   // timer is set to run
+	closed   bool                   // the descriptor is closed: the timer does nothing
 	// alone says the process took the DMS lock for writing after a sync of
 	// the WAL failed, and keeps it: see wal_unix.go. The -shm is emptied as
 	// the node closes.
@@ -297,6 +299,34 @@ func (f *File) ShmLock(offset, n, flags int) int {
 	}
 	mask := uint16(1<<(offset+n) - 1<<offset)
 	node := s.node
+	if n == 1 && flags&ShmShared != 0 {
+		// A slot other connections of the process hold shared is taken and
+		// given back without node.mu, so the readers of a process do not
+		// wait for each other at every transaction. The count stays above
+		// zero here, and the process holds the slot in the kernel for as
+		// long as it is: every change from or to zero is made under
+		// node.mu, to zero before the kernel unlocks and from zero after
+		// it locks. s.shared is only read and written by the connection.
+		l := &node.lock[offset]
+		if flags&ShmUnlock == 0 {
+			if s.shared&mask != 0 {
+				return OK
+			}
+			for v := l.Load(); v >= 1; v = l.Load() {
+				if l.CompareAndSwap(v, v+1) {
+					s.shared |= mask
+					return OK
+				}
+			}
+		} else if s.shared&mask != 0 && s.excl&mask == 0 {
+			for v := l.Load(); v >= 2; v = l.Load() {
+				if l.CompareAndSwap(v, v-1) {
+					s.shared &^= mask
+					return OK
+				}
+			}
+		}
+	}
 	node.mu.Lock()
 	rc := OK
 	switch {
@@ -310,10 +340,10 @@ func (f *File) ShmLock(offset, n, flags int) int {
 			break
 		}
 		switch {
-		case node.lock[offset] < 0:
+		case node.lock[offset].Load() < 0:
 			// Another connection of the process holds it exclusive.
 			rc = Busy
-		case node.lock[offset] == 0 && node.idleExcl&mask != 0:
+		case node.lock[offset].Load() == 0 && node.idleExcl&mask != 0:
 			// Its exclusive unlock failed. The write lock becomes a read
 			// lock, so that other processes can read, or the slot stays
 			// idle for the timer.
@@ -323,22 +353,22 @@ func (f *File) ShmLock(offset, n, flags int) int {
 				node.idle &^= mask
 				node.idleExcl &^= mask
 			}
-		case node.lock[offset] == 0 && node.idle&mask != 0:
+		case node.lock[offset].Load() == 0 && node.idle&mask != 0:
 			// The process still holds it from its last reader.
 			node.idle &^= mask
-		case node.lock[offset] == 0:
+		case node.lock[offset].Load() == 0:
 			if err := setLock(node.fd, &node.fl, unix.F_RDLCK, int64(shmBase+offset), 1); err != nil {
 				rc = lockError(err, IOErrShmLock)
 			}
 		}
 		if rc == OK {
-			node.lock[offset]++
+			node.lock[offset].Add(1)
 			s.shared |= mask
 		}
 
 	default:
-		for _, l := range node.lock[offset : offset+n] {
-			if l != 0 {
+		for i := offset; i < offset+n; i++ {
+			if node.lock[i].Load() != 0 {
 				// Another connection of the process holds one of them.
 				rc = Busy
 				break
@@ -351,7 +381,7 @@ func (f *File) ShmLock(offset, n, flags int) int {
 		}
 		if rc == OK {
 			for i := offset; i < offset+n; i++ {
-				node.lock[i] = -1
+				node.lock[i].Store(-1)
 			}
 			// An idle lock of the process became this write lock.
 			node.idle &^= mask
@@ -441,23 +471,21 @@ func (s *shm) unlock(offset, n int, mask uint16) int {
 		bit := uint16(1) << i
 		switch {
 		case s.excl&bit != 0:
-		case s.shared&bit != 0 && node.lock[i] > 1:
-			node.lock[i]--
+		case s.shared&bit == 0:
+			mask &^= bit
+		case node.lock[i].Add(-1) > 0:
 			s.shared &^= bit
 			mask &^= bit
-		case s.shared&bit != 0 && bit&shmReadSlots != 0:
+		case bit&shmReadSlots != 0:
 			// The last reader of the process leaves a read slot. Alone,
 			// the process keeps it. Either way the timer looks again for
 			// other processes.
 			arm = true
 			if !node.others {
-				node.lock[i] = 0
 				node.idle |= bit
 				s.shared &^= bit
 				mask &^= bit
 			}
-		case s.shared&bit == 0:
-			mask &^= bit
 		}
 	}
 	if arm {
@@ -473,7 +501,7 @@ func (s *shm) unlock(offset, n int, mask uint16) int {
 	done, err := node.unlockSlots(mask)
 	for i := offset; i < offset+n; i++ {
 		if mask&(1<<i) != 0 {
-			node.lock[i] = 0
+			node.lock[i].Store(0)
 		}
 	}
 	if failed := mask &^ done; failed != 0 {

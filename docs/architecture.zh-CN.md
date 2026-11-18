@@ -19,7 +19,7 @@ flowchart TB
 1. **C 树**（`engine/`）：发布原样的 SQLite amalgamation、编译选项（`engine/sqlite.c`）、调用 Go 的 VFS 和互斥锁（`engine/os.c`、`engine/host.h`），以及一个小 libc（`engine/libc/`）。它按 freestanding 方式编译，不用系统头文件。
 2. **生成器**（`internal/goasm/gen/`）：把 C 树变成 Go 汇编，每个 C 函数对应一个 Go 函数，再加一个声明它们的 Go 文件。由维护者运行（`make gen`），用户不用跑。
 3. **引擎包**（`internal/csqlite`）：生成的 Go 汇编和它的声明，都提交进仓库，旁边是 Go host：影子栈、poll、malloc、互斥锁、VFS 的回调，以及驱动调用的那一小组 C API。
-4. **文件层**（`internal/vfs`）：纯 Go，不含引擎。在 linux 和 darwin 上实现 SQLite 的文件和锁规则，做法和 os_unix 一样：同一进程里连到同一个数据库的各个连接共享一套锁，这些锁在内存里彼此分开，只有进程持有的锁发生变化时才去问内核。内核锁用 OFD 锁（属于打开文件的锁），所以关掉一个连接不会放掉别的连接的锁。`-shm` 文件为 WAL 做了内存映射。在 windows 上，文件和锁的做法和 os_win 一样：每个连接在自己的句柄上用 `LockFileEx` 加锁，Windows 把每个句柄的锁分开算，所以同一进程的连接像不同进程一样互斥。`-shm` 用 `CreateFileMapping` 映射，每个区域一个视图，每个连接在自己的 `-shm` 句柄上锁槽位。锁的字节范围和 os_unix、os_win 一样，所以 C 编译的 SQLite 可以同时用同一个库。
+4. **文件层**（`internal/vfs`）：纯 Go，不含引擎。在 linux 和 darwin 上实现 SQLite 的文件和锁规则，做法和 os_unix 一样：同一进程里连到同一个数据库的各个连接共享一套锁，这些锁在内存里彼此分开，只有进程持有的锁发生变化时才去问内核。读者要拿的 WAL 读槽如果已有本进程的别的连接持有，只用一步原子操作把自己记进去，所以同一进程的读者之间不用互相等。内核锁用 OFD 锁（属于打开文件的锁），所以关掉一个连接不会放掉别的连接的锁。`-shm` 文件为 WAL 做了内存映射。在 windows 上，文件和锁的做法和 os_win 一样：每个连接在自己的句柄上用 `LockFileEx` 加锁，Windows 把每个句柄的锁分开算，所以同一进程的连接像不同进程一样互斥。`-shm` 用 `CreateFileMapping` 映射，每个区域一个视图，每个连接在自己的 `-shm` 句柄上锁槽位。锁的字节范围和 os_unix、os_win 一样，所以 C 编译的 SQLite 可以同时用同一个库。
 5. **驱动**（根包）：在这套 API 之上实现 `database/sql/driver`，每个数据库文件一个写入者，并带合并提交。
 
 ## 从 C 到 Go 汇编
