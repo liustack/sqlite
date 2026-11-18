@@ -90,7 +90,8 @@ type shmNode struct {
 // read lock goes or becomes a write lock, it is taken out of state, so that
 // from then on a reader waits for mu. A goroutine that waits for a mutex
 // sleeps, and with every core busy it waits long for a core once it is
-// woken: what a connection does at every transaction must not wait.
+// woken: so a reader that takes a read slot the process has locked takes no
+// mutex, and the mutex of the write slot is one no reader takes.
 type shmSlot struct {
 	state atomic.Int32
 	mu    sync.Mutex
@@ -418,10 +419,10 @@ func (s *shm) lockShared(i int, bit uint16) int {
 	}
 }
 
-// lockExcl takes the n slots of mask, from offset, exclusive. Slots a
-// connection of the process holds are refused as slots another process
-// holds, with no mutex taken. It waits only for a slot whose lock changes in
-// the kernel just now.
+// lockExcl takes the n slots of mask, from offset, exclusive. A slot a
+// connection of the process holds is refused as a slot another process
+// holds: with no mutex taken when it is held as lockExcl starts. It waits
+// only for a slot whose lock changes in the kernel just now.
 func (s *shm) lockExcl(offset, n int, mask uint16) int {
 	node := s.node
 	slots := node.slots[offset : offset+n]
@@ -430,11 +431,14 @@ func (s *shm) lockExcl(offset, n int, mask uint16) int {
 			return Busy
 		}
 	}
-	// A mutex that is held is a slot whose lock changes in the kernel, for
-	// one fcntl call: a reader that comes or goes, the timer that lets an
-	// idle slot go. Nobody holds the slot then, so it is waited for:
-	// SQLITE_BUSY would fail a checkpoint, which does not ask again. The
-	// mutexes are taken in the order of the slots, here and in unlockExcl.
+	// A mutex that is held is a slot whose lock changes in the kernel: a
+	// reader that comes or goes, the timer that lets an idle slot go, a
+	// connection that gives the slot back, or one that asks for it with
+	// other slots. That is one fcntl call, or a few when the other waits
+	// for a mutex itself. It is waited for, since most often nobody holds
+	// the slot after it: SQLITE_BUSY would fail a checkpoint, which does
+	// not ask again. The mutexes are taken in the order of the slots, here
+	// and in unlockExcl.
 	for i := range slots {
 		slots[i].lock()
 	}
