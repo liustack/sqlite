@@ -30,6 +30,20 @@ func failUnlockOnce(t *testing.T, start int64) (count *int, stop func()) {
 	return &n, stop
 }
 
+// failWriteUnlockOnce fails the first call that would let go of a write
+// lock on the slot at start: its unlock, or the read lock that replaces it
+// when the process keeps a read slot.
+func failWriteUnlockOnce(t *testing.T, start int64) (stop func()) {
+	n := 0
+	return failFcntl(t, func(typ int16, s, l int64) error {
+		if (typ == unix.F_UNLCK || typ == unix.F_RDLCK) && s == start && n == 0 {
+			n++
+			return unix.ENOLCK
+		}
+		return nil
+	})
+}
+
 // The owner of the write slot closes and its unlock fails: the kernel lock
 // stays, the node keeps it, and the timer's next run releases it.
 func TestShmUnmapUnlockRetried(t *testing.T) {
@@ -49,9 +63,7 @@ func TestShmUnmapUnlockRetried(t *testing.T) {
 		t.Fatalf("slot 0 after the failed unlock = %d, want F_WRLCK (the kernel still holds it)", got)
 	}
 	node := b.shm.node
-	node.mu.Lock()
-	idle, armed, l0 := node.idle, node.armed, node.lock[0].Load()
-	node.mu.Unlock()
+	idle, armed, l0 := node.idle(), node.armed.Load(), node.holders(0)
 	if idle != 1 || !armed || l0 != 0 {
 		t.Fatalf("node after the failed unlock: idle %#x armed %v lock[0] %d, want 0x1 true 0", idle, armed, l0)
 	}
@@ -75,8 +87,8 @@ func TestShmUnmapUnlockTakenOver(t *testing.T) {
 	lockT(t, "a close", a.Close(), OK)
 	stop()
 	lockT(t, "b writer", b.ShmLock(0, 1, ShmLock|ShmExclusive), OK)
-	if b.shm.node.idle != 0 {
-		t.Errorf("idle after takeover = %#x, want 0", b.shm.node.idle)
+	if b.shm.node.idle() != 0 {
+		t.Errorf("idle after takeover = %#x, want 0", b.shm.node.idle())
 	}
 	lockT(t, "b unlock", b.ShmLock(0, 1, ShmUnlock|ShmExclusive), OK)
 	if got := heldBy(t, name, 0); got != unix.F_UNLCK {
@@ -173,7 +185,7 @@ func TestShmIdleWriteLockTakenShared(t *testing.T) {
 	shmMapT(t, a, 0, true)
 	shmMapT(t, b, 0, true)
 	lockT(t, "a exclusive", a.ShmLock(3, 1, ShmLock|ShmExclusive), OK)
-	_, stop := failUnlockOnce(t, shmBase+3)
+	stop := failWriteUnlockOnce(t, shmBase+3)
 	a.ShmLock(3, 1, ShmUnlock|ShmExclusive)
 	stop()
 	if got := heldBy(t, name, 3); got != unix.F_WRLCK {
@@ -199,7 +211,7 @@ func TestShmIdleWriteLockDowngradeFails(t *testing.T) {
 	shmMapT(t, a, 0, true)
 	shmMapT(t, b, 0, true)
 	lockT(t, "a exclusive", a.ShmLock(3, 1, ShmLock|ShmExclusive), OK)
-	_, stop := failUnlockOnce(t, shmBase+3)
+	stop := failWriteUnlockOnce(t, shmBase+3)
 	a.ShmLock(3, 1, ShmUnlock|ShmExclusive)
 	stop()
 	stop = failFcntl(t, func(typ int16, s, l int64) error {
@@ -216,8 +228,8 @@ func TestShmIdleWriteLockDowngradeFails(t *testing.T) {
 		t.Fatalf("b holds %#x after the error, want nothing", b.shm.shared)
 	}
 	node := b.shm.node
-	if node.idle&(1<<3) == 0 || node.lock[3].Load() != 0 {
-		t.Fatalf("node idle %#x lock[3] %d, want slot 3 idle with no holder", node.idle, node.lock[3].Load())
+	if node.idle()&(1<<3) == 0 || node.holders(3) != 0 {
+		t.Fatalf("node idle %#x lock[3] %d, want slot 3 idle with no holder", node.idle(), node.holders(3))
 	}
 	node.releaseIdle()
 	if got := heldBy(t, name, 3); got != unix.F_UNLCK {

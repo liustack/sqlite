@@ -355,7 +355,7 @@ func TestShmIdleSlotExclusive(t *testing.T) {
 			t.Errorf("slot %d after exclusive unlock = %d, want F_UNLCK", slot, got)
 		}
 	}
-	if idle := a.shm.node.idle; idle != 0 {
+	if idle := a.shm.node.idle(); idle != 0 {
 		t.Errorf("idle slots after exclusive unlock = %#x, want 0", idle)
 	}
 }
@@ -488,10 +488,7 @@ func TestShmOtherProcessComesAndGoes(t *testing.T) {
 	if got := heldBy(t, name, 5); got != unix.F_UNLCK {
 		t.Errorf("slot 5 with another process = %d, want F_UNLCK", got)
 	}
-	node.mu.Lock()
-	armed := node.armed
-	node.mu.Unlock()
-	if !armed {
+	if !node.armed.Load() {
 		t.Error("timer not armed after a release with another process")
 	}
 
@@ -525,9 +522,7 @@ func TestShmIdlePartialRelease(t *testing.T) {
 	node.releaseIdle()
 	stop()
 
-	node.mu.Lock()
-	idle, armed := node.idle, node.armed
-	node.mu.Unlock()
+	idle, armed := node.idle(), node.armed.Load()
 	if idle != 1<<6 || !armed {
 		t.Errorf("after a release that failed for slot 6: idle %#x, armed %v, want 0x40, true", idle, armed)
 	}
@@ -604,7 +599,7 @@ func TestShmSharedSlotTakesNoMutex(t *testing.T) {
 		<-done
 		t.Fatal("a shared lock on a slot the process holds waited for the mutex of the node")
 	}
-	if got := node.lock[3].Load(); got != 1 {
+	if got := node.holders(3); got != 1 {
 		t.Errorf("slot 3 has %d holders, want 1", got)
 	}
 	if got := heldBy(t, name, 3); got != unix.F_RDLCK {
@@ -643,7 +638,7 @@ func sharedSlotParallel(t *testing.T, others bool) {
 	if others {
 		otherProcess(t, name)
 		node.releaseIdle()
-		if !node.others {
+		if !node.others.Load() {
 			t.Fatal("the other process was not seen")
 		}
 	}
@@ -709,7 +704,7 @@ func sharedSlotParallel(t *testing.T, others bool) {
 				if typ, err := testLock(fd, &fl, int64(shmBase+3), 1); err != nil || typ != unix.F_RDLCK {
 					t.Errorf("slot 3 seen from outside while held shared = %d, %v, want F_RDLCK", typ, err)
 				}
-				if n := node.lock[3].Load(); n < 1 {
+				if n := node.holders(3); n < 1 {
 					t.Errorf("slot 3 has %d holders while held shared", n)
 				}
 				taken[0].Add(1)
@@ -725,7 +720,7 @@ func sharedSlotParallel(t *testing.T, others bool) {
 	if taken[0].Load() == 0 || taken[1].Load() == 0 {
 		t.Errorf("slot 3 was taken shared %d times and exclusive %d times", taken[0].Load(), taken[1].Load())
 	}
-	if got := node.lock[3].Load(); got != 0 {
+	if got := node.holders(3); got != 0 {
 		t.Errorf("slot 3 has %d holders with none left", got)
 	}
 	// Each exclusive lock asks the kernel twice, and each reader looked at

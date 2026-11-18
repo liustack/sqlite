@@ -283,7 +283,7 @@ func learn(name string, fd int, dirty int64) (s *stopped, settled bool) {
 		return nil, false
 	}
 	frames := max(s.idx.nBackfill, s.idx.attempted)
-	if node.lock[shmCkptSlot].Load() < 0 || node.excl {
+	if node.slots[shmCkptSlot].state.Load()&slotExcl != 0 || node.excl {
 		// A connection of the process may be at a checkpoint, and then what
 		// the index says a checkpoint set out to copy is its own mark, which
 		// it wrote before its sync of the WAL. If that is the sync that
