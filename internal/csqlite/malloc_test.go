@@ -10,7 +10,9 @@ package csqlite
 import (
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // SQLite's statement journal is kept in memory in chunks of a little over
@@ -52,6 +54,10 @@ func TestClassOf(t *testing.T) {
 		}
 	}
 }
+
+// The tests count the spans that are mapped, so no arena gives spans back
+// behind them: only TestIdleArenaGivesSpansBack sets a time that comes.
+func init() { idleTrim = time.Hour }
 
 // Blocks freed after a peak give their memory back: a class keeps no more
 // empty spans than keepEmpty says.
@@ -320,6 +326,178 @@ func TestBlockGoesBackToItsArena(t *testing.T) {
 			free(sts[0].sp(), p)
 		}
 		checkHeap(t)
+	}
+}
+
+// An arena no stack has used for idleTrim gives its empty spans back to the
+// system, and an arena that is taken again in that time keeps them.
+func TestIdleArenaGivesSpansBack(t *testing.T) {
+	// The timers the tests before set would come in an hour.
+	setTrim := func(d time.Duration) {
+		arenaUse.mu.Lock()
+		idleTrim = d
+		for a, tm := range arenaUse.timer {
+			if tm != nil && tm.Stop() {
+				arenaUse.timer[a] = nil
+			}
+		}
+		arenaUse.mu.Unlock()
+	}
+	const trim = 50 * time.Millisecond
+	setTrim(trim)
+	defer setTrim(time.Hour)
+	empty := func(a uint8) (n int) {
+		for ci := range heap.arenas[a].classes {
+			c := &heap.arenas[a].classes[ci]
+			c.mu.Lock()
+			n += c.empty
+			c.mu.Unlock()
+		}
+		return n
+	}
+	st, err := newStack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := st.arena
+	sizes := []uintptr{24, 4336, 100 << 10}
+	for _, n := range sizes {
+		p := malloc(st.sp(), n)
+		if p == 0 {
+			t.Fatalf("malloc(%d) failed", n)
+		}
+		free(st.sp(), p)
+	}
+	kept := empty(a)
+	if kept < len(sizes) {
+		t.Fatalf("arena %d keeps %d empty spans after a block of %d classes, want at least %d", a, kept, len(sizes), len(sizes))
+	}
+	m0 := mappedSpans.Load()
+
+	// Left and taken again at once: it is in use when the time is over.
+	st.free()
+	if st, err = newStack(); err != nil {
+		t.Fatal(err)
+	}
+	if st.arena != a {
+		t.Fatalf("the next stack took arena %d, want %d", st.arena, a)
+	}
+	time.Sleep(4 * trim)
+	if n := empty(a); n != kept {
+		t.Errorf("arena %d has %d empty spans while a stack uses it, had %d", a, n, kept)
+	}
+
+	// Left for good.
+	st.free()
+	for end := time.Now().Add(10 * time.Second); empty(a) != 0; time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatalf("arena %d still has %d empty spans long after its last stack was freed", a, empty(a))
+		}
+	}
+	want := int64(0)
+	for _, n := range sizes {
+		want += int64(spanBytes[classOf[(n+header+15)/16]])
+	}
+	if gone := m0 - mappedSpans.Load(); gone < want {
+		t.Errorf("%d bytes of spans went back, want at least the %d of a span of each of %d classes", gone, want, len(sizes))
+	}
+	checkHeap(t)
+
+	// The arena serves the next stack as before.
+	if st, err = newStack(); err != nil {
+		t.Fatal(err)
+	}
+	defer st.free()
+	for _, n := range sizes {
+		p := malloc(st.sp(), n)
+		if p == 0 {
+			t.Fatalf("malloc(%d) after the trim failed", n)
+		}
+		*(*byte)(at(p)) = 1
+		free(st.sp(), p)
+	}
+	checkHeap(t)
+}
+
+// An arena that is trimmed while goroutines take and give back its blocks
+// loses only spans with no block in use: no block changes under its owner.
+// The race detector does not see this memory, so the blocks are checked.
+func TestTrimBesideAllocs(t *testing.T) {
+	st, err := newStack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.free()
+	sp, a := st.sp(), &heap.arenas[st.arena]
+	sizes := []uintptr{24, 200, 4336, 20 << 10, 100 << 10, 200 << 10}
+	var stop atomic.Bool
+	var trims sync.WaitGroup
+	trims.Add(1)
+	go func() {
+		defer trims.Done()
+		for !stop.Load() {
+			a.trim()
+		}
+	}()
+	var wg sync.WaitGroup
+	var bad atomic.Int64
+	for g := range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rng := rand.New(rand.NewPCG(uint64(g), 7))
+			type block struct {
+				p, n uintptr
+				fill byte
+			}
+			var held []block
+			drop := func(b block) {
+				for _, c := range bytesAt(b.p, int(b.n)) {
+					if c != b.fill {
+						bad.Add(1)
+						break
+					}
+				}
+				free(sp, b.p)
+			}
+			for i := range 4000 {
+				n := sizes[rng.IntN(len(sizes))]
+				p := malloc(sp, n)
+				if p == 0 {
+					bad.Add(1)
+					return
+				}
+				b := block{p, n, byte(g<<4 | i&15)}
+				for j := range bytesAt(p, int(n)) {
+					bytesAt(p, int(n))[j] = b.fill
+				}
+				held = append(held, b)
+				// Mostly a block or two, so that spans become empty.
+				for len(held) > rng.IntN(3) {
+					k := rng.IntN(len(held))
+					drop(held[k])
+					held[k] = held[len(held)-1]
+					held = held[:len(held)-1]
+				}
+			}
+			for _, b := range held {
+				drop(b)
+			}
+		}()
+	}
+	wg.Wait()
+	stop.Store(true)
+	trims.Wait()
+	if n := bad.Load(); n != 0 {
+		t.Errorf("%d blocks failed or changed while their arena was trimmed", n)
+	}
+	checkHeap(t)
+	a.trim()
+	checkHeap(t)
+	for ci := range a.classes {
+		if n := a.classes[ci].empty; n != 0 {
+			t.Errorf("class %d keeps %d empty spans after a trim", classSizes[ci], n)
+		}
 	}
 }
 
