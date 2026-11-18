@@ -106,3 +106,21 @@ Writers do the same: through database/sql each calls `db.Exec`, and without it e
 | `InsertFull/g=64` | 64 writers, `synchronous=FULL` |
 
 The threads run `-secs` seconds each time, and the rates count every thread's ops. In C the writes queue on a mutex of the process, which is faster than SQLite's busy handler. A read that does not return its 100 bytes, or a write that fails, fails the run. The busy timeout is 60 s here, not the 5 s of the other benchmarks: SQLite's busy handler sleeps between tries, up to 100 ms, and a writer that just committed can take the lock again before a sleeper wakes, so with 64 writers and `synchronous=FULL` on a slow disk a writer of mattn can wait more than 5 s, and its write would fail with `database is locked`. liustack/sqlite has one writer for a file and the C program queues on a mutex, so neither waits there.
+
+## How long a request takes
+
+The benchmarks above say how much a driver gets done: goroutines call it in a loop with no pause. They do not say how long one call takes when the cores are busy, because the longest call of such a loop is the round of Go's scheduler ([docs/busy-cores.md](../docs/busy-cores.md)). `benchrun latency` measures that:
+
+```sh
+go run ./cmd/benchrun latency                              # all drivers, 3 rounds, a server on 2 cores
+go run ./cmd/benchrun latency -drivers liustack,mattn -procs 1 -rounds 5
+go run ./cmd/benchrun latency -wrap "taskset -c 0,1"       # linux: the server on cores of its own
+```
+
+The server (`latency/`, built once per driver) is a process of its own: `net/http` in front of one database and a pool of 32 connections, with `GOMAXPROCS` set by `-procs`. A read request is 32 point reads from 100k rows, and a write request one autocommit `INSERT`. The requests come from `benchrun`:
+
+1. It finds what each driver answers at most, with 256 clients that ask again as soon as they have their answer. The lowest of the drivers is the base.
+2. For each driver and each load of `-loads` (40% and 70% of the base), it starts a fresh server and sends read requests at that rate and `-writes` write requests a second (500) for `-secs` seconds, whatever the server does. Each request is timed from the moment it was due, not from the moment it was sent, so a server that falls behind cannot hide it by slowing the arrivals down.
+3. Each round starts with the next driver. The table has the median of the rounds.
+
+Every driver gets the same load, so the times compare. A driver that answers fewer reads than were sent is past what it can do at that load. Keep the loads below 100%: at the base itself the slowest driver is always behind. On linux give the server cores of its own with `-wrap`, and run `benchrun` on others.

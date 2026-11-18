@@ -64,7 +64,7 @@ It does not share the cores between readers and writers. Which goroutine runs ne
 Two questions need two kinds of test.
 
 - **How much work a second.** Goroutines that call the database in a loop with no pause. This says how much the driver gets done on the cores it has. It does not say how long a call takes: the longest call of such a run is the round of the scheduler (section 2).
-- **How long a call takes.** Requests sent at a fixed rate from another process, each timed from the moment it was due, not from the moment it was sent. Pick rates below the most the program answers, such as 40% and 70% of it, run each a few times, and change the order of what you compare from round to round.
+- **How long a call takes.** Requests sent at a fixed rate from another process, each timed from the moment it was due, not from the moment it was sent. Pick rates below the most the program answers, such as 40% and 70% of it, run each a few times, and change the order of what you compare from round to round. `benchrun latency` does this for each driver ([bench/README.md](../bench/README.md#how-long-a-request-takes)).
 
 Reads and writes are reported together. In WAL mode a reader that sees a new commit drops the pages it holds, because they may have changed, and reads the pages on its path again. So reads fall as writes rise, in any driver: 8 readers on 10 cores read 1 000 000 times a second with no writer, 750 000 beside 2 000 writes a second and 480 000 beside 16 000. Compare reads at the same rate of writes. A change that lets the writer commit more makes the readers read less, and that is not a slower read.
 
