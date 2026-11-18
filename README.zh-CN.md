@@ -180,6 +180,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 | [合并提交](docs/group-commit.zh-CN.md) | 想知道并发写入哪些会合并、失败时各自拿到什么错误 |
 | [语句缓存](docs/query-cache.zh-CN.md) | 想知道驱动替你留下哪些语句，以及留下的语句为什么不会读到旧东西 |
 | [复制](docs/replication.zh-CN.md) | 想把数据库复制到 S3、R2 或 MinIO，或者从副本恢复 |
+| [所有核都忙的时候](docs/busy-cores.zh-CN.md) | 读或写偶尔要等几十毫秒以上，或者只在一两个核上跑 |
 | [上游](docs/upstream.zh-CN.md) | 想知道用的是哪个 SQLite，或者怎么升级到新版 |
 | [Testing](docs/testing.md)、[Commits](docs/commit.md)（英文） | 准备改代码 |
 

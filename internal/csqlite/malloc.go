@@ -21,11 +21,14 @@ import (
 // a span is a mapping of its own, of about 256 KiB, cut into blocks of the
 // class, with its own list of free blocks threaded through them and a count
 // of the blocks in use. A span whose blocks are all free again is unmapped,
-// but for a few per class (keepEmpty), kept for the next blocks: memory
-// taken at a peak goes back to the system when the peak is over, and a
-// block taken and given back over and over does not map and unmap a span
-// each time. A use of a class block after it is freed, a bug in the C, can
-// fault the process when its span is gone, as it can for a larger block. A
+// but for a few per class (keepEmpty), once the class has not needed it for
+// spanDecay: memory taken at a peak goes back to the system when the peak
+// is over, and blocks taken and given back over and over do not map and
+// unmap a span each time, as the pages of a reader's cache are: it gives
+// them all back when another connection has committed, and takes them
+// again as it reads. A use of a class block after it is freed, a bug in the
+// C, can fault the process when its span is gone, as it can for a larger
+// block. A
 // larger block is a mapping of its own, given back when freed. The classes
 // go past 64 KiB because SQLite keeps a statement journal in memory in
 // chunks of 64 KiB and a little more, one for each SAVEPOINT that writes:
@@ -64,11 +67,20 @@ var classOf [largeLimit/16 + 1]uint8
 // about spanTarget, at least one, rounded up to whole pages.
 var spanBytes [len(classSizes)]uintptr
 
-// keepEmpty[c] is how many spans of class c an arena keeps with no block in use:
-// enough for 4 blocks, so that a few connections taking a large block in
-// turn do not map and unmap a span each time. Only the classes past 64 KiB
-// keep more than one.
+// keepEmpty[c] is how many spans of class c an arena that is in use keeps
+// with no block in use, however long they stay so: enough for 4 blocks.
+// Only the classes past 64 KiB keep more than one.
 var keepEmpty [len(classSizes)]int
+
+// spanDecay is how long a class goes without needing an empty span past
+// keepEmpty before a span is unmapped, in nanoseconds. A class looks once
+// each spanDecay while it has such spans, and unmaps as many as were empty
+// all the time since its last look, whichever of its empty spans they are:
+// what a class no longer needs goes back within two spanDecay. The tests
+// set it.
+var spanDecay atomic.Int64
+
+func init() { spanDecay.Store(int64(time.Second)) }
 
 func init() {
 	c := 0
@@ -107,9 +119,18 @@ func (s *span) hasFree(size uintptr) bool { return s.free != 0 || s.fresh+size <
 type sizeClass struct {
 	mu    sync.Mutex
 	spans uintptr // the first span with a free block
-	empty int     // spans of the class with no block in use, up to keepEmpty
-	_     [40]byte
+	empty int     // spans of the class with no block in use
+	// low is the fewest empty spans the class had since its last look, or
+	// since its timer was set if no look came since, never more than
+	// empty. timer is the next look: set whenever empty is more than
+	// keepEmpty.
+	low   int
+	timer *time.Timer
+	_     [24]byte
 }
+
+// A sizeClass is a cache line.
+var _ [0]byte = [unsafe.Sizeof(sizeClass{}) - 64]byte{}
 
 type arena struct {
 	classes [len(classSizes)]sizeClass
@@ -197,27 +218,68 @@ func trimIdle(a uint8) {
 func (a *arena) trim() {
 	for ci := range a.classes {
 		c := &a.classes[ci]
-		gone := uintptr(0) // the spans taken out, linked by next
 		c.mu.Lock()
-		for sb := c.spans; sb != 0; {
-			s := spanAt(sb)
-			next := s.next
-			if s.used == 0 {
-				c.unlink(sb)
-				c.empty--
-				s.next = gone
-				gone = sb
-			}
-			sb = next
-		}
+		gone := c.takeEmpty(c.empty)
 		c.mu.Unlock()
-		for gone != 0 {
-			next := spanAt(gone).next
-			munmap(gone, spanBytes[ci])
-			mappedSpans.Add(-int64(spanBytes[ci]))
-			gone = next
-		}
+		unmapSpans(gone, ci)
 	}
+}
+
+// takeEmpty takes n spans with no block in use out of the class, with c.mu
+// held, and returns them linked by next for unmapSpans.
+func (c *sizeClass) takeEmpty(n int) (gone uintptr) {
+	for sb := c.spans; sb != 0 && n > 0; {
+		s := spanAt(sb)
+		next := s.next
+		if s.used == 0 {
+			c.unlink(sb)
+			c.empty--
+			n--
+			s.next = gone
+			gone = sb
+		}
+		sb = next
+	}
+	c.low = min(c.low, c.empty)
+	return gone
+}
+
+// unmapSpans unmaps the spans of class ci that takeEmpty gave.
+func unmapSpans(gone uintptr, ci int) {
+	for gone != 0 {
+		next := spanAt(gone).next
+		munmap(gone, spanBytes[ci])
+		mappedSpans.Add(-int64(spanBytes[ci]))
+		gone = next
+	}
+}
+
+// look is run by the timer of the class, of class ci. It unmaps the spans
+// past keepEmpty that were empty all the time since the last look, and
+// looks again later while the class has more empty spans than it keeps.
+func (c *sizeClass) look(ci int) {
+	c.mu.Lock()
+	gone := c.decay(ci)
+	c.timer = nil
+	if c.empty > keepEmpty[ci] {
+		c.setTimer(ci)
+	}
+	c.mu.Unlock()
+	unmapSpans(gone, ci)
+}
+
+// decay is a look without its timer, with c.mu held. It takes the spans
+// that were empty all the time since the last look, and leaves keepEmpty
+// empty ones, the spans the class took blocks from since among them.
+func (c *sizeClass) decay(ci int) (gone uintptr) {
+	gone = c.takeEmpty(min(c.low, c.empty-keepEmpty[ci]))
+	c.low = c.empty
+	return gone
+}
+
+// setTimer sets the next look of the class, with c.mu held.
+func (c *sizeClass) setTimer(ci int) {
+	c.timer = time.AfterFunc(time.Duration(spanDecay.Load()), func() { c.look(ci) })
 }
 
 // arenaOf is the arena of the stack sp is in. The mask keeps a header the C
@@ -336,6 +398,7 @@ func (a *arena) alloc(n uintptr) uintptr {
 	}
 	if s.used == 0 {
 		c.empty--
+		c.low = min(c.low, c.empty)
 	}
 	s.used++
 	if !s.hasFree(size) {
@@ -433,13 +496,12 @@ func release(p uintptr) {
 		c.mu.Unlock()
 		return
 	}
-	if c.empty < keepEmpty[ci] {
-		c.empty++ // kept for the next blocks of the class
-		c.mu.Unlock()
-		return
+	// The span stays for the next blocks of the class. Past keepEmpty, a
+	// look unmaps it if the class does not need it.
+	c.empty++
+	if c.empty > keepEmpty[ci] && c.timer == nil {
+		c.low = c.empty
+		c.setTimer(int(ci))
 	}
-	c.unlink(sb)
 	c.mu.Unlock()
-	munmap(sb, spanBytes[ci])
-	mappedSpans.Add(-int64(spanBytes[ci]))
 }

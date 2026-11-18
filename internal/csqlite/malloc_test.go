@@ -55,13 +55,34 @@ func TestClassOf(t *testing.T) {
 	}
 }
 
-// The tests count the spans that are mapped, so no arena gives spans back
-// behind them: only TestIdleArenaGivesSpansBack sets a time that comes.
-func init() { idleTrim = time.Hour }
+// The tests count the spans that are mapped, so no arena and no class gives
+// spans back behind them: only TestIdleArenaGivesSpansBack and
+// TestSpansDecayByThemselves set a time that comes. The other tests play the
+// looks of the classes (looks).
+func init() {
+	idleTrim = time.Hour
+	spanDecay.Store(int64(time.Hour))
+}
 
-// Blocks freed after a peak give their memory back: a class keeps no more
-// empty spans than keepEmpty says.
+// looks plays n looks of every class of every arena, as their timers would.
+func looks(n int) {
+	for ai := range heap.arenas {
+		for ci := range classSizes {
+			c := &heap.arenas[ai].classes[ci]
+			for range n {
+				c.mu.Lock()
+				gone := c.decay(ci)
+				c.mu.Unlock()
+				unmapSpans(gone, ci)
+			}
+		}
+	}
+}
+
+// Blocks freed after a peak give their memory back: a class that does not
+// need them keeps no more empty spans than keepEmpty says after two looks.
 func TestEmptySpansGoBack(t *testing.T) {
+	looks(2) // what the tests before left goes back first
 	for _, n := range []uintptr{24, 1000, 60 << 10, 200 << 10} {
 		m0 := mappedSpans.Load()
 		var ps []uintptr
@@ -78,9 +99,13 @@ func TestEmptySpansGoBack(t *testing.T) {
 		for _, p := range ps {
 			release(p)
 		}
+		looks(2)
 		ci := classOf[(n+header+15)/16]
 		if left, keep := mappedSpans.Load()-m0, int64(keepEmpty[ci])*int64(spanBytes[ci]); left > keep {
 			t.Errorf("alloc(%d): %d bytes of spans left after all were freed, want at most %d", n, left, keep)
+		}
+		if empty := heap.arenas[0].classes[ci].empty; empty > keepEmpty[ci] {
+			t.Errorf("alloc(%d): %d empty spans after all were freed, want at most %d", n, empty, keepEmpty[ci])
 		}
 		checkHeap(t)
 	}
@@ -91,6 +116,7 @@ func TestEmptySpansGoBack(t *testing.T) {
 // freed by another goroutine than the one that took them.
 func TestAllocRandom(t *testing.T) {
 	const goroutines = 4
+	looks(2) // what the tests before left goes back first
 	m0 := mappedSpans.Load()
 	type block struct {
 		p, n uintptr
@@ -192,6 +218,8 @@ func TestAllocRandom(t *testing.T) {
 		release(b.p)
 	}
 	checkHeap(t)
+	looks(2)
+	checkHeap(t)
 	var keep int64
 	for ci := range classSizes {
 		keep += goroutines * int64(keepEmpty[ci]) * int64(spanBytes[ci])
@@ -224,6 +252,153 @@ func TestNoSpanThrash(t *testing.T) {
 		}
 		if maps := spanMaps.Load() - m0; maps != 0 {
 			t.Errorf("alloc(%d): %d spans mapped in 100 rounds of 4 blocks", n, maps)
+		}
+		checkHeap(t)
+	}
+}
+
+// cacheBlocks is a count of blocks of class ci that fills 3 spans more than
+// the class keeps for good.
+func cacheBlocks(ci uint8) int {
+	return (keepEmpty[ci] + 3) * int((spanBytes[ci]-spanHeader)/uintptr(classSizes[ci]))
+}
+
+// A reader gives back every page of its cache when another connection has
+// committed, and takes them again as it reads. Blocks of more than a span,
+// given back together and taken again over and over, do not map a span each
+// time, whether a look of the class comes between or not.
+func TestNoSpanThrashOfACache(t *testing.T) {
+	st, err := newStack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.free()
+	sp := st.sp()
+	for _, n := range []uintptr{24, 4336, 60 << 10, 200 << 10} {
+		ci := classOf[(n+header+15)/16]
+		ps := make([]uintptr, cacheBlocks(ci))
+		round := func() {
+			for i := range ps {
+				if ps[i] = malloc(sp, n); ps[i] == 0 {
+					t.Fatalf("malloc(%d) failed", n)
+				}
+			}
+			for _, p := range ps {
+				free(sp, p)
+			}
+		}
+		round()
+		m0 := spanMaps.Load()
+		for i := range 100 {
+			round()
+			if i%2 == 0 {
+				looks(1)
+			}
+		}
+		if maps := spanMaps.Load() - m0; maps != 0 {
+			t.Errorf("malloc(%d): %d spans mapped in 100 rounds of %d blocks", n, maps, len(ps))
+		}
+		checkHeap(t)
+	}
+}
+
+// After a peak, a class that goes on taking a block and giving it back keeps
+// no more empty spans than keepEmpty, the span it uses among them.
+func TestSpansGoBackBesideABlock(t *testing.T) {
+	st, err := newStack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.free()
+	sp := st.sp()
+	for _, n := range []uintptr{24, 4336, 60 << 10, 200 << 10} {
+		ci := classOf[(n+header+15)/16]
+		c := &heap.arenas[st.arena].classes[ci]
+		ps := make([]uintptr, cacheBlocks(ci))
+		for i := range ps {
+			if ps[i] = malloc(sp, n); ps[i] == 0 {
+				t.Fatalf("malloc(%d) failed", n)
+			}
+		}
+		for _, p := range ps {
+			free(sp, p)
+		}
+		for range 4 {
+			for range 10 {
+				p := malloc(sp, n)
+				if p == 0 {
+					t.Fatalf("malloc(%d) failed", n)
+				}
+				free(sp, p)
+			}
+			looks(1)
+		}
+		c.mu.Lock()
+		empty := c.empty
+		c.mu.Unlock()
+		if empty > keepEmpty[ci] {
+			t.Errorf("malloc(%d): %d empty spans after the peak beside a block taken and given back, want at most %d", n, empty, keepEmpty[ci])
+		}
+		checkHeap(t)
+	}
+}
+
+// The empty spans a class keeps past keepEmpty go back by themselves once
+// the class has not needed them for spanDecay.
+func TestSpansDecayByThemselves(t *testing.T) {
+	// The timers the tests before set would come in an hour.
+	setDecay := func(d time.Duration) {
+		spanDecay.Store(int64(d))
+		for ai := range heap.arenas {
+			for ci := range classSizes {
+				c := &heap.arenas[ai].classes[ci]
+				c.mu.Lock()
+				if c.timer != nil && c.timer.Stop() {
+					c.setTimer(ci)
+				}
+				c.mu.Unlock()
+			}
+		}
+	}
+	looks(2)
+	defer setDecay(time.Hour)
+	st, err := newStack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.free()
+	sp := st.sp()
+	for _, n := range []uintptr{4336, 200 << 10} {
+		ci := classOf[(n+header+15)/16]
+		c := &heap.arenas[st.arena].classes[ci]
+		empty := func() int {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			return c.empty
+		}
+		// No look comes while the blocks are taken and given back.
+		setDecay(time.Hour)
+		ps := make([]uintptr, cacheBlocks(ci))
+		for i := range ps {
+			if ps[i] = malloc(sp, n); ps[i] == 0 {
+				t.Fatalf("malloc(%d) failed", n)
+			}
+		}
+		for _, p := range ps {
+			free(sp, p)
+		}
+		m0 := mappedSpans.Load()
+		if got, want := empty(), keepEmpty[ci]+3; got != want {
+			t.Errorf("malloc(%d): %d empty spans right after all were freed, want %d", n, got, want)
+		}
+		setDecay(20 * time.Millisecond)
+		// A look counts the spans out with the lock of the class and unmaps
+		// them after it.
+		gone := func() int64 { return m0 - mappedSpans.Load() }
+		for end := time.Now().Add(10 * time.Second); empty() > keepEmpty[ci] || gone() < 3*int64(spanBytes[ci]); time.Sleep(5 * time.Millisecond) {
+			if time.Now().After(end) {
+				t.Fatalf("malloc(%d): %d empty spans long after all were freed, want %d, and %d bytes of spans went back, want the %d of 3 spans", n, empty(), keepEmpty[ci], gone(), 3*int64(spanBytes[ci]))
+			}
 		}
 		checkHeap(t)
 	}
@@ -527,8 +702,9 @@ func BenchmarkMallocFree(b *testing.B) {
 
 // checkHeap checks the lists of spans of every class of every arena: the
 // links go both ways, each span on a list has a free block and is of the
-// arena, and the count of empty spans is right and within keepEmpty. An
-// empty span is always on its list, so the walk sees them all.
+// arena, the count of empty spans is right, and a class with more of them
+// than keepEmpty has a look to come. An empty span is always on its list,
+// so the walk sees them all.
 func checkHeap(t *testing.T) {
 	t.Helper()
 	for ai := range heap.arenas {
@@ -547,8 +723,11 @@ func checkHeap(t *testing.T) {
 				}
 				prev = sb
 			}
-			if empty != c.empty || empty > keepEmpty[ci] {
-				t.Errorf("arena %d, class %d: %d empty spans, counted %d, keeps %d", ai, size, empty, c.empty, keepEmpty[ci])
+			if empty != c.empty || c.low > empty || c.low < 0 {
+				t.Errorf("arena %d, class %d: %d empty spans, counted %d, fewest %d", ai, size, empty, c.empty, c.low)
+			}
+			if empty > keepEmpty[ci] && c.timer == nil {
+				t.Errorf("arena %d, class %d: %d empty spans, keeps %d, and no look to come", ai, size, empty, keepEmpty[ci])
 			}
 			c.mu.Unlock()
 		}
