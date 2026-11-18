@@ -236,7 +236,7 @@ The `replica` package copies a database to S3-compatible storage as it changes. 
 
 ## Making the engine faster
 
-The engine is slower than the same C built by clang: on an Apple M4, work inside the engine takes up to 1.45 times as long, and 1.18 times in the geometric mean (see [benchmarks.md](benchmarks.md#against-sqlite-in-c)). Part of it is the price of the route itself. liustack/quickjs, which compiles its C the same way, measured 11 to 13% for the same C with the same options, from arguments and results passed on the Go stack, address-taken locals on the shadow stack, and a few more instructions per call. Work to win some of it back follows what quickjs learned from the many routes it tried and left:
+The engine is slower than the same C built by clang: on an Apple M4, work inside the engine takes up to 1.44 times as long, and 1.21 times in the geometric mean (see [benchmarks.md](benchmarks.md#against-sqlite-in-c)). Part of it is the price of the route itself. liustack/quickjs, which compiles its C the same way, measured 11 to 13% for the same C with the same options, from arguments and results passed on the Go stack, address-taken locals on the shadow stack, and a few more instructions per call. Work to win some of it back follows what quickjs learned from the many routes it tried and left:
 
 - **Nothing private to Go.** No `go:linkname` into the runtime, no reliance on how Go uses a register, nothing the Go team may change in a release. Each Go version would have to be checked again, and one could break the driver.
 - **The engine stays on the goroutine stack.** Running it on a stack of its own, as cgo, wazero and purego do, would turn a fault in the C into the end of the whole process instead of a panic of one call.
