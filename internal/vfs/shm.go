@@ -418,9 +418,10 @@ func (s *shm) lockShared(i int, bit uint16) int {
 	}
 }
 
-// lockExcl takes the n slots of mask, from offset, exclusive. It does not
-// wait: slots a connection of the process holds, or is locking or unlocking
-// in the kernel just now, are refused as slots another process holds.
+// lockExcl takes the n slots of mask, from offset, exclusive. Slots a
+// connection of the process holds are refused as slots another process
+// holds, with no mutex taken. It waits only for a slot whose lock changes in
+// the kernel just now.
 func (s *shm) lockExcl(offset, n int, mask uint16) int {
 	node := s.node
 	slots := node.slots[offset : offset+n]
@@ -429,13 +430,13 @@ func (s *shm) lockExcl(offset, n int, mask uint16) int {
 			return Busy
 		}
 	}
+	// A mutex that is held is a slot whose lock changes in the kernel, for
+	// one fcntl call: a reader that comes or goes, the timer that lets an
+	// idle slot go. Nobody holds the slot then, so it is waited for:
+	// SQLITE_BUSY would fail a checkpoint, which does not ask again. The
+	// mutexes are taken in the order of the slots, here and in unlockExcl.
 	for i := range slots {
-		if !slots[i].mu.TryLock() {
-			for j := range i {
-				slots[j].mu.Unlock()
-			}
-			return Busy
-		}
+		slots[i].lock()
 	}
 	// The slots are taken from the readers of the process before the kernel
 	// is asked: an idle read lock is out of state, and a reader waits for

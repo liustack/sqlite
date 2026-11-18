@@ -14,6 +14,7 @@ package vfs
 
 import (
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -230,8 +231,9 @@ func TestShmReaderWaitsForMarkMove(t *testing.T) {
 }
 
 // While the lock of a slot changes in the kernel, a connection that asks
-// for the slot exclusive is refused at once, and one that asks for it
-// shared waits for the change.
+// for the slot waits for the change, shared or exclusive. Nobody holds the
+// slot then: SQLITE_BUSY would fail a checkpoint that has nothing to wait
+// for, as SQLite does not try a read slot again.
 func TestShmSlotChanging(t *testing.T) {
 	idleDelay(t, time.Hour)
 	a, b, _ := twoFiles(t)
@@ -240,23 +242,53 @@ func TestShmSlotChanging(t *testing.T) {
 	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
 
 	sl := &a.shm.node.slots[5]
-	sl.mu.Lock()
-	lockT(t, "a exclusive 5 during a change", a.ShmLock(5, 1, ShmLock|ShmExclusive), Busy)
-	lockT(t, "a exclusive 4..6 during a change of 5", a.ShmLock(4, 3, ShmLock|ShmExclusive), Busy)
-	done := make(chan int, 1)
-	go func() { done <- b.ShmLock(5, 1, ShmLock|ShmShared) }()
-	select {
-	case rc := <-done:
+	for _, tc := range []struct {
+		name        string
+		f           *File
+		offset, n   int
+		flags       int
+		unlockFlags int
+	}{
+		{"b shared 5", b, 5, 1, ShmLock | ShmShared, ShmUnlock | ShmShared},
+		{"a exclusive 5", a, 5, 1, ShmLock | ShmExclusive, ShmUnlock | ShmExclusive},
+		{"a exclusive 4..6", a, 4, 3, ShmLock | ShmExclusive, ShmUnlock | ShmExclusive},
+		{"a exclusive 3..7", a, 3, 5, ShmLock | ShmExclusive, ShmUnlock | ShmExclusive},
+	} {
+		sl.mu.Lock()
+		done := make(chan int, 1)
+		go func() { done <- tc.f.ShmLock(tc.offset, tc.n, tc.flags) }()
+		select {
+		case rc := <-done:
+			sl.mu.Unlock()
+			t.Fatalf("%s during a change = %d at once, want it to wait", tc.name, rc)
+		case <-time.After(50 * time.Millisecond):
+		}
 		sl.mu.Unlock()
-		t.Fatalf("b shared 5 during a change = %d at once, want it to wait", rc)
-	case <-time.After(50 * time.Millisecond):
+		lockT(t, tc.name+" after the change", <-done, OK)
+		lockT(t, tc.name+" unlock", tc.f.ShmLock(tc.offset, tc.n, tc.unlockFlags), OK)
 	}
-	sl.mu.Unlock()
-	lockT(t, "b shared 5 after the change", <-done, OK)
-	lockT(t, "b unlock 5", b.ShmLock(5, 1, ShmUnlock|ShmShared), OK)
-	// The refused range left its other slots as they were.
-	lockT(t, "a exclusive 4..6", a.ShmLock(4, 3, ShmLock|ShmExclusive), OK)
-	lockT(t, "a unlock 4..6", a.ShmLock(4, 3, ShmUnlock|ShmExclusive), OK)
+}
+
+// A checkpoint asks for the read slots exclusive while the timer lets go of
+// the ones the last reader left: it gets them every time. SQLITE_BUSY there
+// is "database is locked" from a checkpoint with no reader and no writer.
+func TestShmExclusiveBesideTimer(t *testing.T) {
+	idleDelay(t, 20*time.Microsecond)
+	a, b, _ := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	for i := 0; i < 20000; i++ {
+		lockT(t, "b shared 4", b.ShmLock(4, 1, ShmLock|ShmShared), OK)
+		lockT(t, "b unlock 4", b.ShmLock(4, 1, ShmUnlock|ShmShared), OK)
+		for spin := i % 64; spin > 0; spin-- {
+			runtime.Gosched()
+		}
+		if rc := a.ShmLock(3, 5, ShmLock|ShmExclusive); rc != OK {
+			t.Fatalf("round %d: a exclusive 3..7 with no holder = %d, want OK", i, rc)
+		}
+		lockT(t, "a unlock 3..7", a.ShmLock(3, 5, ShmUnlock|ShmExclusive), OK)
+	}
 }
 
 // An exclusive lock takes an idle slot out of its state before it asks the
