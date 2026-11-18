@@ -230,10 +230,10 @@ func TestShmReaderWaitsForMarkMove(t *testing.T) {
 	lockT(t, "b unlock 4", b.ShmLock(4, 1, ShmUnlock|ShmShared), OK)
 }
 
-// While the lock of a slot changes in the kernel, a connection that asks
-// for the slot waits for the change, shared or exclusive. Nobody holds the
-// slot then: SQLITE_BUSY would fail a checkpoint that has nothing to wait
-// for, as SQLite does not try a read slot again.
+// While the timer lets go of a slot in the kernel, a connection that asks
+// for the slot waits for it, shared or exclusive. Nobody holds the slot
+// then: SQLITE_BUSY would fail a checkpoint that has nothing to wait for,
+// as SQLite does not try a read slot again.
 func TestShmSlotChanging(t *testing.T) {
 	idleDelay(t, time.Hour)
 	a, b, _ := twoFiles(t)
@@ -254,18 +254,163 @@ func TestShmSlotChanging(t *testing.T) {
 		{"a exclusive 4..6", a, 4, 3, ShmLock | ShmExclusive, ShmUnlock | ShmExclusive},
 		{"a exclusive 3..7", a, 3, 5, ShmLock | ShmExclusive, ShmUnlock | ShmExclusive},
 	} {
+		// As releaseIdle does.
+		sl.pass.Add(passBegin)
 		sl.mu.Lock()
 		done := make(chan int, 1)
 		go func() { done <- tc.f.ShmLock(tc.offset, tc.n, tc.flags) }()
 		select {
 		case rc := <-done:
 			sl.mu.Unlock()
-			t.Fatalf("%s during a change = %d at once, want it to wait", tc.name, rc)
+			sl.pass.Add(passEnd)
+			t.Fatalf("%s beside the timer = %d at once, want it to wait", tc.name, rc)
 		case <-time.After(50 * time.Millisecond):
 		}
 		sl.mu.Unlock()
-		lockT(t, tc.name+" after the change", <-done, OK)
+		sl.pass.Add(passEnd)
+		lockT(t, tc.name+" after the timer", <-done, OK)
 		lockT(t, tc.name+" unlock", tc.f.ShmLock(tc.offset, tc.n, tc.unlockFlags), OK)
+	}
+}
+
+// A connection that takes a slot or gives it back has the mutex of the slot
+// and may wait long for a core. An exclusive lock does not sleep for it: it
+// looks at the slot for some microseconds and is then refused, as with a
+// slot the connection holds. A writer or a reader that moves a read mark
+// asks for a slot at every transaction, and would sleep at each such wait.
+func TestShmExclusiveBesideConnection(t *testing.T) {
+	idleDelay(t, time.Hour)
+	a, b, _ := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+
+	sl := &a.shm.node.slots[5]
+	for _, tc := range []struct {
+		name      string
+		offset, n int
+	}{
+		{"a exclusive 5", 5, 1},
+		{"a exclusive 4..6", 4, 3},
+		{"a exclusive 3..7", 3, 5},
+	} {
+		sl.mu.Lock()
+		done := make(chan int, 1)
+		go func() { done <- a.ShmLock(tc.offset, tc.n, ShmLock|ShmExclusive) }()
+		select {
+		case rc := <-done:
+			sl.mu.Unlock()
+			lockT(t, tc.name+" beside a connection on slot 5", rc, Busy)
+		case <-time.After(2 * time.Second):
+			sl.mu.Unlock()
+			if rc := <-done; rc == OK {
+				a.ShmLock(tc.offset, tc.n, ShmUnlock|ShmExclusive)
+			}
+			t.Fatalf("%s waited for a connection on slot 5", tc.name)
+		}
+		lockT(t, tc.name+" once the connection left", a.ShmLock(tc.offset, tc.n, ShmLock|ShmExclusive), OK)
+		lockT(t, tc.name+" unlock", a.ShmLock(tc.offset, tc.n, ShmUnlock|ShmExclusive), OK)
+	}
+}
+
+// An exclusive lock of several slots that is refused one of them leaves the
+// others free. A connection that asks for one of those meanwhile waits and
+// gets it: it is not refused a slot nobody holds.
+func TestShmExclusiveBesideRefusedRun(t *testing.T) {
+	idleDelay(t, time.Hour)
+	a, b, _ := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	node := a.shm.node
+
+	// The timer has slot 6: a waits for it with the mutexes of 3 to 5. It
+	// counts itself on slot 6 once it has them, just before it waits.
+	node.slots[6].pass.Add(passBegin)
+	node.slots[6].mu.Lock()
+	run := make(chan int, 1)
+	go func() { run <- a.ShmLock(3, 5, ShmLock|ShmExclusive) }()
+	for node.slots[6].pass.Load()&passCount != 2 {
+		runtime.Gosched()
+	}
+
+	one := make(chan int, 1)
+	go func() { one <- b.ShmLock(4, 1, ShmLock|ShmExclusive) }()
+	early := false
+	var rc int
+	select {
+	case rc = <-one:
+		early = true
+		t.Errorf("b exclusive 4 beside a's exclusive 3..7 = %d at once, want it to wait", rc)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// A reader comes to slot 7 before a gets there: a is refused.
+	node.slots[7].state.Store(slotRead | 1)
+	node.slots[6].mu.Unlock()
+	node.slots[6].pass.Add(passEnd)
+	lockT(t, "a exclusive 3..7 with a reader on 7", <-run, Busy)
+	if !early {
+		rc = <-one
+	}
+	if rc != OK {
+		t.Errorf("b exclusive 4 once a was refused = %d, want OK", rc)
+	} else {
+		lockT(t, "b unlock 4", b.ShmLock(4, 1, ShmUnlock|ShmExclusive), OK)
+	}
+	node.slots[7].state.Store(0)
+	for i := 3; i < 8; i++ {
+		if p := node.slots[i].pass.Load() & passCount; p != 0 {
+			t.Errorf("slot %d: %d counted in pass at the end, want 0", i, p)
+		}
+	}
+}
+
+// A connection that has the mutex of a slot for a moment may be leaving the
+// slot: an exclusive lock looks again for as long as a system call takes. It
+// gets the slot when the connection left it, and is refused when the
+// connection is seen to hold it.
+func TestShmExclusiveLooksAgain(t *testing.T) {
+	idleDelay(t, time.Hour)
+	old := shmFreeTries
+	t.Cleanup(func() { shmFreeTries = old })
+	shmFreeTries = 1 << 62
+	a, b, _ := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+
+	sl := &a.shm.node.slots[5]
+	for _, tc := range []struct {
+		name      string
+		offset, n int
+		taken     bool
+		want      int
+	}{
+		{"a exclusive 5, the connection left", 5, 1, false, OK},
+		{"a exclusive 5, the connection took it", 5, 1, true, Busy},
+		{"a exclusive 4..6, the connection left", 4, 3, false, OK},
+		{"a exclusive 4..6, the connection took it", 4, 3, true, Busy},
+	} {
+		sl.mu.Lock()
+		done := make(chan int, 1)
+		go func() { done <- a.ShmLock(tc.offset, tc.n, ShmLock|ShmExclusive) }()
+		select {
+		case rc := <-done:
+			sl.mu.Unlock()
+			t.Fatalf("%s = %d while the connection had the mutex, want it to look again", tc.name, rc)
+		case <-time.After(20 * time.Millisecond):
+		}
+		if tc.taken {
+			sl.state.Store(slotRead | 1)
+		}
+		sl.mu.Unlock()
+		lockT(t, tc.name, <-done, tc.want)
+		if tc.taken {
+			sl.state.Store(0)
+		} else {
+			lockT(t, tc.name+" unlock", a.ShmLock(tc.offset, tc.n, ShmUnlock|ShmExclusive), OK)
+		}
 	}
 }
 
@@ -486,6 +631,11 @@ func TestShmSlotsParallelWithTimer(t *testing.T) {
 	}
 	if idle := node.idle(); idle != 0 {
 		t.Errorf("idle slots at the end = %#x, want none", idle)
+	}
+	for slot := range node.slots {
+		if p := node.slots[slot].pass.Load() & passCount; p != 0 {
+			t.Errorf("slot %d: %d counted in pass at the end, want 0", slot, p)
+		}
 	}
 	for _, f := range files {
 		f.ShmUnmap(false)

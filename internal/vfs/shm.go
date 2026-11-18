@@ -92,14 +92,29 @@ type shmNode struct {
 // sleeps, and with every core busy it waits long for a core once it is
 // woken: so a reader that takes a read slot the process has locked takes no
 // mutex, and the mutex of the write slot is one no reader takes.
+//
+// A connection that has mu takes the slot or gives it back, and its call has
+// not returned: an exclusive lock that finds mu held is refused the slot, as
+// it is while the connection holds it, and does not sleep (see lockFree for
+// the one case that is not so). Two take mu and may leave the slot with no
+// holder: the timer, and an exclusive lock of several slots, which may be
+// refused another of them. They are counted in pass from before they take mu
+// until after they give it back, and an exclusive lock waits for them.
 type shmSlot struct {
 	state atomic.Int32
 	mu    sync.Mutex
-	fl    unix.Flock_t // space for the fcntl argument, under mu
+	pass  atomic.Uint64 // passCount of them now, and above it how many began
+	fl    unix.Flock_t  // space for the fcntl argument, under mu
 	// The slots are not on the same cache line: a writer changes the write
 	// slot while readers change the slot of a read mark.
-	_ [96]byte
+	_ [88]byte
 }
+
+const (
+	passCount = 1<<32 - 1
+	passBegin = 1<<32 + 1
+	passEnd   = ^uint64(0) // one less in passCount
+)
 
 const (
 	slotCount = 1<<24 - 1 // connections of the process that hold the slot shared
@@ -122,6 +137,51 @@ func (sl *shmSlot) lock() {
 		}
 	}
 	sl.mu.Lock()
+}
+
+// shmFreeTries is how many times an exclusive lock looks again at a slot
+// whose mutex a connection has, before the slot is refused: longer than the
+// system call the connection makes. Tests change it.
+var shmFreeTries = 1 << 12
+
+// lockFree takes the mutex of the slot for an exclusive lock. It says false,
+// with the mutex not taken, when the slot is refused: a connection holds it,
+// or has its mutex for longer than a system call takes. It waits for the
+// timer and for an exclusive lock of several slots, which may leave the slot
+// free. own is 1 when the caller is such a lock, and counted in pass.
+//
+// pass is read before the mutex is tried and after: when nobody but the
+// caller is counted and nobody began in between, the mutex was not with one
+// that is counted. Then a connection has it, or is about to: it takes the
+// slot, gives it back, or was itself refused the slot exclusive. The slot is
+// looked at again until the connection is seen to hold it or the mutex is
+// free, so that the caller is not refused a slot the connection leaves.
+//
+// When the tries run out the connection is most often off its core in the
+// middle of a system call, and the slot is refused as if it held it. In one
+// case nobody holds it then: the connection was itself refused the slot
+// exclusive because of a reader, the reader left, and the connection lost
+// its core in the few instructions before it gave the mutex back.
+func (sl *shmSlot) lockFree(own uint64) bool {
+	for tries := 0; ; {
+		p := sl.pass.Load()
+		if sl.mu.TryLock() {
+			return true
+		}
+		if p&passCount != own {
+			sl.lock()
+			return true
+		}
+		if sl.pass.Load() != p {
+			continue
+		}
+		if sl.state.Load()&(slotCount|slotExcl) != 0 {
+			return false
+		}
+		if tries++; tries > shmFreeTries {
+			return false
+		}
+	}
 }
 
 type fileID struct{ dev, ino uint64 }
@@ -400,9 +460,22 @@ func (s *shm) lockShared(i int, bit uint16) int {
 		// The slot is free, or idle and write locked since its exclusive
 		// unlock failed: then the write lock becomes a read lock, so that
 		// other processes can read, or the slot stays idle for the timer.
-		// Its state changes only with the mutex held.
+		// Its state changes only with the mutex held, but for the count of
+		// a slot the process has read locked.
 		sl.lock()
-		if sl.state.Load() != v {
+		v = sl.state.Load()
+		for v&slotRead != 0 {
+			// Another reader locked it meanwhile: one more holder, taken
+			// here so that whoever finds the mutex held finds the slot
+			// held after it.
+			if sl.state.CompareAndSwap(v, v+1) {
+				sl.mu.Unlock()
+				s.shared |= bit
+				return OK
+			}
+			v = sl.state.Load()
+		}
+		if v&slotExcl != 0 {
 			sl.mu.Unlock()
 			continue
 		}
@@ -419,10 +492,14 @@ func (s *shm) lockShared(i int, bit uint16) int {
 	}
 }
 
-// lockExcl takes the n slots of mask, from offset, exclusive. A slot a
-// connection of the process holds is refused as a slot another process
-// holds: with no mutex taken when it is held as lockExcl starts. It waits
-// only for a slot whose lock changes in the kernel just now.
+// lockExcl takes the n slots of mask, from offset, exclusive. A slot is
+// refused, as a slot another process holds, when a connection of the process
+// holds it, or takes it or gives it back for longer than lockFree looks:
+// with no mutex waited for, since a goroutine that waits for a mutex sleeps.
+// lockExcl does wait for the timer and for an exclusive lock of several
+// slots (see shmSlot), which hold no slot: SQLITE_BUSY because of them would
+// fail a checkpoint with no reader and no writer, and a checkpoint with no
+// busy handler does not ask again.
 func (s *shm) lockExcl(offset, n int, mask uint16) int {
 	node := s.node
 	slots := node.slots[offset : offset+n]
@@ -431,16 +508,30 @@ func (s *shm) lockExcl(offset, n int, mask uint16) int {
 			return Busy
 		}
 	}
-	// A mutex that is held is a slot whose lock changes in the kernel: a
-	// reader that comes or goes, the timer that lets an idle slot go, a
-	// connection that gives the slot back, or one that asks for it with
-	// other slots. That is one fcntl call, or a few when the other waits
-	// for a mutex itself. It is waited for, since most often nobody holds
-	// the slot after it: SQLITE_BUSY would fail a checkpoint, which does
-	// not ask again. The mutexes are taken in the order of the slots, here
-	// and in unlockExcl.
+	// Asked for several slots, it may be refused one and leave the others
+	// free: a connection that asks for one of those waits for it. Each slot
+	// is counted from before its mutex is asked for. The mutexes are taken
+	// in the order of the slots, here and in unlockExcl.
+	var own uint64
+	if n > 1 {
+		own = 1
+	}
 	for i := range slots {
-		slots[i].lock()
+		if own != 0 {
+			slots[i].pass.Add(passBegin)
+		}
+		if slots[i].lockFree(own) {
+			continue
+		}
+		for j := 0; j <= i; j++ {
+			if j < i {
+				slots[j].mu.Unlock()
+			}
+			if own != 0 {
+				slots[j].pass.Add(passEnd)
+			}
+		}
+		return Busy
 	}
 	// The slots are taken from the readers of the process before the kernel
 	// is asked: an idle read lock is out of state, and a reader waits for
@@ -471,6 +562,9 @@ func (s *shm) lockExcl(offset, n int, mask uint16) int {
 			idle = idle || was[i] != 0
 		}
 		slots[i].mu.Unlock()
+		if own != 0 {
+			slots[i].pass.Add(passEnd)
+		}
 	}
 	if idle {
 		// A slot that was idle is idle again. The timer may have run while
@@ -745,12 +839,17 @@ func (node *shmNode) releaseIdle() {
 			if v != slotRead && v != slotWrite {
 				break // held, or not locked
 			}
+			// The timer holds no slot: it is counted in pass, so that an
+			// exclusive lock waits for it and is not refused.
+			sl.pass.Add(passBegin)
 			if !sl.mu.TryLock() {
+				sl.pass.Add(passEnd)
 				again = true
 				break
 			}
 			if !sl.state.CompareAndSwap(v, 0) {
 				sl.mu.Unlock()
+				sl.pass.Add(passEnd)
 				break
 			}
 			was[i] = v
@@ -766,6 +865,7 @@ func (node *shmNode) releaseIdle() {
 				again = true
 			}
 			node.slots[j].mu.Unlock()
+			node.slots[j].pass.Add(passEnd)
 		}
 	}
 	if again {
