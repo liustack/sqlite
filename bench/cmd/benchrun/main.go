@@ -10,6 +10,7 @@
 //	benchrun publish -from DIR -name NAME
 //	                              summarize a run into published/NAME.json
 //	benchrun native [flags]       compare the driver with SQLite in C
+//	benchrun latency [flags]      time requests sent at a fixed rate to a server
 //	benchrun docs [-check]        write the tables from published/*.json
 //
 // Run it from bench/ (go run ./cmd/benchrun ...).
@@ -34,6 +35,8 @@ func main() {
 		err = cmdDocs(os.Args[2:])
 	case "native":
 		err = cmdNative(os.Args[2:])
+	case "latency":
+		err = cmdLatency(os.Args[2:])
 	default:
 		usage()
 	}
@@ -44,6 +47,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: benchrun run|native|publish|docs [flags]")
+	fmt.Fprintln(os.Stderr, "usage: benchrun run|native|latency|publish|docs [flags]")
 	os.Exit(2)
 }
