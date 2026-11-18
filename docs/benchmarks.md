@@ -148,44 +148,44 @@ Allocations per op, lower is better:
 ## darwin/arm64
 
 <!-- bench:darwin-arm64 -->
-Commit `abf3e08`, Go 1.27.2, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 threads, 2026-11-17. The median of 6 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 3.17 2.15 1.93, after: 2.35 2.83 2.66.
+Commit `4b44e15`, Go 1.27.2, Apple M4, Darwin 24.3.0 arm64, GOMAXPROCS 10 of 10 threads, 2026-11-18. The median of 10 runs, ± is its 95% confidence interval. Load average (1, 5, 15 minutes) before: 3.10 4.45 4.01, after: 3.13 3.80 4.16.
 
 Time per op, lower is better:
 
 | Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert | 6.41 µs ±2% | 5.99 µs ±7% | 7.46 µs ±5% | 7.03 µs ±3% |
-| InsertTx | 495 µs ±42% | 552 µs ±5% | 750 µs ±6% | 578 µs ±3% |
-| Point | **1.08 µs** ±7% | 1.93 µs ±1% | 2.76 µs ±1% | 2.05 µs ±28% |
-| Scan | **13.7 ms** ±2% | 29.7 ms ±1% | 29.8 ms ±1% | 20.6 ms ±10% |
-| Aggregate | 1.25 ms ±3% | **1.13 ms** ±2% | 2.64 ms ±2% | 1.86 ms ±12% |
-| PointParallel | **1.13 µs** ±7% | 1.52 µs ±2% | 1.75 µs ±6% | 2.37 µs ±6% |
-| InsertParallel/g=1 | 6.19 µs ±8% | 6.07 µs ±1% | 7.40 µs ±3% | 7.02 µs ±4% |
-| InsertParallel/g=8 | **3.20 µs** ±3% | 6.74 µs ±6% | 8.11 µs ±15% | 48.8 µs ±35% |
-| InsertParallel/g=64 | **1.14 µs** ±13% | 10.3 µs ±15% | 10.6 ms ±77% | 86.2 µs ±32% |
-| InsertParallelFull/g=1 | 74.8 µs ±43% | 92.7 µs ±29% | 80.2 µs ±16% | 72.0 µs ±67% |
-| InsertParallelFull/g=8 | **16.0 µs** ±61% | 77.6 µs ±46% | 130 µs ±71% | 51.5 µs ±10% |
-| InsertParallelFull/g=64 | **1.65 µs** ±25% | 112 µs ±134% | 26.9 ms ±42% | 89.3 µs ±11% |
-| Real/insert | 573 µs ±6% | 567 µs ±10% | 1.01 ms ±3% | 724 µs ±3% |
-| Real/query | **213 µs** ±9% | 368 µs ±10% | 554 µs ±2% | 342 µs ±2% |
-| Many/n=10 | **2.69 µs** ±3% | 4.88 µs ±2% | 5.35 µs ±1% | 4.40 µs ±1% |
-| Many/n=100 | **19.3 µs** ±1% | 34.4 µs ±2% | 33.2 µs ±1% | 26.7 µs ±1% |
-| Many/n=1000 | **190 µs** ±1% | 337 µs ±1% | 320 µs ±2% | 252 µs ±4% |
-| Large/size=50k | 824 µs ±9% | 837 µs ±5% | 905 µs ±5% | 879 µs ±1% |
-| Large/size=200k | 3.39 ms ±4% | 3.37 ms ±2% | 3.71 ms ±1% | 3.55 ms ±7% |
-| Readers/g=2 | **7.48 ms** ±12% | 15.8 ms ±2% | 15.8 ms ±2% | 10.9 ms ±0% |
-| Readers/g=4 | **4.67 ms** ±6% | 9.49 ms ±3% | 9.61 ms ±3% | 6.86 ms ±2% |
-| Readers/g=8 | **4.44 ms** ±4% | 8.49 ms ±4% | 8.32 ms ±4% | 5.93 ms ±3% |
-| ReadWrite | **1.32 µs** ±4% | 2.29 µs ±4% | 2.35 µs ±2% | 5.07 µs ±3% |
-| geomean | 69.1 µs | 135 µs | 274 µs | 158 µs |
+| Insert | 6.29 µs ±1% | **5.96 µs** ±2% | 7.30 µs ±1% | 6.97 µs ±5% |
+| InsertTx | **473 µs** ±6% | 555 µs ±1% | 750 µs ±3% | 582 µs ±6% |
+| Point | **1.08 µs** ±2% | 1.92 µs ±2% | 2.75 µs ±1% | 2.07 µs ±2% |
+| Scan | **13.7 ms** ±2% | 29.7 ms ±1% | 29.8 ms ±1% | 20.5 ms ±1% |
+| Aggregate | 1.25 ms ±2% | **1.14 ms** ±2% | 2.63 ms ±3% | 1.86 ms ±3% |
+| PointParallel | **1.12 µs** ±2% | 1.50 µs ±3% | 1.77 µs ±2% | 2.35 µs ±3% |
+| InsertParallel/g=1 | 6.29 µs ±2% | **5.98 µs** ±3% | 7.40 µs ±2% | 7.10 µs ±2% |
+| InsertParallel/g=8 | **3.12 µs** ±2% | 6.84 µs ±9% | 8.27 µs ±4% | 44.5 µs ±42% |
+| InsertParallel/g=64 | **1.16 µs** ±3% | 9.78 µs ±36% | 3.42 ms ±231% | 85.8 µs ±22% |
+| InsertParallelFull/g=1 | 57.7 µs ±60% | 64.3 µs ±35% | 65.2 µs ±31% | 80.2 µs ±65% |
+| InsertParallelFull/g=8 | **11.5 µs** ±42% | 70.6 µs ±66% | 81.7 µs ±31% | 50.0 µs ±144% |
+| InsertParallelFull/g=64 | **1.66 µs** ±88% | 114 µs ±64% | 28.4 ms ±41% | 86.1 µs ±14% |
+| Real/insert | 573 µs ±5% | 575 µs ±9% | 1.02 ms ±2% | 751 µs ±9% |
+| Real/query | **212 µs** ±1% | 369 µs ±1% | 559 µs ±3% | 342 µs ±1% |
+| Many/n=10 | **2.70 µs** ±2% | 4.85 µs ±2% | 5.33 µs ±1% | 4.44 µs ±1% |
+| Many/n=100 | **19.2 µs** ±1% | 34.3 µs ±1% | 33.3 µs ±1% | 26.7 µs ±1% |
+| Many/n=1000 | **188 µs** ±1% | 339 µs ±2% | 322 µs ±1% | 253 µs ±2% |
+| Large/size=50k | 826 µs ±7% | 824 µs ±3% | 924 µs ±2% | 867 µs ±3% |
+| Large/size=200k | 3.41 ms ±2% | 3.38 ms ±3% | 3.75 ms ±6% | 3.56 ms ±1% |
+| Readers/g=2 | **7.49 ms** ±1% | 15.8 ms ±6% | 15.8 ms ±2% | 10.9 ms ±2% |
+| Readers/g=4 | **4.76 ms** ±2% | 9.74 ms ±2% | 9.83 ms ±2% | 6.98 ms ±3% |
+| Readers/g=8 | **4.41 ms** ±3% | 8.58 ms ±3% | 8.50 ms ±3% | 6.07 ms ±2% |
+| ReadWrite | **1.17 µs** ±1% | 2.20 µs ±3% | 2.39 µs ±2% | 5.18 µs ±3% |
+| geomean | 66.8 µs | 132 µs | 256 µs | 159 µs |
 
 Rates, higher is better:
 
 | Benchmark | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Large/size=50k | 6071 MB/s ±8% | 5973 MB/s ±5% | 5528 MB/s ±5% | 5690 MB/s ±1% |
-| Large/size=200k | 5897 MB/s ±4% | 5938 MB/s ±2% | 5388 MB/s ±1% | 5639 MB/s ±6% |
-| ReadWrite | **34553 writes/s** ±12% | 16321 writes/s ±4% | 28912 writes/s ±2% | 20062 writes/s ±4% |
+| Large/size=50k | 6052 MB/s ±6% | 6067 MB/s ±3% | 5409 MB/s ±2% | 5768 MB/s ±3% |
+| Large/size=200k | 5863 MB/s ±2% | 5912 MB/s ±3% | 5330 MB/s ±6% | 5621 MB/s ±1% |
+| ReadWrite | **30172 writes/s** ±2% | 16355 writes/s ±2% | 28584 writes/s ±2% | 19828 writes/s ±3% |
 
 Allocations per op, lower is better:
 
@@ -199,17 +199,17 @@ Allocations per op, lower is better:
 | PointParallel | **14** | 18 | 30 | 19 |
 | InsertParallel/g=1 | **5** | **5** | 6 | **5** |
 | InsertParallel/g=8 | 11 | **6** | 7 | **6** |
-| InsertParallel/g=64 | 11 | **6** | 66 | 8 |
+| InsertParallel/g=64 | 11 | **6** | 21 | 8 |
 | InsertParallelFull/g=1 | **5** | **5** | 6 | **5** |
 | InsertParallelFull/g=8 | 10 | **6** | 7 | **6** |
 | InsertParallelFull/g=64 | 11 | **6** | 77 | 8 |
-| Real/insert | 4.65k | 4.65k | 5.05k | **2.97k** |
-| Real/query | **4.44k** | 7.91k | 7.93k | **4.44k** |
+| Real/insert | 4.65k | 4.65k | 5.05k | **2.96k** |
+| Real/query | **4.44k** | 7.90k | 7.93k | **4.44k** |
 | Many/n=10 | **58** | 78 | 90 | 67 |
 | Many/n=100 | **508** | 708 | 720 | 517 |
 | Many/n=1000 | **5.75k** | 8.50k | 8.51k | 5.76k |
 | Large/size=50k | **408** | 608 | 620 | 417 |
-| Large/size=200k | **408** | 608 | 620 | 417 |
+| Large/size=200k | **408** | 608 | 621 | 417 |
 | Readers/g=2 | **400k** | 800k | 800k | **400k** |
 | Readers/g=4 | **400k** | 800k | 800k | **400k** |
 | Readers/g=8 | **400k** | 800k | 800k | **400k** |
@@ -340,7 +340,7 @@ What the tables show:
 - **Many writers** are where group commit shows: from 8 writers up, one commit carries many inserts. At 64 writers an insert costs 3.52 µs against 22 to 31 µs with the other drivers (4 threads). With `synchronous=FULL` the gap grows with the cost of a commit: at 64 writers an insert costs 26.7 µs against 1.37 to 23.5 ms. On the Mac, modernc at 64 writers spends its time in SQLite's busy handler, whose sleeps grow the longer a writer waits.
 - **Readers next to a writer** (ReadWrite, 4 threads): this driver serves the readers fastest (2.61 µs a read against 4.54 to 7.94 µs), and ncruces lets the writer do the most (26.1k writes a second, against 14.2k with mattn and 12.4k with this driver).
 - **One writer** (Insert) is close to mattn on both machines. The time goes to the WAL write and the locks SQLite's protocol asks for, the same system calls for every driver.
-- **Join and group** (Aggregate), which is all work inside the engine, takes as long as with cgo on linux and 11% longer on darwin: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
+- **Join and group** (Aggregate), which is all work inside the engine, takes as long as with cgo on linux and 10% longer on darwin: the engine is the same C, compiled by LLVM, and the Go assembly it becomes is close to, but not as good as, what clang makes for the machine.
 - **Large text values** are read 6% slower than with mattn on linux (100 rows of 200 KB in 8.78 ms against 8.31 ms) and faster than with modernc and ncruces. On darwin the four are even.
 - **Allocations**: a number is copied straight into the `Scan` destination (`driver.RowsColumnScanner`, Go 1.27), without boxing it in an interface, so a scan allocates half as often as with mattn and modernc.
 - **Against SQLite in C**, work inside the engine takes 13% (linux) and 21% (darwin) longer in the geometric mean. One reader is faster than C, as a read makes no system call for its lock. Many readers on linux read more rows than C's calling liustack/sqlite directly, and 89 to 107% through `database/sql`. With group commit, 64 writers insert 23 to 66 times as many rows. Readers next to writers on linux read 95% of what C's do calling liustack/sqlite directly and 66% through `database/sql`, with writers that insert 1.3 to 1.4 times as many.
