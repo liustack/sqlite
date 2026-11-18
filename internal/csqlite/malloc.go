@@ -31,12 +31,21 @@ import (
 // as mappings, that was an mmap and a munmap per statement. glibc also
 // serves blocks of up to 128 KiB or more from its heap. Each block starts
 // with a header of 16 bytes (the C asks for 8-byte alignment, and gets 16).
+//
+// The classes come in arenas, each with its own spans and locks. A
+// connection takes its blocks from the arena its stack got when it was made
+// (takeArena), so connections that run at the same time do not wait for each
+// other at every malloc and free: a reader takes and gives back a block for
+// each page it reads after another connection has committed. A block goes
+// back to the span it came from, whoever frees it.
 const (
 	header     = 16
 	largeLimit = 256 << 10 // the largest class, header included
 	spanTarget = 256 << 10 // about the size of a span
 	spanHeader = 64        // the span struct at the start of a span
 	magic      = 0x51_4c_69_74
+	// arenas is a power of two: arenaOf masks with it.
+	arenas = 32
 )
 
 var classSizes = [...]uint32{
@@ -53,7 +62,7 @@ var classOf [largeLimit/16 + 1]uint8
 // about spanTarget, at least one, rounded up to whole pages.
 var spanBytes [len(classSizes)]uintptr
 
-// keepEmpty[c] is how many spans of class c are kept with no block in use:
+// keepEmpty[c] is how many spans of class c an arena keeps with no block in use:
 // enough for 4 blocks, so that a few connections taking a large block in
 // turn do not map and unmap a span each time. Only the classes past 64 KiB
 // keep more than one.
@@ -82,6 +91,7 @@ type span struct {
 	used       uintptr // the blocks in use
 	prev, next uintptr // in the class's list of spans with a free block
 	listed     bool
+	arena      uint8 // the arena of the span, which never changes
 }
 
 // The span struct fits in spanHeader, which keeps the blocks 16-byte aligned.
@@ -99,8 +109,47 @@ type sizeClass struct {
 	_     [40]byte
 }
 
-var heap struct {
+type arena struct {
 	classes [len(classSizes)]sizeClass
+}
+
+var heap struct {
+	arenas [arenas]arena
+}
+
+// arenaUse counts the stacks that take from each arena.
+var arenaUse struct {
+	mu sync.Mutex
+	n  [arenas]int
+}
+
+// takeArena gives a new stack the arena the fewest stacks take from, the
+// first of them: a program with one connection uses one arena, and one
+// with up to as many connections as arenas has an arena for each.
+func takeArena() uint8 {
+	arenaUse.mu.Lock()
+	a := 0
+	for i, n := range arenaUse.n {
+		if n < arenaUse.n[a] {
+			a = i
+		}
+	}
+	arenaUse.n[a]++
+	arenaUse.mu.Unlock()
+	return uint8(a)
+}
+
+// dropArena is called for a stack that is freed.
+func dropArena(a uint8) {
+	arenaUse.mu.Lock()
+	arenaUse.n[a]--
+	arenaUse.mu.Unlock()
+}
+
+// arenaOf is the arena of the stack sp is in. The mask keeps a header the C
+// damaged from reaching past the arenas.
+func arenaOf(sp uintptr) *arena {
+	return &heap.arenas[*(*uint8)(at(stackBase(sp) + arenaOffset))&(arenas-1)]
 }
 
 // mappedSpans is the bytes of the spans mapped now, and spanMaps the spans
@@ -124,7 +173,7 @@ func headerOf(p uintptr) *blockHeader { return (*blockHeader)(at(p - header)) }
 // A bad block (heap damage) fails the call: free leaks it, realloc says out of
 // memory, and the connection is marked broken. The heap is shared, but the
 // block that failed is the only one lost.
-func malloc(sp, n uintptr) uintptr { return alloc(n) }
+func malloc(sp, n uintptr) uintptr { return arenaOf(sp).alloc(n) }
 
 func free(sp, p uintptr) {
 	defer failQuiet(sp)
@@ -133,8 +182,9 @@ func free(sp, p uintptr) {
 
 func realloc(sp, p, n uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, 0)
+	a := arenaOf(sp)
 	if p == 0 {
-		return alloc(n)
+		return a.alloc(n)
 	}
 	h := headerOf(p)
 	if h.check != magic {
@@ -149,7 +199,7 @@ func realloc(sp, p, n uintptr) (ret uintptr) {
 	if n <= have && (h.class == 0 || n+header > have/2) {
 		return p
 	}
-	q := alloc(n)
+	q := a.alloc(n)
 	if q == 0 {
 		return 0
 	}
@@ -174,7 +224,11 @@ func SetAllocFault(f func(n uintptr) bool) {
 	allocFault.Store(&f)
 }
 
-func alloc(n uintptr) uintptr {
+// alloc is malloc for the Go side, which has no stack at hand: it takes
+// from the first arena.
+func alloc(n uintptr) uintptr { return heap.arenas[0].alloc(n) }
+
+func (a *arena) alloc(n uintptr) uintptr {
 	if n > 1<<40 {
 		return 0
 	}
@@ -187,11 +241,11 @@ func alloc(n uintptr) uintptr {
 	}
 	ci := classOf[(t+15)/16]
 	size := uintptr(classSizes[ci])
-	c := &heap.classes[ci]
+	c := &a.classes[ci]
 	c.mu.Lock()
 	sb := c.spans
 	if sb == 0 {
-		if sb = newSpan(ci); sb == 0 {
+		if sb = a.newSpan(ci); sb == 0 {
 			c.mu.Unlock()
 			return 0
 		}
@@ -222,7 +276,7 @@ func alloc(n uintptr) uintptr {
 }
 
 // newSpan maps a span of class ci, with all its blocks fresh.
-func newSpan(ci uint8) uintptr {
+func (a *arena) newSpan(ci uint8) uintptr {
 	m, err := mmap(spanBytes[ci])
 	if err != nil {
 		return 0
@@ -230,7 +284,11 @@ func newSpan(ci uint8) uintptr {
 	mappedSpans.Add(int64(spanBytes[ci]))
 	spanMaps.Add(1)
 	sb := uintptr(m)
-	*spanAt(sb) = span{fresh: sb + spanHeader, end: sb + spanBytes[ci]}
+	*spanAt(sb) = span{
+		fresh: sb + spanHeader,
+		end:   sb + spanBytes[ci],
+		arena: uint8((uintptr(unsafe.Pointer(a)) - uintptr(unsafe.Pointer(&heap.arenas[0]))) / unsafe.Sizeof(*a)),
+	}
 	return sb
 }
 
@@ -286,11 +344,11 @@ func release(p uintptr) {
 		return
 	}
 	ci := h.class - 1
-	c := &heap.classes[ci]
 	sb := uintptr(h.size)
+	s := spanAt(sb)
+	c := &heap.arenas[s.arena&(arenas-1)].classes[ci]
 	h.check = 0
 	c.mu.Lock()
-	s := spanAt(sb)
 	*(*uintptr)(at(p)) = s.free
 	s.free = b
 	s.used--
