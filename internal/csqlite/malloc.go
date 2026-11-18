@@ -10,6 +10,7 @@ package csqlite
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -37,7 +38,8 @@ import (
 // (takeArena), so connections that run at the same time do not wait for each
 // other at every malloc and free: a reader takes and gives back a block for
 // each page it reads after another connection has committed. A block goes
-// back to the span it came from, whoever frees it.
+// back to the span it came from, whoever frees it. An arena that no stack
+// has used for a while gives the empty spans it kept back (dropArena).
 const (
 	header     = 16
 	largeLimit = 256 << 10 // the largest class, header included
@@ -121,7 +123,16 @@ var heap struct {
 var arenaUse struct {
 	mu sync.Mutex
 	n  [arenas]int
+	// left counts the times each arena was left with no stack. timer, when
+	// set, will run trimIdle for the arena, and seen is what left was when
+	// the timer was set.
+	left, seen [arenas]uint64
+	timer      [arenas]*time.Timer
 }
+
+// idleTrim is how long an arena has no stack before it gives its empty spans
+// back. It is read and, by the tests, set with arenaUse.mu held.
+var idleTrim = time.Second
 
 // takeArena gives a new stack the arena the fewest stacks take from, the
 // first of them: a program with one connection uses one arena, and one
@@ -139,11 +150,74 @@ func takeArena() uint8 {
 	return uint8(a)
 }
 
-// dropArena is called for a stack that is freed.
+// dropArena is called for a stack that is freed. An arena left with no stack
+// still holds the empty spans its classes keep. A program that had many
+// connections for a moment would hold those of every arena for good, so
+// they go back once the arena has had no stack for idleTrim. They do not go
+// back at once: database/sql closes and opens connections all the time when
+// more are in use than it may keep idle, and each new one would map the
+// spans again.
 func dropArena(a uint8) {
 	arenaUse.mu.Lock()
 	arenaUse.n[a]--
+	if arenaUse.n[a] == 0 {
+		arenaUse.left[a]++
+		if arenaUse.timer[a] == nil {
+			arenaUse.seen[a] = arenaUse.left[a]
+			arenaUse.timer[a] = time.AfterFunc(idleTrim, func() { trimIdle(a) })
+		}
+	}
 	arenaUse.mu.Unlock()
+}
+
+// trimIdle is run by the timer of arena a, idleTrim after the arena was left
+// with no stack. It gives the arena's empty spans back if no stack took it
+// since, and waits once more if one took it and left it again.
+func trimIdle(a uint8) {
+	arenaUse.mu.Lock()
+	switch {
+	case arenaUse.n[a] != 0:
+		// In use. The next time it is left sets a timer.
+		arenaUse.timer[a] = nil
+	case arenaUse.left[a] != arenaUse.seen[a]:
+		// Taken and left again since, so not idle for that long yet.
+		arenaUse.seen[a] = arenaUse.left[a]
+		arenaUse.timer[a] = time.AfterFunc(idleTrim, func() { trimIdle(a) })
+	default:
+		arenaUse.timer[a] = nil
+		arenaUse.mu.Unlock()
+		heap.arenas[a].trim()
+		return
+	}
+	arenaUse.mu.Unlock()
+}
+
+// trim unmaps the spans of the arena that have no block in use. A stack
+// that takes the arena meanwhile maps what it needs, as in a new arena.
+func (a *arena) trim() {
+	for ci := range a.classes {
+		c := &a.classes[ci]
+		gone := uintptr(0) // the spans taken out, linked by next
+		c.mu.Lock()
+		for sb := c.spans; sb != 0; {
+			s := spanAt(sb)
+			next := s.next
+			if s.used == 0 {
+				c.unlink(sb)
+				c.empty--
+				s.next = gone
+				gone = sb
+			}
+			sb = next
+		}
+		c.mu.Unlock()
+		for gone != 0 {
+			next := spanAt(gone).next
+			munmap(gone, spanBytes[ci])
+			mappedSpans.Add(-int64(spanBytes[ci]))
+			gone = next
+		}
+	}
 }
 
 // arenaOf is the arena of the stack sp is in. The mask keeps a header the C
