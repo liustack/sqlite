@@ -38,6 +38,9 @@ const (
 	// effectsOffset is the int a call of a Go function that may have side
 	// effects sets (markEffects), and SetMerging clears.
 	effectsOffset = 136
+	// arenaOffset is the byte with the arena the C of the stack takes its
+	// memory from (malloc.go).
+	arenaOffset = 144
 	// pollInterval is how many ticks of the code run between two calls of
 	// host_poll.
 	pollInterval = 10000
@@ -55,7 +58,7 @@ func init() {
 	if pollCounterOffset+8 > stackHeader {
 		panic("csqlite: the poll counter is outside the host's header")
 	}
-	if classifyOffset+classifySize > rollbackOffset || rollbackOffset+8 > effectsOffset || effectsOffset+4 > pollCounterOffset {
+	if classifyOffset+classifySize > rollbackOffset || rollbackOffset+8 > effectsOffset || effectsOffset+4 > arenaOffset || arenaOffset+1 > pollCounterOffset {
 		panic("csqlite: the words of the host's header meet")
 	}
 }
@@ -64,6 +67,9 @@ func init() {
 // time runs C on it. A guard page follows the region.
 type stack struct {
 	base uintptr
+	// arena is the arena the C of the stack takes its memory from. The
+	// header has a copy for malloc (arenaOffset).
+	arena uint8
 	// broken is set when a panic in a host callback left the C half way. Its
 	// frames are gone and SQLite may hold locks, so no C runs on it again.
 	broken atomic.Bool
@@ -108,6 +114,8 @@ func newStack() (*stack, error) {
 	s := &stack{base: base}
 	stacks.Store(base, s)
 	*s.pollCounter() = pollInterval
+	s.arena = takeArena()
+	*(*uint8)(at(base + arenaOffset)) = s.arena
 	return s, nil
 }
 
@@ -117,6 +125,7 @@ func (s *stack) sp() uintptr { return s.base + stackHeader }
 func (s *stack) pollCounter() *int64 { return (*int64)(at(s.base + pollCounterOffset)) }
 
 func (s *stack) free() error {
+	dropArena(s.arena)
 	stacks.Delete(s.base)
 	unmapStack(s.base)
 	s.base = 0

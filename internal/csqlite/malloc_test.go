@@ -81,19 +81,29 @@ func TestEmptySpansGoBack(t *testing.T) {
 }
 
 // Blocks of every size, taken and given back in any order from several
-// goroutines, never share bytes.
+// goroutines, each with a stack of its own, never share bytes. Some are
+// freed by another goroutine than the one that took them.
 func TestAllocRandom(t *testing.T) {
+	const goroutines = 4
 	m0 := mappedSpans.Load()
+	type block struct {
+		p, n uintptr
+		fill byte
+	}
+	passed := make(chan block, 64)
 	var wg sync.WaitGroup
-	for g := range 4 {
+	for g := range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r := rand.New(rand.NewPCG(uint64(g), 7))
-			type block struct {
-				p, n uintptr
-				fill byte
+			st, err := newStack()
+			if err != nil {
+				t.Error(err)
+				return
 			}
+			defer st.free()
+			sp := st.sp()
+			r := rand.New(rand.NewPCG(uint64(g), 7))
 			var live []block
 			check := func(b block) {
 				for i, x := range bytesAt(b.p, int(b.n)) {
@@ -110,11 +120,11 @@ func TestAllocRandom(t *testing.T) {
 				return uintptr(1 + r.IntN(2000))
 			}
 			for range 20000 {
-				switch op := r.IntN(10); {
+				switch op := r.IntN(11); {
 				case op < 5 || len(live) == 0:
 					b := block{n: size(), fill: byte(r.IntN(256))}
-					if b.p = alloc(b.n); b.p == 0 {
-						t.Error("alloc failed")
+					if b.p = malloc(sp, b.n); b.p == 0 {
+						t.Error("malloc failed")
 						return
 					}
 					clear(bytesAt(b.p, int(b.n)))
@@ -125,15 +135,31 @@ func TestAllocRandom(t *testing.T) {
 				case op < 8:
 					i := r.IntN(len(live))
 					check(live[i])
-					release(live[i].p)
+					free(sp, live[i].p)
 					live[i] = live[len(live)-1]
 					live = live[:len(live)-1]
+				case op == 10:
+					// Give a block to another goroutine, and free one of
+					// another's.
+					i := r.IntN(len(live))
+					select {
+					case passed <- live[i]:
+						live[i] = live[len(live)-1]
+						live = live[:len(live)-1]
+					default:
+					}
+					select {
+					case b := <-passed:
+						check(b)
+						free(sp, b.p)
+					default:
+					}
 				default:
 					i := r.IntN(len(live))
 					b := live[i]
 					check(b)
 					n := size()
-					q := realloc(0, b.p, n)
+					q := realloc(sp, b.p, n)
 					if q == 0 {
 						t.Error("realloc failed")
 						return
@@ -150,15 +176,19 @@ func TestAllocRandom(t *testing.T) {
 			}
 			for _, b := range live {
 				check(b)
-				release(b.p)
+				free(sp, b.p)
 			}
 		}()
 	}
 	wg.Wait()
+	close(passed)
+	for b := range passed {
+		release(b.p)
+	}
 	checkHeap(t)
 	var keep int64
 	for ci := range classSizes {
-		keep += int64(keepEmpty[ci]) * int64(spanBytes[ci])
+		keep += goroutines * int64(keepEmpty[ci]) * int64(spanBytes[ci])
 	}
 	if left := mappedSpans.Load() - m0; left > keep {
 		t.Errorf("%d bytes of spans left after all were freed, want at most %d", left, keep)
@@ -193,30 +223,156 @@ func TestNoSpanThrash(t *testing.T) {
 	}
 }
 
-// checkHeap checks the lists of spans of every class: the links go both
-// ways, each span on a list has a free block, and the count of empty spans
-// is right and within keepEmpty. An empty span is always on its list, so
-// the walk sees them all.
+// A new stack takes the arena the fewest stacks use, so stacks that live at
+// the same time spread over the arenas, and the arena of a stack that is
+// freed is taken again.
+func TestStacksSpreadOverArenas(t *testing.T) {
+	uses := func() [arenas]int {
+		arenaUse.mu.Lock()
+		defer arenaUse.mu.Unlock()
+		return arenaUse.n
+	}
+	start := uses()
+	var sts []*stack
+	defer func() {
+		for _, st := range sts {
+			st.free()
+		}
+		if end := uses(); end != start {
+			t.Errorf("stacks per arena after all were freed: %v, want %v", end, start)
+		}
+	}()
+	for i := range 2*arenas + 3 {
+		before := uses()
+		st, err := newStack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		sts = append(sts, st)
+		a := st.arena
+		if arenaOf(st.sp()) != &heap.arenas[a] {
+			t.Fatalf("stack %d: arenaOf is not arena %d", i, a)
+		}
+		for j, n := range before {
+			if n < before[a] {
+				t.Fatalf("stack %d took arena %d with %d stacks, arena %d has %d", i, a, before[a], j, n)
+			}
+		}
+		if after := uses(); after[a] != before[a]+1 {
+			t.Fatalf("stack %d: arena %d has %d stacks, want %d", i, a, after[a], before[a]+1)
+		}
+	}
+	// The arena of a freed stack is the least used again.
+	a := sts[5].arena
+	sts[5].free()
+	st, err := newStack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sts[5] = st
+	if got := st.arena; got != a {
+		t.Errorf("the stack made after one of arena %d was freed took arena %d", a, got)
+	}
+}
+
+// A block comes from the arena of the stack that asked for it, and goes
+// back to that arena when another stack frees it.
+func TestBlockGoesBackToItsArena(t *testing.T) {
+	var sts [2]*stack
+	for i := range sts {
+		st, err := newStack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.free()
+		sts[i] = st
+	}
+	a, b := sts[0].arena, sts[1].arena
+	if a == b {
+		t.Fatalf("two stacks share arena %d", a)
+	}
+	for _, n := range []uintptr{24, 4336, 100 << 10} {
+		ci := classOf[(n+header+15)/16]
+		ca, cb := &heap.arenas[a].classes[ci], &heap.arenas[b].classes[ci]
+		// Fill the spans arena a has, so that the block is the only one of
+		// a span of its own.
+		var fill []uintptr
+		for ca.spans != 0 {
+			fill = append(fill, malloc(sts[0].sp(), n))
+		}
+		emptyB := cb.empty
+		p := malloc(sts[0].sp(), n)
+		if p == 0 {
+			t.Fatalf("malloc(%d) failed", n)
+		}
+		sb := uintptr(headerOf(p).size)
+		if got := spanAt(sb).arena; got != a {
+			t.Errorf("malloc(%d) on a stack of arena %d gave a block of arena %d", n, a, got)
+		}
+		free(sts[1].sp(), p)
+		if ca.spans != sb || spanAt(sb).used != 0 || ca.empty != 1 {
+			t.Errorf("malloc(%d): the block freed by another stack did not go back to its span", n)
+		}
+		if cb.empty != emptyB {
+			t.Errorf("malloc(%d): arena %d has %d empty spans, had %d", n, b, cb.empty, emptyB)
+		}
+		for _, p := range fill {
+			free(sts[0].sp(), p)
+		}
+		checkHeap(t)
+	}
+}
+
+// BenchmarkMallocFree takes and gives back a block the size of a page of
+// the page cache, from goroutines that each have a stack: what readers do
+// after each commit of another connection.
+func BenchmarkMallocFree(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		st, err := newStack()
+		if err != nil {
+			b.Error(err)
+			return
+		}
+		defer st.free()
+		sp := st.sp()
+		var ps [32]uintptr
+		for pb.Next() {
+			for i := range ps {
+				ps[i] = malloc(sp, 4336)
+			}
+			for _, p := range ps {
+				free(sp, p)
+			}
+		}
+	})
+}
+
+// checkHeap checks the lists of spans of every class of every arena: the
+// links go both ways, each span on a list has a free block and is of the
+// arena, and the count of empty spans is right and within keepEmpty. An
+// empty span is always on its list, so the walk sees them all.
 func checkHeap(t *testing.T) {
 	t.Helper()
-	for ci := range classSizes {
-		c := &heap.classes[ci]
-		size := uintptr(classSizes[ci])
-		c.mu.Lock()
-		empty, prev := 0, uintptr(0)
-		for sb := c.spans; sb != 0; sb = spanAt(sb).next {
-			s := spanAt(sb)
-			if !s.listed || s.prev != prev || !s.hasFree(size) {
-				t.Errorf("class %d: span %#x: listed %v, prev %#x want %#x, has free %v", size, sb, s.listed, s.prev, prev, s.hasFree(size))
+	for ai := range heap.arenas {
+		for ci := range classSizes {
+			c := &heap.arenas[ai].classes[ci]
+			size := uintptr(classSizes[ci])
+			c.mu.Lock()
+			empty, prev := 0, uintptr(0)
+			for sb := c.spans; sb != 0; sb = spanAt(sb).next {
+				s := spanAt(sb)
+				if !s.listed || s.prev != prev || !s.hasFree(size) || int(s.arena) != ai {
+					t.Errorf("arena %d, class %d: span %#x: listed %v, prev %#x want %#x, has free %v, arena %d", ai, size, sb, s.listed, s.prev, prev, s.hasFree(size), s.arena)
+				}
+				if s.used == 0 {
+					empty++
+				}
+				prev = sb
 			}
-			if s.used == 0 {
-				empty++
+			if empty != c.empty || empty > keepEmpty[ci] {
+				t.Errorf("arena %d, class %d: %d empty spans, counted %d, keeps %d", ai, size, empty, c.empty, keepEmpty[ci])
 			}
-			prev = sb
+			c.mu.Unlock()
 		}
-		if empty != c.empty || empty > keepEmpty[ci] {
-			t.Errorf("class %d: %d empty spans, counted %d, keeps %d", size, empty, c.empty, keepEmpty[ci])
-		}
-		c.mu.Unlock()
 	}
 }

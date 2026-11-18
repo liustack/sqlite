@@ -10,6 +10,7 @@ package vfs
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -572,4 +573,172 @@ func TestShmUnlockPartial(t *testing.T) {
 		t.Errorf("b holds slot 2, seen from outside = %d, want F_WRLCK", got)
 	}
 	lockT(t, "b unlock 2", b.ShmLock(2, 1, ShmUnlock|ShmExclusive), OK)
+}
+
+// A read slot another connection of the process holds is taken and given
+// back without the mutex of the node: readers of one process do not wait
+// for each other at every transaction.
+func TestShmSharedSlotTakesNoMutex(t *testing.T) {
+	idleDelay(t, time.Hour)
+	a, b, name := twoFiles(t)
+	shmMapT(t, a, 0, true)
+	shmMapT(t, b, 0, true)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+	const lockShared, unShared = ShmLock | ShmShared, ShmUnlock | ShmShared
+	lockT(t, "a shared 3", a.ShmLock(3, 1, lockShared), OK)
+
+	node := a.shm.node
+	node.mu.Lock()
+	done := make(chan [2]int, 1)
+	go func() {
+		done <- [2]int{b.ShmLock(3, 1, lockShared), b.ShmLock(3, 1, unShared)}
+	}()
+	select {
+	case rc := <-done:
+		node.mu.Unlock()
+		if rc != [2]int{OK, OK} {
+			t.Fatalf("b shared 3 and its unlock = %v, want OK", rc)
+		}
+	case <-time.After(2 * time.Second):
+		node.mu.Unlock()
+		<-done
+		t.Fatal("a shared lock on a slot the process holds waited for the mutex of the node")
+	}
+	if got := node.lock[3].Load(); got != 1 {
+		t.Errorf("slot 3 has %d holders, want 1", got)
+	}
+	if got := heldBy(t, name, 3); got != unix.F_RDLCK {
+		t.Errorf("slot 3 seen from outside = %d, want F_RDLCK", got)
+	}
+}
+
+// Many readers on one slot and a connection that asks for it exclusive, as
+// one that moves a read mark does. While a reader holds the slot, another
+// open file description sees it read locked and no connection has it
+// exclusive, and the counts and the kernel end with no lock. Alone, the
+// process keeps the kernel lock when its last reader leaves. With another
+// process, it gives the lock back each time, and takes it again for the
+// next reader.
+func TestShmSharedSlotParallel(t *testing.T) {
+	for _, others := range []bool{false, true} {
+		name := "alone"
+		if others {
+			name = "with another process"
+		}
+		t.Run(name, func(t *testing.T) { sharedSlotParallel(t, others) })
+	}
+}
+
+func sharedSlotParallel(t *testing.T, others bool) {
+	idleDelay(t, time.Hour)
+	name := filepath.Join(t.TempDir(), "par.db")
+	// Few readers, so that the slot is often left by its last one: that is
+	// where the count meets the kernel lock.
+	files := make([]*File, 4)
+	for i := range files {
+		files[i] = openT(t, name, mainDB)
+		shmMapT(t, files[i], 0, true)
+	}
+	node := files[0].shm.node
+	if others {
+		otherProcess(t, name)
+		node.releaseIdle()
+		if !node.others {
+			t.Fatal("the other process was not seen")
+		}
+	}
+	const lockShared, unShared = ShmLock | ShmShared, ShmUnlock | ShmShared
+	var readers, writers atomic.Int32
+	var taken [2]atomic.Int64
+	var reading atomic.Int32 // readers still at work
+	reading.Store(int32(len(files) - 1))
+	calls := countFcntl(t)
+	var wg sync.WaitGroup
+	for i, f := range files {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if i > 0 {
+				defer reading.Add(-1)
+			}
+			// What another process sees of slot 3.
+			fd, err := unix.Open(name+"-shm", unix.O_RDWR|unix.O_CLOEXEC, 0)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer unix.Close(fd)
+			var fl unix.Flock_t
+			for n := 0; i == 0 && reading.Load() > 0 || i > 0 && n < 20000; n++ {
+				if i == 0 {
+					if f.ShmLock(3, 1, ShmLock|ShmExclusive) != OK {
+						runtime.Gosched()
+						continue
+					}
+					writers.Add(1)
+					if n := readers.Load(); n != 0 {
+						t.Errorf("slot 3 held exclusive with %d shared holders", n)
+					}
+					taken[1].Add(1)
+					writers.Add(-1)
+					if rc := f.ShmLock(3, 1, ShmUnlock|ShmExclusive); rc != OK {
+						t.Errorf("unlock exclusive = %d", rc)
+						return
+					}
+					continue
+				}
+				if n%500 == 0 {
+					// Stay out until the slot was taken exclusive once
+					// more: the readers all come here, so it is free.
+					was := taken[1].Load()
+					for deadline := time.Now().Add(20 * time.Second); taken[1].Load() == was; {
+						if time.Now().After(deadline) {
+							t.Error("slot 3 was not taken exclusive with every reader out of it")
+							return
+						}
+						runtime.Gosched()
+					}
+				}
+				if f.ShmLock(3, 1, lockShared) != OK {
+					continue
+				}
+				readers.Add(1)
+				if writers.Load() != 0 {
+					t.Error("slot 3 held shared with an exclusive holder")
+				}
+				if typ, err := testLock(fd, &fl, int64(shmBase+3), 1); err != nil || typ != unix.F_RDLCK {
+					t.Errorf("slot 3 seen from outside while held shared = %d, %v, want F_RDLCK", typ, err)
+				}
+				if n := node.lock[3].Load(); n < 1 {
+					t.Errorf("slot 3 has %d holders while held shared", n)
+				}
+				taken[0].Add(1)
+				readers.Add(-1)
+				if rc := f.ShmLock(3, 1, unShared); rc != OK {
+					t.Errorf("unlock shared = %d", rc)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if taken[0].Load() == 0 || taken[1].Load() == 0 {
+		t.Errorf("slot 3 was taken shared %d times and exclusive %d times", taken[0].Load(), taken[1].Load())
+	}
+	if got := node.lock[3].Load(); got != 0 {
+		t.Errorf("slot 3 has %d holders with none left", got)
+	}
+	// Each exclusive lock asks the kernel twice, and each reader looked at
+	// the slot from outside once. With another process the last reader to
+	// leave asks too, and so does the next one to come.
+	if n, rest := calls.Load(), 2*taken[1].Load()+taken[0].Load(); others && n < rest+100 {
+		t.Errorf("%d fcntl calls, %d of them not of readers: the readers rarely left the slot", n, rest)
+	}
+	node.releaseIdle()
+	if got := heldBy(t, name, 3); got != unix.F_UNLCK {
+		t.Errorf("slot 3 left locked: %d", got)
+	}
+	for _, f := range files {
+		f.ShmUnmap(false)
+	}
 }

@@ -50,7 +50,7 @@ func TestShmUnmapUnlockRetried(t *testing.T) {
 	}
 	node := b.shm.node
 	node.mu.Lock()
-	idle, armed, l0 := node.idle, node.armed, node.lock[0]
+	idle, armed, l0 := node.idle, node.armed, node.lock[0].Load()
 	node.mu.Unlock()
 	if idle != 1 || !armed || l0 != 0 {
 		t.Fatalf("node after the failed unlock: idle %#x armed %v lock[0] %d, want 0x1 true 0", idle, armed, l0)
@@ -216,8 +216,8 @@ func TestShmIdleWriteLockDowngradeFails(t *testing.T) {
 		t.Fatalf("b holds %#x after the error, want nothing", b.shm.shared)
 	}
 	node := b.shm.node
-	if node.idle&(1<<3) == 0 || node.lock[3] != 0 {
-		t.Fatalf("node idle %#x lock[3] %d, want slot 3 idle with no holder", node.idle, node.lock[3])
+	if node.idle&(1<<3) == 0 || node.lock[3].Load() != 0 {
+		t.Fatalf("node idle %#x lock[3] %d, want slot 3 idle with no holder", node.idle, node.lock[3].Load())
 	}
 	node.releaseIdle()
 	if got := heldBy(t, name, 3); got != unix.F_UNLCK {
