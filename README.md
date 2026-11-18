@@ -51,20 +51,20 @@ Time per operation, lower is better, the median of 6 runs. The best of a row is 
 <!-- /bench:readme-linux-amd64 -->
 
 <!-- bench:readme-darwin-arm64 -->
-**darwin/arm64** (Apple M4, Go 1.27.2, commit `abf3e08`):
+**darwin/arm64** (Apple M4, Go 1.27.2, commit `4b44e15`):
 
 | Workload | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| Insert one row | 6.41 µs | 5.99 µs | 7.46 µs | 7.03 µs |
-| Insert 1000 rows in a transaction | 495 µs | 552 µs | 750 µs | 578 µs |
-| Read one row by key | **1.08 µs** | 1.93 µs | 2.76 µs | 2.05 µs |
-| Read 100k rows | **13.7 ms** | 29.7 ms | 29.8 ms | 20.6 ms |
-| Join and group | 1.25 ms | **1.13 ms** | 2.64 ms | 1.86 ms |
-| Find a user with 400 comments | **213 µs** | 368 µs | 554 µs | 342 µs |
-| Read 100 rows of 200 KB text | 3.39 ms | 3.37 ms | 3.71 ms | 3.55 ms |
-| Read by key, 10 threads | **1.13 µs** | 1.52 µs | 1.75 µs | 2.37 µs |
-| Insert, 8 goroutines at once | **3.20 µs** | 6.74 µs | 8.11 µs | 48.8 µs |
-| Insert, 64 goroutines at once | **1.14 µs** | 10.3 µs | 10.6 ms | 86.2 µs |
+| Insert one row | 6.29 µs | **5.96 µs** | 7.30 µs | 6.97 µs |
+| Insert 1000 rows in a transaction | **473 µs** | 555 µs | 750 µs | 582 µs |
+| Read one row by key | **1.08 µs** | 1.92 µs | 2.75 µs | 2.07 µs |
+| Read 100k rows | **13.7 ms** | 29.7 ms | 29.8 ms | 20.5 ms |
+| Join and group | 1.25 ms | **1.14 ms** | 2.63 ms | 1.86 ms |
+| Find a user with 400 comments | **212 µs** | 369 µs | 559 µs | 342 µs |
+| Read 100 rows of 200 KB text | 3.41 ms | 3.38 ms | 3.75 ms | 3.56 ms |
+| Read by key, 10 threads | **1.12 µs** | 1.50 µs | 1.77 µs | 2.35 µs |
+| Insert, 8 goroutines at once | **3.12 µs** | 6.84 µs | 8.27 µs | 44.5 µs |
+| Insert, 64 goroutines at once | **1.16 µs** | 9.78 µs | 3.42 ms | 85.8 µs |
 <!-- /bench:readme-darwin-arm64 -->
 
 Where another driver still wins: work that stays inside SQLite (the join), where this driver runs the same C but as Go assembly, and reading large text values. Why reads and many writers are faster, the versions of each driver, and how to run it all again are in [docs/benchmarks.md](docs/benchmarks.md).
