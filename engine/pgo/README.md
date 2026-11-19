@@ -10,7 +10,7 @@ What `make gen` needs to compile the engine with a profile: the profile itself, 
 | `train.sh` | Trains the profile. Builds the engine as the generator compiles it with counters in, runs `train.sql`, checks it and writes `profile.txt` |
 | `train.sql` | What the training runs: the work of a program that uses the driver, each kind of it at least a little. Its first lines say how it is written |
 | `train.c` | Runs `train.sql` the way the driver uses the C API: statements prepared once and run many times with bound values, each column read by its type, writes merged as group commit merges them |
-| `host.c` | The callbacks of `engine/host.h` in plain C, in the place of the Go host: files, the locks of SQLite between the connections of the process, shared memory for WAL on the heap |
+| `host.c` | The callbacks of `engine/host.h` in plain C, in the place of the Go host: files, the locks of SQLite between the connections of the process, shared memory for WAL on the heap. `engine/diff` uses it too, with the time fixed (`HOST_NOW_MS`) |
 | `cover.awk` | The check of the training that `train.sh` runs (below) |
 
 ## Train again
