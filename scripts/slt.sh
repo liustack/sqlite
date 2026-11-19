@@ -41,4 +41,11 @@ if [ "$got" != "$checkin" ]; then
 	echo "slt.sh: checked out $got, want $checkin" >&2
 	exit 1
 fi
+# A file changed or added by hand is not the pinned suite.
+changed=$(cd src && "$fossil" changes --hash --differ)
+if [ -n "$changed" ]; then
+	echo "slt.sh: files differ from $checkin:" >&2
+	echo "$changed" >&2
+	exit 1
+fi
 echo "SQL Logic Test $checkin in $dir/src/test"
