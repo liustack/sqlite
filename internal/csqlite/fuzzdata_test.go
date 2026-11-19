@@ -159,11 +159,12 @@ func confine(dir string) func(string) string {
 		roots = append(roots, real)
 	}
 	return func(name string) string {
-		p := name
-		if !filepath.IsAbs(p) {
-			p = filepath.Join(dir, p)
+		// As the VFS will read it: against the working directory, which
+		// is dir, and on Windows \00 on the current drive.
+		p, err := filepath.Abs(name)
+		if err != nil {
+			panic(err)
 		}
-		p = filepath.Clean(p)
 		for _, root := range roots {
 			if p == root || strings.HasPrefix(p, root+string(filepath.Separator)) {
 				return name
@@ -860,6 +861,7 @@ func (r *fuzzRun) anySP() uintptr {
 // directory stays, any other becomes a file right in it.
 func TestConfine(t *testing.T) {
 	dir := t.TempDir()
+	t.Chdir(dir)
 	f := confine(dir)
 	for _, name := range []string{"main.db", "main.db-journal", filepath.Join(dir, "a.db")} {
 		if got := f(name); got != name {
