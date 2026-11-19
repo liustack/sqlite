@@ -9,3 +9,7 @@ require (
 )
 
 require github.com/pierrec/lz4/v4 v4.1.23 // indirect
+
+// A writer beside readers that keep every core busy is starved, and a pool
+// of connections reads slower beside writes. Both are fixed in v0.1.7.
+retract v0.1.6
