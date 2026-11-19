@@ -52,6 +52,10 @@ func TestDiffC(t *testing.T) {
 	if dir == "" {
 		t.Fatal("DIFFC needs FUZZDATA, the fuzz cases of go run scripts/fuzzdata.go")
 	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	files, err := filepath.Glob(filepath.Join(dir, "fuzzdata*.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +74,12 @@ func TestDiffC(t *testing.T) {
 	}
 	args = append(args, files...)
 
+	// Each side in a directory of its own, should a case name a file of the
+	// VFS of the machine (file:x?vfs=go).
+	d.cDir = t.TempDir()
+	t.Chdir(t.TempDir())
 	cmd := osexec.Command(bin, args...)
+	cmd.Dir = d.cDir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()
@@ -97,7 +106,18 @@ func TestDiffC(t *testing.T) {
 	local := time.Local
 	time.Local = time.UTC
 	d.fuzz = &fuzzRun{t: t, stmtLimit: 2 * time.Second, grace: 60 * time.Second}
+	// go_init first: a call of SQLite would start it before go_init can
+	// configure it.
+	if err := start(); err != nil {
+		t.Fatal(err)
+	}
+	// The cases set them with PRAGMA soft_heap_limit and hard_heap_limit,
+	// which are global.
+	soft := sqlite3_soft_heap_limit64(d.fuzz.anySP(), ^uintptr(0))
+	hard := sqlite3_hard_heap_limit64(d.fuzz.anySP(), ^uintptr(0))
 	defer func() {
+		sqlite3_hard_heap_limit64(d.fuzz.anySP(), hard)
+		sqlite3_soft_heap_limit64(d.fuzz.anySP(), soft)
 		testNowMs = 0
 		time.Local = local
 		testControl(d.fuzz.anySP(), testctrlPrngSeed, 0, 0)
@@ -133,7 +153,7 @@ type diffRun struct {
 	k                    int
 	cases, compared, cut int
 	diffs, unstable      int
-	bin                  string   // the C side
+	bin, cDir            string   // the C side and the directory it runs in
 	files                []string // the fuzzdata files, for a run of one case
 	lines                []string // the Go side's lines of the case running
 	stmts                [][2]int // where the statement of each is in sql
@@ -150,11 +170,6 @@ func (d *diffRun) cLine() string {
 }
 
 func (d *diffRun) setDefaultVFS(name string) {
-	// go_init first: sqlite3_vfs_find would start SQLite before it, and
-	// go_init configures SQLite before it starts.
-	if err := start(); err != nil {
-		d.t.Fatal(err)
-	}
 	sp := d.fuzz.anySP()
 	a := args{sp}
 	z := a.str(name)
@@ -209,6 +224,8 @@ func (d *diffRun) openCase(id string) *Conn {
 	d.fuzz.reported = false
 	d.lines, d.stmts, d.sql = d.lines[:0], d.stmts[:0], nil
 	sqlite3_randomness(d.fuzz.anySP(), 0, 0)
+	sqlite3_soft_heap_limit64(d.fuzz.anySP(), 0)
+	sqlite3_hard_heap_limit64(d.fuzz.anySP(), 0)
 	c, err := Open(":memory:", OpenReadWrite|OpenCreate|OpenURI, "")
 	if err != nil {
 		d.t.Fatalf("case %s: %v", id, err)
@@ -448,17 +465,20 @@ func (d *diffRun) check(id string, run func() bool) {
 	}
 	d.cases++
 	cl := d.cLines(d.cLine, id)
-	i, n, cut := firstDiff(cl, d.lines)
+	i, n, cut := firstDiff(id, cl, d.lines)
+	d.compared += n
 	if i < 0 {
-		d.compared += n
 		if cut {
 			d.cut++
 		}
 		return
 	}
 	goLines := append([]string(nil), d.lines...)
+	// Up to the statement that differs: what comes after it may be cut
+	// short by its time on one run and not on another.
+	upTo := func(l []string) []string { return l[:min(len(l), i+1)] }
 	for try := 0; try < 3; try++ {
-		if again := d.cAlone(id); !slices.Equal(again, cl) {
+		if again := d.cAlone(id); !slices.Equal(upTo(again), upTo(cl)) {
 			d.unstable++
 			d.t.Logf("case %s is not the same from run to run in C, at statement %d: skipped", id, i)
 			return
@@ -466,9 +486,14 @@ func (d *diffRun) check(id string, run func() bool) {
 	}
 	for try := 0; try < 3; try++ {
 		run()
-		if !slices.Equal(d.lines, goLines) {
-			d.unstable++
-			d.t.Logf("case %s is not the same from run to run in Go, at statement %d: skipped", id, i)
+		if again := d.lines; !slices.Equal(upTo(again), upTo(goLines)) {
+			// The C side gave the same four times: an engine that does not
+			// is wrong.
+			d.diffs++
+			if d.diffs <= maxDiffs {
+				d.t.Errorf("case %s, statement %d: the Go side differs from run to run where the C side does not:\n  C:     %.300q\n  Go:    %.300q\n  again: %.300q",
+					id, i, upTo(cl), upTo(goLines), upTo(again))
+			}
 			return
 		}
 	}
@@ -507,7 +532,9 @@ func (d *diffRun) cLines(next func() string, id string) []string {
 
 // cAlone runs case id on the C side in a process of its own.
 func (d *diffRun) cAlone(id string) []string {
-	out, err := osexec.Command(d.bin, append([]string{"-case", id}, d.files...)...).Output()
+	cmd := osexec.Command(d.bin, append([]string{"-case", id}, d.files...)...)
+	cmd.Dir = d.cDir
+	out, err := cmd.Output()
 	if err != nil {
 		d.t.Fatalf("case %s on the C side alone: %v", id, err)
 	}
@@ -529,7 +556,7 @@ func (d *diffRun) cAlone(id string) []string {
 // firstDiff is the first statement where c and g differ, -1 for none, up to
 // the first one either side stopped after its time (cut), and n the
 // statements compared before it.
-func firstDiff(c, g []string) (i, n int, cut bool) {
+func firstDiff(id string, c, g []string) (i, n int, cut bool) {
 	for i := 0; i < max(len(c), len(g)); i++ {
 		var cl, gl string
 		if i < len(c) {
@@ -538,7 +565,7 @@ func firstDiff(c, g []string) (i, n int, cut bool) {
 		if i < len(g) {
 			gl = g[i]
 		}
-		if strings.HasSuffix(cl, " interrupted") || strings.HasSuffix(gl, " interrupted") {
+		if stop := fmt.Sprintf("%s %d interrupted", id, i); cl == stop || gl == stop {
 			return -1, i, true
 		}
 		if cl != gl {

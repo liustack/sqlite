@@ -313,6 +313,9 @@ static void run(const char *id, sqlite3 *db, const char *sql) {
 static sqlite3 *openCase(const char *id) {
   sqlite3 *db;
   sqlite3_randomness(0, 0);
+  /* PRAGMA soft_heap_limit and hard_heap_limit set them, and they are global. */
+  sqlite3_soft_heap_limit64(0);
+  sqlite3_hard_heap_limit64(0);
   if (sqlite3_open_v2(":memory:", &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI | SQLITE_OPEN_EXRESCODE,
                       0) != SQLITE_OK)
     die(id, sqlite3_errmsg(db));
