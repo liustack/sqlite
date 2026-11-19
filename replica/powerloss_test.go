@@ -202,7 +202,9 @@ func plStore(t *testing.T, cfg Config, l *plLog) Config {
 		if req.Method == http.MethodPut {
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
-				t.Error(err)
+				// The replicator gave the upload up before its end, as
+				// Close does to a compaction: the store never gets it.
+				return
 			}
 			obj.body = body
 			req.Body = io.NopCloser(bytes.NewReader(obj.body))
