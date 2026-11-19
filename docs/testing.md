@@ -57,6 +57,17 @@ SQLite serves most small allocations of a connection from a pool of its own, whi
 
 A point is one allocation or one write that fails. Each test first counts the points of its work, then tries `FAULT_POINTS` of them, spread evenly from a first one picked at random: 40 when it is not set, 10 with `-short` or on Windows (where a point takes several times longer), and every point with `FAULT_POINTS=0`, which takes about four minutes. A point that fails does so again with `FAULT_POINTS=0`. A change to `runBatch`, to when a connection is dropped or to how a row is read must keep them red with `FAULT_POINTS=0` for each of the faults they found: going on with a batch whose prepare ended the transaction, preparing the empty text after the last statement of an `Exec`, using a connection again after `SQLITE_NOMEM`, `SQLITE_IOERR` or `SQLITE_FULL`, answering `driver.ErrBadConn` for a later statement of an `Exec`, and giving an empty text for one SQLite had no memory to convert.
 
+## SQLite's fuzz cases
+
+`TestFuzzData` runs the cases SQLite's `fuzzcheck` runs (`test/fuzzdata*.db` of the SQLite source release, about 46,000) on the engine, with fuzzcheck's limits and settings: SQL scripts on an empty database and on damaged database images, and scripts that carry their own image. A case fails when the process crashes, a statement still runs a minute after an interrupt, or a host callback panics. An SQL error is no failure. The test skips without the cases:
+
+```sh
+go run scripts/fuzzdata.go     # into .build/fuzzdata, the source zip checked against its SHA3-256
+FUZZDATA=$PWD/.build/fuzzdata go test -run TestFuzzData ./internal/csqlite
+```
+
+It takes about 20 seconds on an Apple M-series Mac. `make check` runs it once the cases are in `.build/fuzzdata`, and CI runs it on every target, where `FUZZDATA_REQUIRED` makes missing cases fail instead of skip. When the process dies, `.build/fuzzdata/running` names the case, and `FUZZDATA_CASE=fuzzdata3.db:1:17` runs that one alone. The engine cannot call a progress handler in Go, so a statement is interrupted after 200 ms (`FUZZDATA_STMT_MS`) where fuzzcheck stops a case after a count of steps. fuzzcheck keeps its files in memory: here they are files of the engine's VFS in a temporary directory, and a file the SQL names elsewhere (`ATTACH '/00'`) goes in that directory too. It keeps no count of memory (`SQLITE_DEFAULT_MEMSTATUS` is 0), so the heap limits and the check for leaks are left out, and so are fuzzcheck's extensions and its checks of query results. The comment of the test lists the rest.
+
 ## The S3 client and the replica
 
 The tests of `replica` and `replica/internal/s3` that need a store run against MinIO when `MINIO` names a minio binary, and are skipped otherwise. MinIO no longer publishes binaries, so build the release CI uses:

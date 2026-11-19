@@ -77,7 +77,23 @@ jobs:
             echo "SQLITE3=$exe" >> "$GITHUB_ENV" ;;
           esac
       - run: go vet -asmdecl=false ./...
+      # The cases of SQLite's fuzzcheck, for TestFuzzData.
+      - uses: actions/cache@v4
+        id: fuzzdata
+        with:
+          path: .build/fuzzdata
+          key: fuzzdata-${{ hashFiles('scripts/fuzzdata.go', 'engine/vendor.sh') }}
+      - run: go run scripts/fuzzdata.go
+        if: steps.fuzzdata.outputs.cache-hit != 'true'
       - run: go test -count=1 ./...
+        env:
+          FUZZDATA: ${{ github.workspace }}/.build/fuzzdata
+          FUZZDATA_REQUIRED: "1"
+      # A crash in TestFuzzData does not name its case: this file does.
+      - name: fuzz case running
+        if: failure()
+        shell: bash
+        run: cat .build/fuzzdata/running 2>/dev/null || true
       # The race detector needs cgo on linux. It tests the driver, not the build,
       # so the runner's own architecture is enough.
       - run: go test -race -count=1 . ./internal/vfs ./internal/csqlite
