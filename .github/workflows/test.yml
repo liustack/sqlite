@@ -85,6 +85,12 @@ jobs:
           key: fuzzdata-${{ hashFiles('scripts/fuzzdata.go', 'engine/vendor.sh') }}
       - run: go run scripts/fuzzdata.go
         if: steps.fuzzdata.outputs.cache-hit != 'true'
+      # All the cases take five minutes or more on Windows, which makes and
+      # deletes a file slowly: a quarter of them, another one each run.
+      - name: fuzz cases on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "FUZZDATA_SLICE=$((GITHUB_RUN_NUMBER % 4))/4" >> "$GITHUB_ENV"
       - run: go test -count=1 ./...
         env:
           FUZZDATA: ${{ github.workspace }}/.build/fuzzdata
