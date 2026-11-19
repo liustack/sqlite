@@ -15,6 +15,14 @@ permissions:
   contents: read
 
 jobs:
+  # No file larger than 1 MiB and no binary, but the amalgamation and the
+  # images of assets/ (scripts/check-files.sh).
+  files:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-files.sh
+
   test:
     name: test (${{ matrix.target.name }}, ${{ matrix.go }})
     strategy:

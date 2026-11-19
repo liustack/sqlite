@@ -34,7 +34,7 @@ The driver runs on linux and darwin, amd64 and arm64, and on windows/amd64. Grou
 - `replica/internal/s3`: the S3 client of the replicator (SigV4, PUT, multipart upload, ranged GET, ListObjectsV2, DELETE, conditional PUT), no dependencies. See [docs/testing.md](docs/testing.md#the-s3-client-and-the-replica) for its tests.
 - `replica/internal/capture`: stages each change of a database as an LTX file (github.com/superfly/ltx, the format Litestream reads) in `<db>-replica/ltx/0/`, and runs its checkpoints. `internal/replhook` gives it what it needs of the driver: a file attached for replication (no automatic checkpoints, the PRAGMAs that checkpoint refused, a call after each write with the length of the WAL) and the file's write lock. See [docs/testing.md](docs/testing.md#capture).
 - `bench/`: benchmarks against other drivers, a module of its own (see `bench/README.md`).
-- `scripts/`: `gen-engine.sh` (`make gen`, `make pass`), `check-gen.sh` (`make check-gen`), `go-versions.sh` (the tests with each supported Go), `docs-list.sh`, `llvm-bin.sh`.
+- `scripts/`: `gen-engine.sh` (`make gen`, `make pass`), `check-gen.sh` (`make check-gen`), `check-files.sh` (no large or binary file in the tree, part of `make check`), `go-versions.sh` (the tests with each supported Go), `docs-list.sh`, `llvm-bin.sh`.
 
 ## Docs (`docs/`)
 
