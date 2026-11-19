@@ -7,6 +7,7 @@
 
 # The checks every commit passes (docs/testing.md).
 check: vendor-check
+	scripts/check-files.sh
 	go build ./...
 	test -z "$$(git ls-files --cached --others --exclude-standard '*.go' | xargs gofmt -l -s)"
 	go vet -asmdecl=false ./...
