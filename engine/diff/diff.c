@@ -323,7 +323,11 @@ static void run(const char *id, sqlite3 *db, const char *sql) {
    slots all free in the same order. A slot holds a page of 64 KiB, the
    largest, with pcache1's header and the extras of the pager and the
    b-tree. A case that needs more slots than there are would take pages from
-   malloc: that stops the program. */
+   malloc: that stops the program. The slots a case used still hold what it
+   left there, such as pointers into the heap, which SQLite may read in a
+   buffer it does not fill: they are cleared before the next case. Those
+   are the last slots, as many as were in use at once, since SQLite takes a
+   slot from the top of a list that starts as the slots in order. */
 
 #define PAGECACHE_SLOT (65536 + 1024)
 #define PAGECACHE_SLOTS 16384
@@ -335,7 +339,10 @@ static int pageOverflow;
    default VFS. */
 static void startSQLite(void) {
   if (!pageCache) return;
+  int now, used;
+  sqlite3_status(SQLITE_STATUS_PAGECACHE_USED, &now, &used, 1);
   sqlite3_shutdown();
+  memset((char *)pageCache + (size_t)(PAGECACHE_SLOTS - used) * PAGECACHE_SLOT, 0, (size_t)used * PAGECACHE_SLOT);
   if (sqlite3_config(SQLITE_CONFIG_PAGECACHE, pageCache, PAGECACHE_SLOT, PAGECACHE_SLOTS) != SQLITE_OK ||
       sqlite3_initialize() != SQLITE_OK)
     die("page cache", "cannot start SQLite on it");

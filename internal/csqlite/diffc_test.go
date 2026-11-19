@@ -49,6 +49,9 @@ func TestDiffC(t *testing.T) {
 		}
 		t.Skip("DIFFC is not set: engine/diff/diff.sh builds the C side")
 	}
+	if raceBuild {
+		t.Skip("the race detector keeps the address of the page cache (pageCacheAt)")
+	}
 	dir := os.Getenv("FUZZDATA")
 	if dir == "" {
 		t.Fatal("DIFFC needs FUZZDATA, the fuzz cases of go run scripts/fuzzdata.go")
@@ -96,7 +99,7 @@ func TestDiffC(t *testing.T) {
 			cmd.Wait()
 		}
 	}()
-	d.c = bufio.NewReaderSize(out, 1<<20)
+	d.c, d.cmd, d.stderr = bufio.NewReaderSize(out, 1<<20), cmd, &stderr
 	now, ok := strings.CutPrefix(d.cLine(), "now ")
 	if !ok {
 		t.Fatalf("the C side began with no time: %s", stderr.String())
@@ -126,9 +129,6 @@ func TestDiffC(t *testing.T) {
 	soft := sqlite3_soft_heap_limit64(d.fuzz.anySP(), ^uintptr(0))
 	hard := sqlite3_hard_heap_limit64(d.fuzz.anySP(), ^uintptr(0))
 	defer func() {
-		// SQLite as it was: its page cache from malloc, and the first
-		// pages of a cache in one allocation (SQLITE_DEFAULT_PCACHE_INITSZ).
-		d.startSQLite(0, 0, 20)
 		sqlite3_hard_heap_limit64(d.fuzz.anySP(), hard)
 		sqlite3_soft_heap_limit64(d.fuzz.anySP(), soft)
 		testNowMs = 0
@@ -138,6 +138,9 @@ func TestDiffC(t *testing.T) {
 		d.setDefaultVFS("go")
 		d.fuzz.side.free()
 	}()
+	// First of all, SQLite as it was: its page cache from malloc, and the
+	// first pages of a cache in one allocation (SQLITE_DEFAULT_PCACHE_INITSZ).
+	defer d.startSQLite(0, 0, 20)
 	d.setDefaultVFS("memdb")
 
 	for _, f := range files {
@@ -152,10 +155,14 @@ func TestDiffC(t *testing.T) {
 	if d.diffs > maxDiffs {
 		t.Errorf("%d statements differ, the first %d shown", d.diffs, maxDiffs)
 	}
-	t.Logf("%d cases, %d statements compared, %d cases cut short", d.cases, d.compared, d.cut)
+	t.Logf("%d cases, %d statements compared, %d cases cut short, at most %d of the %d slots of the page cache in use",
+		d.cases, d.compared, d.cut, d.slots, pageCacheSlots)
 }
 
 const maxDiffs = 20
+
+// raceBuild says the test runs with the race detector (race_test.go).
+var raceBuild bool
 
 type diffRun struct {
 	t                    *testing.T
@@ -165,16 +172,20 @@ type diffRun struct {
 	k                    int
 	cases, compared, cut int
 	diffs                int
-	lines                []string // the Go side's lines of the case running
-	stmts                [][2]int // where the statement of each is in sql
-	sql                  []byte   // the SQL of the case running
+	slots                uintptr // the most slots of the page cache in use at once
+	cmd                  *osexec.Cmd
+	stderr               *bytes.Buffer // the C side's
+	lines                []string      // the Go side's lines of the case running
+	stmts                [][2]int      // where the statement of each is in sql
+	sql                  []byte        // the SQL of the case running
 }
 
 // cLine is the next line of the C side.
 func (d *diffRun) cLine() string {
 	s, err := d.c.ReadString('\n')
 	if err != nil {
-		d.t.Fatalf("the C side ended early: %v", err)
+		werr := d.cmd.Wait()
+		d.t.Fatalf("the C side ended early: %v (%v): %s", err, werr, d.stderr.String())
 	}
 	return strings.TrimSuffix(s, "\n")
 }
@@ -184,21 +195,30 @@ func (d *diffRun) cLine() string {
 // header after it, and give what depends on where its pages are. Each case
 // starts SQLite again on a page cache at the same address on both sides.
 // pageCacheAt is far from what Go and the C side map, in the addresses of a
-// user program on linux and darwin, amd64 and arm64.
+// user program on linux and darwin, amd64 and arm64, but for the race
+// detector's, which keeps it.
 const (
-	pageCacheAt     = 0x3e00_0000_0000
-	pageCacheSlot   = 65536 + 1024
-	pageCacheSlots  = 16384
-	configPageCache = 7 // SQLITE_CONFIG_PAGECACHE
+	pageCacheAt         = 0x3e00_0000_0000
+	pageCacheSlot       = 65536 + 1024
+	pageCacheSlots      = 16384
+	configPageCache     = 7 // SQLITE_CONFIG_PAGECACHE
+	statusPageCacheUsed = 1 // SQLITE_STATUS_PAGECACHE_USED
 )
 
 // startSQLite starts SQLite again, with the page cache of
 // SQLITE_CONFIG_PAGECACHE p, sz, n. SQLite must hold nothing then: no
-// connection is open, of this test or another.
+// connection is open, of this test or another. The slots the last case used
+// are cleared, as diff.c does.
 func (d *diffRun) startSQLite(p, sz, n uintptr) {
 	sp := d.fuzz.anySP()
-	sqlite3_shutdown(sp)
 	a := args{sp}
+	now, used := a.word(), a.word()
+	sqlite3_status(a.top, statusPageCacheUsed, now, used, 1)
+	slots := uintptr(*(*int32)(at(used)))
+	d.slots = max(d.slots, slots)
+	sqlite3_shutdown(sp)
+	clear(bytesAt(pageCacheAt+(pageCacheSlots-slots)*pageCacheSlot, int(slots*pageCacheSlot)))
+	a = args{sp}
 	v := a.variadic(p, sz, n)
 	if int32(sqlite3_config(a.top, configPageCache, v)) != OK || int32(sqlite3_initialize(sp)) != OK {
 		d.t.Fatal("cannot start SQLite again")
