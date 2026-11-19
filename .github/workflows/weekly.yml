@@ -1,0 +1,142 @@
+# Copyright (c) 2026 The liustack/sqlite Authors.
+# SPDX-License-Identifier: MIT
+# Use of this source code is governed by the MIT license in LICENSE at the
+# root of this repository.
+
+# Once a week, the checks too long for each push (docs/testing.md): all the
+# fuzz cases on Windows, every fault point, a long run of the replicator, and
+# the checks that need LLVM 22.1.8: the generated engine is what engine/
+# generates, the tests of the generator, and the engine against the same C
+# built by clang. A step that runs one test with -run greps for its PASS
+# line, since go test passes when -run matches nothing.
+name: weekly
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  # test.yml runs a quarter of the cases on Windows: here, all of them.
+  fuzz-windows:
+    name: fuzz (windows/amd64)
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        id: fuzzdata
+        with:
+          path: .build/fuzzdata
+          key: fuzzdata-${{ hashFiles('scripts/fuzzdata.go', 'engine/vendor.sh') }}
+      - run: go run scripts/fuzzdata.go
+        if: steps.fuzzdata.outputs.cache-hit != 'true'
+      - run: |
+          go test -count=1 -v -timeout 80m -run '^TestFuzzData$' ./internal/csqlite > fuzz.log || { tail -n 200 fuzz.log; exit 1; }
+          grep '^--- PASS: TestFuzzData ' fuzz.log
+        env:
+          FUZZDATA: ${{ github.workspace }}/.build/fuzzdata
+          FUZZDATA_REQUIRED: "1"
+      - name: fuzz case running
+        if: failure()
+        run: cat .build/fuzzdata/running 2>/dev/null || true
+
+  # Every fault point of the tests of oom_test.go, where each push tries 40.
+  faults:
+    name: faults (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux/amd64, os: ubuntu-24.04 }
+          - { name: linux/arm64, os: ubuntu-24.04-arm }
+          - { name: windows/amd64, os: windows-2025 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 -timeout 110m .
+        env:
+          FAULT_POINTS: "0"
+
+  # TestSoak against MinIO for half an hour, with the race detector.
+  soak:
+    name: soak (linux/amd64, MinIO)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: MinIO
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/minio/minio@RELEASE.2025-09-07T16-13-09Z
+          echo "MINIO=$RUNNER_TEMP/bin/minio" >> "$GITHUB_ENV"
+      - run: |
+          go test -count=1 -race -v -timeout 50m -run '^TestSoak$' ./replica > soak.log || { tail -n 200 soak.log; exit 1; }
+          grep '^--- PASS: TestSoak ' soak.log
+        env:
+          CGO_ENABLED: "1"
+          REPLICA_SOAK: 30m
+          S3_TEST_REQUIRED: "1"
+
+  # The checks that need LLVM 22.1.8, on each of the two engines.
+  # check-gen generates both, and the tests of the generator that link and
+  # run samples need linux/amd64, so those two run there only.
+  llvm:
+    name: llvm (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux/amd64, os: ubuntu-24.04, gen: true }
+          - { name: linux/arm64, os: ubuntu-24.04-arm, gen: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: LLVM 22.1.8
+        run: echo "LLVM_BIN=$(scripts/llvm-get.sh "$RUNNER_TEMP/llvm")" >> "$GITHUB_ENV"
+      - run: make check-gen
+        if: matrix.gen
+      - run: make test-gen
+        if: matrix.gen
+        env:
+          GEN_LLD: ${{ env.LLVM_BIN }}/ld.lld
+      - uses: actions/cache@v4
+        id: fuzzdata
+        with:
+          path: .build/fuzzdata
+          key: fuzzdata-${{ hashFiles('scripts/fuzzdata.go', 'engine/vendor.sh') }}
+      - run: go run scripts/fuzzdata.go
+        if: steps.fuzzdata.outputs.cache-hit != 'true'
+      - run: engine/diff/diff.sh
+      - run: |
+          go test -count=1 -v -timeout 30m -run '^TestDiffC$' ./internal/csqlite > diffc.log || { tail -n 200 diffc.log; exit 1; }
+          grep '^--- PASS: TestDiffC ' diffc.log
+        env:
+          DIFFC: ${{ github.workspace }}/.build/diff/diff
+          DIFFC_REQUIRED: "1"
+          FUZZDATA: ${{ github.workspace }}/.build/fuzzdata
