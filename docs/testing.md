@@ -79,6 +79,17 @@ SLT=$PWD/.build/slt/src/test go test -run TestSQLLogic ./internal/csqlite
 
 `make check` runs it once the suite is in `.build/slt`, and CI runs all of it on linux/amd64 and linux/arm64, the two engines, in the job `slt`. `SLT_FILE=index/between` runs the scripts under one folder or one script alone, and `SLT_SLICE=i/n` a share of them.
 
+## The same C compiled by clang
+
+`TestDiffC` holds the engine to the same C compiled natively by clang: the C of `engine/`, its libc and its flags, as `make gen` compiles it, linked with the host callbacks of `engine/pgo/host.c`. It runs the SQL of SQLite's fuzz cases on both and fails where a statement gives something else: another result code, other column names, other rows or values (each with its type, a float to the bit), another count of changes or last rowid, another error message. A difference is a fault of the generator, of the Go host or of the Go runtime under the engine, never of SQLite, which is the same C on both sides. `engine/diff/diff.c` is the C side, and its comment says how the cases run: each on a memory database with memdb as the default VFS, so that no file of the machine plays a part, at a fixed time, with a fixed seed for `random()`. It needs LLVM 22.1.8, as `make gen` does:
+
+```sh
+engine/diff/diff.sh            # builds .build/diff/diff
+DIFFC=$PWD/.build/diff/diff FUZZDATA=$PWD/.build/fuzzdata go test -run TestDiffC ./internal/csqlite
+```
+
+It compares about 480,000 statements of the 46,000 cases in about 50 seconds on an Apple M-series Mac. A statement either side stops after its time ends the comparison of its case. SQLite gives a few damaged databases results that depend on where its memory lies, which changes from one process to the next (`PRAGMA integrity_check` on some images of `fuzzdata3.db` and `fuzzdata7.db`), so a case that differs runs again three times on each side, the C side in a new process each time. One whose C side is not the same from run to run is logged and skipped, and one whose Go side is not while the C side is fails. `EXPLAIN` shows a virtual table by its address, which is left out of the comparison. Build `.build/diff/diff` again after a change to `engine/`, as `make gen` makes the engine again.
+
 ## The S3 client and the replica
 
 The tests of `replica` and `replica/internal/s3` that need a store run against MinIO when `MINIO` names a minio binary, and are skipped otherwise. MinIO no longer publishes binaries, so build the release CI uses:

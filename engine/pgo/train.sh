@@ -28,38 +28,12 @@
 set -eu
 
 cd "$(dirname "$0")/../.."
-llvm=$(scripts/llvm-bin.sh)
-if ! "$llvm/clang" --version 2>/dev/null | grep -q 'version 22\.1\.8'; then
-	echo "train.sh: no clang 22.1.8 in $llvm (set LLVM_BIN)" >&2
-	exit 1
-fi
+. engine/native.sh
+native_setup train.sh
 out=${TRAIN_OUT:-.build/pgo-train}
 rm -rf "$out"
 mkdir -p "$out/obj" "$out/db"
-. engine/flags.sh
-
-cc=$llvm/clang
-as_linux=
-if [ "$(uname -s)" = Darwin ]; then
-	cc="$cc -isysroot $(xcrun --show-sdk-path)"
-	# The generator compiles for linux. With the macros of the operating
-	# system set as there, the C after the preprocessor differs only in how
-	# 64-bit integer types and constants are spelled, which the hash of a
-	# function does not see.
-	as_linux="-U__APPLE__ -U__MACH__ -D__linux__=1 -D__linux=1 -D__unix__=1 -D__unix=1 -D__gnu_linux__=1 -D__ELF__=1"
-fi
-# shellcheck disable=SC2086
-eng="-O2 -fno-builtin $engine_flags $(engine_target_flags native) -fprofile-instr-generate"
-# shellcheck disable=SC2086
-$cc $eng $as_linux -I engine/libc -I engine -c -o "$out/obj/sqlite.o" engine/sqlite.c
-# The libc keeps the macros of the system: on macOS features.h then declares
-# the second name of a function instead of an alias, which Mach-O lacks. No
-# control flow differs.
-for f in engine/libc/string/*.c engine/libc/math/*.c engine/libc/math.c; do
-	# shellcheck disable=SC2086
-	$cc $eng -I engine/libc -I engine/libc/internal -include engine/libc/internal/features.h \
-		-c -o "$out/obj/libc-$(basename "$f" .c).o" "$f"
-done
+native_engine "$out" -fprofile-instr-generate
 $cc -O2 -Wall -I engine -c -o "$out/host.o" engine/pgo/host.c
 $cc -O2 -Wall -I engine -c -o "$out/train.o" engine/pgo/train.c
 $cc -O2 -I engine -c -o "$out/bench.o" bench/native/c/engine.c

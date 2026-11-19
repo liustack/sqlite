@@ -5,7 +5,7 @@
  * root of this repository.
  */
 /* The host callbacks of engine/host.h in plain C, for the training binaries
-   of engine/pgo/train.sh: the engine is compiled as the generator compiles it
+   of engine/pgo/train.sh and the C side of engine/diff: the engine is compiled as the generator compiles it
    (SQLITE_OS_OTHER, os.c, engine/libc) and runs natively with these in the
    place of the Go host. One process and one thread: files with the locks of
    SQLite between the connections of the process, shared memory for WAL on
@@ -202,6 +202,10 @@ void host_randomness(char *out, int n) {
 }
 void host_sleep(int us) { usleep(us); }
 long long host_now_ms(void) {
+#ifdef HOST_NOW_MS
+  /* engine/diff/diff.c: the same time in C and in Go. */
+  return HOST_NOW_MS;
+#endif
   struct timespec t;
   clock_gettime(CLOCK_REALTIME, &t);
   return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000;

@@ -104,7 +104,14 @@ func host_sleep(sp, us uintptr) {
 	time.Sleep(time.Duration(i32(us)) * time.Microsecond)
 }
 
+// testNowMs, set by a test only, is the time host_now_ms gives in place of
+// the clock's: TestDiffC runs the engine at the time its C side runs at.
+var testNowMs int64
+
 func host_now_ms(sp uintptr) uintptr {
+	if testNowMs != 0 {
+		return uintptr(testNowMs)
+	}
 	return uintptr(time.Now().UnixMilli())
 }
 
