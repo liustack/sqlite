@@ -8,6 +8,8 @@
 # The cases of SQLite's fuzzcheck, once go run scripts/fuzzdata.go put them in
 # .build/fuzzdata (docs/testing.md).
 FUZZDATA ?= $(if $(wildcard .build/fuzzdata/fuzzdata1.db),$(CURDIR)/.build/fuzzdata)
+# SQL Logic Test, once scripts/slt.sh put it in .build/slt (docs/testing.md).
+SLT ?= $(if $(wildcard .build/slt/src/test/select1.test),$(CURDIR)/.build/slt/src/test)
 
 # The checks every commit passes (docs/testing.md).
 check: vendor-check
@@ -16,8 +18,8 @@ check: vendor-check
 	test -z "$$(git ls-files --cached --others --exclude-standard '*.go' | xargs gofmt -l -s)"
 	go vet -asmdecl=false ./...
 	scripts/docs-list.sh --check >/dev/null
-	FUZZDATA=$(FUZZDATA) go test -count=1 ./...
-	FUZZDATA= go test -race -count=1 . ./internal/vfs ./internal/csqlite ./replica/...
+	FUZZDATA=$(FUZZDATA) SLT=$(SLT) go test -count=1 ./...
+	FUZZDATA= SLT= go test -race -count=1 . ./internal/vfs ./internal/csqlite ./replica/...
 	cd bench && go vet -tags liustack ./... && go run ./cmd/benchrun docs -check
 
 # The C of engine/ as Go assembly, on a machine with LLVM 22.1.8: make gen,

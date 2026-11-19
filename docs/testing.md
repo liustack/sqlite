@@ -68,6 +68,17 @@ FUZZDATA=$PWD/.build/fuzzdata go test -run TestFuzzData ./internal/csqlite
 
 It takes about 20 seconds on an Apple M-series Mac. `make check` runs it once the cases are in `.build/fuzzdata`, and CI runs it on every target (on Windows, where making and deleting a file is slow, a quarter of the cases, another quarter each run), where `FUZZDATA_REQUIRED` makes missing cases fail instead of skip. When the process dies, `.build/fuzzdata/running` names the case, and `FUZZDATA_CASE=fuzzdata3.db:1:17` runs that one alone. The engine cannot call a progress handler in Go, so a statement is interrupted after 200 ms (`FUZZDATA_STMT_MS`) where fuzzcheck stops a case after a count of steps. fuzzcheck keeps its files in memory: here they are files of the engine's VFS in a temporary directory, and a file the SQL names elsewhere (`ATTACH '/00'`) goes in that directory too. It keeps no count of memory (`SQLITE_DEFAULT_MEMSTATUS` is 0), so the heap limits and the check for leaks are left out, and so are fuzzcheck's extensions and its checks of query results. The comment of the test lists the rest.
 
+## SQL Logic Test
+
+`TestSQLLogic` runs [SQL Logic Test](https://sqlite.org/sqllogictest), SQLite's suite of 622 SQL scripts with the result of each query, as its C runner does in verify mode: each script on a new database file, the values of a query turned to text the same way, sorted and hashed with MD5 as the script says. A statement that fails when it should not, or the other way round, and a query that gives another result, fail the script. All of it runs, 5.7 million queries, in about 40 seconds on an Apple M-series Mac. The suite has no release files and its web download is closed to programs, so `scripts/slt.sh` clones it with [fossil](https://fossil-scm.org) at a pinned check-in, which fossil names by the hash of its files:
+
+```sh
+scripts/slt.sh                 # into .build/slt (FOSSIL names fossil if it is not on PATH)
+SLT=$PWD/.build/slt/src/test go test -run TestSQLLogic ./internal/csqlite
+```
+
+`make check` runs it once the suite is in `.build/slt`, and CI runs all of it on linux/amd64 and linux/arm64, the two engines, in the job `slt`. `SLT_FILE=index/between` runs the scripts under one folder or one script alone, and `SLT_SLICE=i/n` a share of them.
+
 ## The S3 client and the replica
 
 The tests of `replica` and `replica/internal/s3` that need a store run against MinIO when `MINIO` names a minio binary, and are skipped otherwise. MinIO no longer publishes binaries, so build the release CI uses:
