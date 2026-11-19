@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build ((linux || darwin) && (amd64 || arm64)) || (windows && amd64)
+//go:build (linux || darwin) && (amd64 || arm64)
 
 package csqlite
 
@@ -16,12 +16,13 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // TestDiffC runs the SQL of SQLite's fuzz cases on the engine and on the same
@@ -64,7 +65,7 @@ func TestDiffC(t *testing.T) {
 		t.Fatalf("no fuzzdata*.db in %s", dir)
 	}
 	sort.Strings(files)
-	d := &diffRun{t: t, mod: 1, bin: bin, files: files}
+	d := &diffRun{t: t, mod: 1}
 	var args []string
 	if s := os.Getenv("DIFFC_SLICE"); s != "" {
 		if _, err := fmt.Sscanf(s, "%d/%d", &d.rem, &d.mod); err != nil || d.mod <= 0 || d.rem < 0 || d.rem >= d.mod {
@@ -72,14 +73,14 @@ func TestDiffC(t *testing.T) {
 		}
 		args = append(args, "-slice", s)
 	}
+	args = append(args, "-pagecache", fmt.Sprintf("%#x", pageCacheAt))
 	args = append(args, files...)
 
 	// Each side in a directory of its own, should a case name a file of the
 	// VFS of the machine (file:x?vfs=go).
-	d.cDir = t.TempDir()
-	t.Chdir(t.TempDir())
 	cmd := osexec.Command(bin, args...)
-	cmd.Dir = d.cDir
+	cmd.Dir = t.TempDir()
+	t.Chdir(t.TempDir())
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()
@@ -111,11 +112,23 @@ func TestDiffC(t *testing.T) {
 	if err := start(); err != nil {
 		t.Fatal(err)
 	}
+	pageCache, err := unix.MmapPtr(-1, 0, at(pageCacheAt), pageCacheSlot*pageCacheSlots,
+		unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.MunmapPtr(pageCache, pageCacheSlot*pageCacheSlots)
+	if uintptr(pageCache) != pageCacheAt {
+		t.Fatalf("the page cache is at %#x, not %#x", uintptr(pageCache), uintptr(pageCacheAt))
+	}
 	// The cases set them with PRAGMA soft_heap_limit and hard_heap_limit,
 	// which are global.
 	soft := sqlite3_soft_heap_limit64(d.fuzz.anySP(), ^uintptr(0))
 	hard := sqlite3_hard_heap_limit64(d.fuzz.anySP(), ^uintptr(0))
 	defer func() {
+		// SQLite as it was: its page cache from malloc, and the first
+		// pages of a cache in one allocation (SQLITE_DEFAULT_PCACHE_INITSZ).
+		d.startSQLite(0, 0, 20)
 		sqlite3_hard_heap_limit64(d.fuzz.anySP(), hard)
 		sqlite3_soft_heap_limit64(d.fuzz.anySP(), soft)
 		testNowMs = 0
@@ -139,8 +152,7 @@ func TestDiffC(t *testing.T) {
 	if d.diffs > maxDiffs {
 		t.Errorf("%d statements differ, the first %d shown", d.diffs, maxDiffs)
 	}
-	t.Logf("%d cases, %d statements compared, %d cases cut short, %d not the same from run to run",
-		d.cases, d.compared, d.cut, d.unstable)
+	t.Logf("%d cases, %d statements compared, %d cases cut short", d.cases, d.compared, d.cut)
 }
 
 const maxDiffs = 20
@@ -152,9 +164,7 @@ type diffRun struct {
 	rem, mod             int
 	k                    int
 	cases, compared, cut int
-	diffs, unstable      int
-	bin, cDir            string   // the C side and the directory it runs in
-	files                []string // the fuzzdata files, for a run of one case
+	diffs                int
 	lines                []string // the Go side's lines of the case running
 	stmts                [][2]int // where the statement of each is in sql
 	sql                  []byte   // the SQL of the case running
@@ -167,6 +177,32 @@ func (d *diffRun) cLine() string {
 		d.t.Fatalf("the C side ended early: %v", err)
 	}
 	return strings.TrimSuffix(s, "\n")
+}
+
+// The page cache of both sides, as diff.c's: on a damaged database SQLite
+// may read a few bytes past the end of a page, into two pointers of the
+// header after it, and give what depends on where its pages are. Each case
+// starts SQLite again on a page cache at the same address on both sides.
+// pageCacheAt is far from what Go and the C side map, in the addresses of a
+// user program on linux and darwin, amd64 and arm64.
+const (
+	pageCacheAt     = 0x3e00_0000_0000
+	pageCacheSlot   = 65536 + 1024
+	pageCacheSlots  = 16384
+	configPageCache = 7 // SQLITE_CONFIG_PAGECACHE
+)
+
+// startSQLite starts SQLite again, with the page cache of
+// SQLITE_CONFIG_PAGECACHE p, sz, n. SQLite must hold nothing then: no
+// connection is open, of this test or another.
+func (d *diffRun) startSQLite(p, sz, n uintptr) {
+	sp := d.fuzz.anySP()
+	sqlite3_shutdown(sp)
+	a := args{sp}
+	v := a.variadic(p, sz, n)
+	if int32(sqlite3_config(a.top, configPageCache, v)) != OK || int32(sqlite3_initialize(sp)) != OK {
+		d.t.Fatal("cannot start SQLite again")
+	}
 }
 
 func (d *diffRun) setDefaultVFS(name string) {
@@ -223,6 +259,8 @@ func (d *diffRun) openCase(id string) *Conn {
 	d.fuzz.id = id
 	d.fuzz.reported = false
 	d.lines, d.stmts, d.sql = d.lines[:0], d.stmts[:0], nil
+	d.startSQLite(pageCacheAt, pageCacheSlot, pageCacheSlots)
+	d.setDefaultVFS("memdb")
 	sqlite3_randomness(d.fuzz.anySP(), 0, 0)
 	sqlite3_soft_heap_limit64(d.fuzz.anySP(), 0)
 	sqlite3_hard_heap_limit64(d.fuzz.anySP(), 0)
@@ -454,17 +492,13 @@ func (d *diffRun) add(line string, stmt [2]int) {
 }
 
 // check runs a case, which says whether it ran, reads the C side's lines of
-// it and holds the Go side's to them. When a statement differs, it runs the
-// case again three times on each side, the C side in a process of its own
-// each time: SQLite gives some damaged databases results that depend on where
-// its memory is, which changes from run to run, and a case that is not the
-// same from run to run on a side is logged and not failed.
+// it and holds the Go side's to them.
 func (d *diffRun) check(id string, run func() bool) {
 	if !run() {
 		return
 	}
 	d.cases++
-	cl := d.cLines(d.cLine, id)
+	cl := d.cLines(id)
 	i, n, cut := firstDiff(id, cl, d.lines)
 	d.compared += n
 	if i < 0 {
@@ -472,30 +506,6 @@ func (d *diffRun) check(id string, run func() bool) {
 			d.cut++
 		}
 		return
-	}
-	goLines := append([]string(nil), d.lines...)
-	// Up to the statement that differs: what comes after it may be cut
-	// short by its time on one run and not on another.
-	upTo := func(l []string) []string { return l[:min(len(l), i+1)] }
-	for try := 0; try < 3; try++ {
-		if again := d.cAlone(id); !slices.Equal(upTo(again), upTo(cl)) {
-			d.unstable++
-			d.t.Logf("case %s is not the same from run to run in C, at statement %d: skipped", id, i)
-			return
-		}
-	}
-	for try := 0; try < 3; try++ {
-		run()
-		if again := d.lines; !slices.Equal(upTo(again), upTo(goLines)) {
-			// The C side gave the same four times: an engine that does not
-			// is wrong.
-			d.diffs++
-			if d.diffs <= maxDiffs {
-				d.t.Errorf("case %s, statement %d: the Go side differs from run to run where the C side does not:\n  C:     %.300q\n  Go:    %.300q\n  again: %.300q",
-					id, i, upTo(cl), upTo(goLines), upTo(again))
-			}
-			return
-		}
 	}
 	d.diffs++
 	if d.diffs > maxDiffs {
@@ -506,8 +516,8 @@ func (d *diffRun) check(id string, run func() bool) {
 	if i < len(cl) {
 		c = cl[i]
 	}
-	if i < len(goLines) {
-		g = goLines[i]
+	if i < len(d.lines) {
+		g = d.lines[i]
 	}
 	if i < len(d.stmts) {
 		stmt = d.sql[d.stmts[i][0]:d.stmts[i][1]]
@@ -515,11 +525,11 @@ func (d *diffRun) check(id string, run func() bool) {
 	d.t.Errorf("case %s, statement %d differs:\n  C:  %.300q\n  Go: %.300q\n  SQL: %.500q", id, i, c, g, stmt)
 }
 
-// cLines reads the lines of case id from next, up to its end line.
-func (d *diffRun) cLines(next func() string, id string) []string {
+// cLines reads the C side's lines of case id, up to its end line.
+func (d *diffRun) cLines(id string) []string {
 	var cl []string
 	for {
-		l := next()
+		l := d.cLine()
 		if l == id+" end" {
 			return cl
 		}
@@ -528,29 +538,6 @@ func (d *diffRun) cLines(next func() string, id string) []string {
 		}
 		cl = append(cl, l)
 	}
-}
-
-// cAlone runs case id on the C side in a process of its own.
-func (d *diffRun) cAlone(id string) []string {
-	cmd := osexec.Command(d.bin, append([]string{"-case", id}, d.files...)...)
-	cmd.Dir = d.cDir
-	out, err := cmd.Output()
-	if err != nil {
-		d.t.Fatalf("case %s on the C side alone: %v", id, err)
-	}
-	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
-	if len(lines) == 0 || !strings.HasPrefix(lines[0], "now ") {
-		d.t.Fatalf("case %s on the C side alone: %.200q", id, out)
-	}
-	lines = lines[1:]
-	return d.cLines(func() string {
-		if len(lines) == 0 {
-			d.t.Fatalf("case %s on the C side alone: no end", id)
-		}
-		l := lines[0]
-		lines = lines[1:]
-		return l
-	}, id)
 }
 
 // firstDiff is the first statement where c and g differ, -1 for none, up to

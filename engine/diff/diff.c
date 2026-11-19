@@ -10,7 +10,7 @@
    assembly to it. The two sides do the same calls in the same order: a
    change here goes there too.
 
-     diff [-slice i/n] [-case ID] FILE...
+     diff [-pagecache ADDRESS] [-slice i/n] [-case ID] FILE...
 
    The cases are each script of xsql on each image of db (an empty database
    when there is none), or alone when the script carries its database (a
@@ -18,6 +18,8 @@
    on a memory database. memdb is the default VFS, so every other file a case
    opens (ATTACH, VACUUM INTO, temporary files) is in memory too, and no file
    of the machine plays a part. The time is fixed (HOST_NOW_MS) and TZ is UTC.
+   With -pagecache, SQLite's page cache is mapped at ADDRESS (see "the page
+   cache" below), which TestDiffC gives both sides.
 
    For each statement, a line:
 
@@ -38,6 +40,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <time.h>
 
 #include "sqlite3.h"
@@ -310,8 +313,41 @@ static void run(const char *id, sqlite3 *db, const char *sql) {
   }
 }
 
+/* ---- the page cache ----
+
+   On a damaged database SQLite may read up to 16 bytes past the end of a
+   page, into the header pcache1 keeps after it, which starts with two
+   pointers. What a case gives can then depend on where its pages are in
+   memory. So each side gives SQLite its page cache at the same address
+   (SQLITE_CONFIG_PAGECACHE), and each case starts SQLite again on it, its
+   slots all free in the same order. A slot holds a page of 64 KiB, the
+   largest, with pcache1's header and the extras of the pager and the
+   b-tree. A case that needs more slots than there are would take pages from
+   malloc: that stops the program. */
+
+#define PAGECACHE_SLOT (65536 + 1024)
+#define PAGECACHE_SLOTS 16384
+
+static void *pageCache;
+static int pageOverflow;
+
+/* startSQLite starts SQLite again on the page cache, with memdb as the
+   default VFS. */
+static void startSQLite(void) {
+  if (!pageCache) return;
+  sqlite3_shutdown();
+  if (sqlite3_config(SQLITE_CONFIG_PAGECACHE, pageCache, PAGECACHE_SLOT, PAGECACHE_SLOTS) != SQLITE_OK ||
+      sqlite3_initialize() != SQLITE_OK)
+    die("page cache", "cannot start SQLite on it");
+  sqlite3_vfs *memdb = sqlite3_vfs_find("memdb");
+  if (!memdb || sqlite3_vfs_register(memdb, 1) != SQLITE_OK) die("memdb", "cannot make it the default VFS");
+  int hi;
+  sqlite3_status(SQLITE_STATUS_PAGECACHE_OVERFLOW, &pageOverflow, &hi, 1);
+}
+
 static sqlite3 *openCase(const char *id) {
   sqlite3 *db;
+  startSQLite();
   sqlite3_randomness(0, 0);
   /* PRAGMA soft_heap_limit and hard_heap_limit set them, and they are global. */
   sqlite3_soft_heap_limit64(0);
@@ -341,6 +377,9 @@ static int deserialize(sqlite3 *db, const unsigned char *img, int n) {
 
 static void closeCase(const char *id, sqlite3 *db) {
   if (sqlite3_close(db) != SQLITE_OK) die(id, "close");
+  int now, hi;
+  sqlite3_status(SQLITE_STATUS_PAGECACHE_OVERFLOW, &now, &hi, 0);
+  if (pageCache && hi > pageOverflow) die(id, "more pages than the page cache has slots");
   printf("%s end\n", id);
 }
 
@@ -400,13 +439,17 @@ int main(int argc, char **argv) {
   for (; i + 1 < argc && argv[i][0] == '-'; i += 2) {
     if (!strcmp(argv[i], "-slice")) {
       if (sscanf(argv[i + 1], "%d/%d", &rem, &mod) != 2 || mod <= 0 || rem < 0 || rem >= mod) die("-slice", argv[i + 1]);
+    } else if (!strcmp(argv[i], "-pagecache")) {
+      void *at = (void *)(uintptr_t)strtoull(argv[i + 1], 0, 0);
+      pageCache = mmap(at, (size_t)PAGECACHE_SLOT * PAGECACHE_SLOTS, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+      if (pageCache != at) die("-pagecache", "cannot map the page cache at that address");
     } else if (!strcmp(argv[i], "-case")) {
       only = argv[i + 1];
     } else {
       die("unknown option", argv[i]);
     }
   }
-  if (i >= argc) die("usage", "diff [-slice i/n] [-case ID] FILE...");
+  if (i >= argc) die("usage", "diff [-pagecache ADDRESS] [-slice i/n] [-case ID] FILE...");
   setenv("TZ", "UTC", 1);
   tzset();
   sqlite3_vfs *memdb = sqlite3_vfs_find("memdb");
