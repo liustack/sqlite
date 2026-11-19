@@ -1423,6 +1423,154 @@ func TestCheckpointAtCommitOldReader(t *testing.T) {
 	sameAs(t, c, name)
 }
 
+// While a reader keeps the WAL from starting over, the writes of the driver
+// stage and checkpoint it once each CheckpointFrames frames, not at each
+// commit. Once the reader has ended, the WAL starts over.
+func TestCheckpointAtCommitEvery(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 20
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (0)")
+	walFrames := func() int64 {
+		st, err := os.Stat(name + "-wal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return max(st.Size()-32, 0) / (4096 + 24)
+	}
+	staged := func() ltx.TXID {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.txid
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow("SELECT count(*) FROM t").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	first, before := staged(), walFrames()
+	for range 200 {
+		run(t, db, "INSERT INTO t VALUES (1)")
+	}
+	frames := walFrames()
+	if frames-before < 200 {
+		t.Fatalf("the WAL went from %d to %d frames in 200 writes beside a reader", before, frames)
+	}
+	files := int64(staged() - first)
+	if least, most := frames/20/2, frames/20+1; files < least || files > most {
+		t.Fatalf("%d files staged while the WAL grew to %d frames, want %d to %d", files, frames, least, most)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	for range 60 {
+		run(t, db, "INSERT INTO t VALUES (2)")
+	}
+	if n := walFrames(); n > frames+25 {
+		t.Fatalf("the WAL grew from %d to %d frames after the reader ended", frames, n)
+	}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies", n)
+	}
+	sameAs(t, c, name)
+}
+
+// A WAL that started over and grew past its length at the last checkpoint
+// in one transaction is told from the one before: the writers checkpoint it
+// once it holds CheckpointFrames frames, not that many later.
+func TestCheckpointAtCommitStartOver(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 20
+	c := open(t, name, opt)
+	db := openApp(t, name)
+	run(t, db, "CREATE TABLE t(x)")
+	for k := 0; c.ckptAt.Load() == 0; k++ {
+		if k == 100 {
+			t.Fatal("no checkpoint in 100 writes")
+		}
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	at := c.ckptAt.Load()
+	c.mu.Lock()
+	staged := c.txid
+	c.mu.Unlock()
+	// The next writer starts the WAL over. One transaction of a page a
+	// row, and a few more: at frames or a little more, under at plus 20.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	for range at {
+		if _, err := tx.Exec("INSERT INTO t VALUES (randomblob(3000))"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	now := c.txid
+	var frames uint32
+	if err = c.beginRead(); err == nil {
+		var h csqlite.WALHeader
+		h, err = c.conn.WALHeader()
+		c.endRead()
+		frames = h.MaxFrame
+	}
+	c.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frames < at || frames >= at+20 {
+		t.Fatalf("the transaction left %d frames, want %d to %d", frames, at, at+19)
+	}
+	if now == staged {
+		t.Fatalf("a WAL of %d frames is not checkpointed: the one before was, at %d", frames, at)
+	}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies", n)
+	}
+	sameAs(t, c, name)
+}
+
+// A WAL shorter than it was at the last checkpoint has started over, also
+// when its salt is the one of the WAL before.
+func TestDueShorterWAL(t *testing.T) {
+	// A writer that commits before Open has read the page size.
+	if (&Capturer{opt: Options{CheckpointFrames: 20}}).due(5, 7, 1<<20) {
+		t.Fatal("due at 5 frames with a limit and no page size yet")
+	}
+	c := &Capturer{opt: Options{CheckpointFrames: 20}}
+	if !c.due(21, 7, 0) {
+		t.Fatal("not due at 21 frames of a new WAL")
+	}
+	c.ckptAt.Store(21)
+	for _, frames := range []uint32{22, 40} {
+		if c.due(frames, 7, 0) {
+			t.Fatalf("due at %d frames, 21 at the last checkpoint", frames)
+		}
+	}
+	if !c.due(41, 7, 0) {
+		t.Fatal("not due at 41 frames, 21 at the last checkpoint")
+	}
+	if c.due(2, 7, 0) {
+		t.Fatal("due at 2 frames")
+	}
+	if !c.due(25, 7, 0) {
+		t.Fatal("not due at 25 frames of a WAL that started over")
+	}
+}
+
 // Close waits for a write inside the capturer, and the writes go on after.
 func TestCloseDuringCommitted(t *testing.T) {
 	name := filepath.Join(t.TempDir(), "x.db")

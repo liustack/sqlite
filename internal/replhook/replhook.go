@@ -28,15 +28,15 @@ const WALWait = 100 * time.Millisecond
 //
 // committed, if not nil, is called each time a connection of the driver that
 // held the file's write lock ends its transaction, before the lock goes to
-// the next writer, with the frames in the WAL as it is then
-// (csqlite.Conn.WALNow). A connection that never read the WAL does not
-// call it: it wrote nothing there. It runs on
-// the writer's goroutine and holds the lock meanwhile: the writers of the
-// file wait for it, and it must not take the lock (Lock). limit is the
-// length of the WAL in bytes past which that connection wants it started
-// over, 0 for never (its _wal_limit): on an attached file the driver leaves
-// that to committed.
-var Attach func(path string, committed func(frames uint32, limit int64)) (detach func(), err error)
+// the next writer, with the frames in the WAL as it is then and a number
+// that changes each time the WAL starts over (csqlite.Conn.WALNow). A
+// connection that never read the WAL does not call it: it wrote nothing
+// there. It runs on the writer's goroutine and holds the lock meanwhile: the
+// writers of the file wait for it, and it must not take the lock (Lock).
+// limit is the length of the WAL in bytes past which that connection wants
+// it started over, 0 for never (its _wal_limit): on an attached file the
+// driver leaves that to committed.
+var Attach func(path string, committed func(frames, salt uint32, limit int64)) (detach func(), err error)
 
 // Lock takes the driver's write lock of an attached file, as a writer does,
 // waiting until ctx is done: until unlock, no connection of this process

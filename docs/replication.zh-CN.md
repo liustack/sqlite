@@ -45,7 +45,7 @@ db, err := sql.Open("sqlite", "app.db")
 ## 对你的程序有什么变化
 
 - **写入从不等 S3。** 每次提交先复制进数据库旁边的暂存目录 `app.db-replica/`，再在后台上传。存储慢了或断了，写入既不变慢也不会失败。
-- **数据库是 WAL 模式，**检查点由复制器来做。复制期间，`PRAGMA wal_checkpoint`、设置 `wal_autocheckpoint`、WAL 以外的 `journal_mode` 和 `locking_mode=EXCLUSIVE` 会报错。WAL 满 4000 帧（4 KiB 的页约 16 MB）时复制器做检查点。WAL 超过 `_wal_limit`（默认 64 MiB）后，它的检查点最多等读者 100 ms，好让 WAL 从头开始，和驱动对没开复制的数据库做的一样（见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-长度的上限)）。读事务还在用的帧会留着，所以一个一直不结束的读会让 WAL 变长。
+- **数据库是 WAL 模式，**检查点由复制器来做。复制期间，`PRAGMA wal_checkpoint`、设置 `wal_autocheckpoint`、WAL 以外的 `journal_mode` 和 `locking_mode=EXCLUSIVE` 会报错。WAL 每长出 4000 帧（4 KiB 的页约 16 MB），复制器做一次检查点。WAL 超过 `_wal_limit`（默认 64 MiB）后，它的检查点最多等读者 100 ms，好让 WAL 从头开始，和驱动对没开复制的数据库做的一样（见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-长度的上限)）。读事务还在用的帧会留着，所以一个一直不结束的读会让 WAL 变长。
 - **只跟踪本进程里这个驱动的写入。** 在 `New` 之后用这个驱动打开数据库。如果别的进程（sqlite3 命令行、别的程序）写了文件还做了检查点，复制器会发现 WAL 的变化它没跟上，于是暂存一份整库，并报告给 `OnError`。数据不会丢，但整库要整个上传一次。
 - **WAL 同步失败要传一份整库。** 从 WAL 截掉的写入可能已经上传，所以 WAL 恢复后复制器暂存一份整库，并报告给 `OnError`。见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-同步失败时)。
 - **一个数据库文件同一时刻只有一个进程在复制。** 第一个还在跑时，同一个文件上的第二个 `New` 会失败。
@@ -102,7 +102,7 @@ txid, err := replica.Restore(ctx, "app.db", replica.Config{URL: url}, replica.Re
 
 `s3://bucket/path` 的副本是 `path/` 下的 LTX 文件：第 0 层每复制进暂存一次就有一个文件，第 1 层每分钟合并一次新的第 0 层文件，第 2 层每小时合并一次第 1 层，第 9 层放快照。第 0 层的文件在被第 1 层收进去 30 分钟后删除。从那以后，落在这个第 1 层文件中间的 TXID 不能再恢复，恢复到它中间的某个时间，得到的是那个时间之前最后一个文件结束时的状态：通常最多早一分钟，存储断开之后会更多，因为恢复后的一次合并会把那段时间暂存的全部收进去。副本保留 `Retention` 之前最新的那份快照和它之后的所有快照，删掉更早的快照，以及只有它们用得到的文件。
 
-空闲的数据库在这些工作做完后不再发请求。繁忙的数据库每个 `SyncInterval` 上传一个文件，WAL 每满 4000 帧再传一个，每次 `Sync` 也传一个，外加合并。
+空闲的数据库在这些工作做完后不再发请求。繁忙的数据库每个 `SyncInterval` 上传一个文件，WAL 每长出 4000 帧再传一个，每次 `Sync` 也传一个，外加合并。
 
 `litestream restore` v0.5.18 能从它恢复出同样的数据库，在副本还能恢复到的每个点上都一样，按 TXID 恢复，或按两边都接受的时间恢复，测试会核对这一点（[testing.md](testing.md#the-s3-client-and-the-replica)，英文）。
 
