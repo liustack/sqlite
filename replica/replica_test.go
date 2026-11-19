@@ -273,6 +273,31 @@ func TestReplicate(t *testing.T) {
 	}
 }
 
+// One process replicates two databases, each to a replica of its own, and
+// a connection of one cannot attach (ATTACH) the other.
+func TestTwoDatabases(t *testing.T) {
+	dir := t.TempDir()
+	names := []string{filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")}
+	cfgs := []Config{testConfig(t), testConfig(t)}
+	var rs []*Replica
+	var dbs []*sql.DB
+	for i, name := range names {
+		rs = append(rs, newReplica(t, name, cfgs[i]))
+		dbs = append(dbs, openDB(t, name))
+		run(t, dbs[i], fmt.Sprintf("CREATE TABLE t%d(x)", i))
+	}
+	for i := range 20 {
+		run(t, dbs[i%2], fmt.Sprintf("INSERT INTO t%d VALUES (randomblob(%d))", i%2, 100+i*50))
+	}
+	if _, err := dbs[0].Exec("ATTACH ? AS b", names[1]); err == nil {
+		t.Fatal("a connection of a.db attached b.db")
+	}
+	for i, name := range names {
+		syncNow(t, rs[i])
+		sameAs(t, cfgs[i], name)
+	}
+}
+
 // Close uploads what is left, and New goes on from it.
 func TestResume(t *testing.T) {
 	cfg := testConfig(t)

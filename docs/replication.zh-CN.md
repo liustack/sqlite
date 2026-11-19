@@ -29,6 +29,8 @@ defer r.Close()
 db, err := sql.Open("sqlite", "app.db")
 ```
 
+复制多个数据库时，每个文件调一次 `New`，各用各的 URL，每个文件在它的 `New` 之后再 `sql.Open`。每个复制器有自己的 goroutine、暂存目录和到存储的连接。
+
 `URL` 写成 `s3://bucket/path`。查询参数有 `endpoint`（默认 `https://s3.<region>.amazonaws.com`）和 `region`（默认取 `AWS_REGION`，没有就是 `us-east-1`）。R2 用 `region=auto`。明文 `http://` 的地址会被拒绝，除非设了 `AllowHTTP`，给本地 MinIO 用。
 
 凭证默认读 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 和 `AWS_SESSION_TOKEN`，也可以用 `Config.Credentials` 给：固定密钥用 `replica.StaticCredentials`，或者自己实现 `CredentialsProvider`，比如把 AWS SDK 的实例角色凭证包一层。复制器的错误、状态和日志里都不会出现密钥和会话令牌。

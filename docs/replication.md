@@ -29,6 +29,8 @@ defer r.Close()
 db, err := sql.Open("sqlite", "app.db")
 ```
 
+To replicate several databases, call `New` once for each file, each with a URL of its own, and open each file with `sql.Open` after its `New`. Each replicator has its own goroutines, staging folder and connection to the store.
+
 `URL` is `s3://bucket/path`. The query takes `endpoint` (default `https://s3.<region>.amazonaws.com`) and `region` (default `AWS_REGION`, else `us-east-1`). R2 takes `region=auto`. A plain `http://` endpoint is refused unless `AllowHTTP` is set, for a local MinIO.
 
 Credentials come from `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` unless `Config.Credentials` gives them: `replica.StaticCredentials` for fixed keys, or your own `CredentialsProvider`, such as the AWS SDK's provider of an instance role, wrapped. No error, status or log line of the replicator shows the secret or the session token.
