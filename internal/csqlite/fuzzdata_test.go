@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -454,6 +455,8 @@ func (r *fuzzRun) watch(c *Conn, f func()) bool {
 	})
 	id := r.id
 	hang := time.AfterFunc(r.stmtLimit+r.grace, func() {
+		// Every goroutine: the one stuck in the engine says where.
+		debug.SetTraceback("all")
 		panic(fmt.Sprintf("fuzzdata: case %s: the engine still runs %v after an interrupt", id, r.grace))
 	})
 	f()
