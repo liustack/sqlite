@@ -22,6 +22,27 @@ var files table[vfs.File]
 
 func i32(w uintptr) int { return int(int32(w)) }
 
+// testFiles, set by a test only, changes what the VFS does with the files of
+// SQLite. TestFuzzData keeps them in one directory (path maps each name) and
+// smaller than maxSize bytes, as fuzzcheck's VFS does: a write or a truncate
+// that would reach it is SQLITE_FULL.
+var testFiles struct {
+	path    func(string) string
+	maxSize int64
+}
+
+// fileName is the file name at a, as the VFS takes it.
+func fileName(a uintptr) string {
+	name := cstring(a)
+	if testFiles.path != nil && name != "" {
+		name = testFiles.path(name)
+	}
+	return name
+}
+
+// tooLarge says a file of size bytes is past testFiles.maxSize.
+func tooLarge(size int64) bool { return testFiles.maxSize > 0 && size >= testFiles.maxSize }
+
 func rc(r int) uintptr { return uintptr(int32(r)) }
 
 func putInt(p uintptr, v int) { *(*int32)(at(p)) = int32(v) }
@@ -29,7 +50,7 @@ func putInt(p uintptr, v int) { *(*int32)(at(p)) = int32(v) }
 // host_open opens a file. a is engine/host.h's struct host_open_args.
 func host_open(sp, name, flags, a uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
-	f, out, r := vfs.OpenWith(cstring(name), i32(flags), vfs.OpenOptions{
+	f, out, r := vfs.OpenWith(fileName(name), i32(flags), vfs.OpenOptions{
 		ModeOf:      cstring(*(*uintptr)(at(a))),
 		ReadOnlyShm: *(*int32)(at(a + 16)) != 0,
 	})
@@ -44,12 +65,12 @@ func host_open(sp, name, flags, a uintptr) (ret uintptr) {
 
 func host_delete(sp, name, syncDir uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
-	return rc(vfs.Delete(cstring(name), i32(syncDir) != 0))
+	return rc(vfs.Delete(fileName(name), i32(syncDir) != 0))
 }
 
 func host_access(sp, name, flags, res uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
-	ok, r := vfs.Access(cstring(name), i32(flags))
+	ok, r := vfs.Access(fileName(name), i32(flags))
 	v := 0
 	if ok {
 		v = 1
@@ -60,7 +81,7 @@ func host_access(sp, name, flags, res uintptr) (ret uintptr) {
 
 func host_full_pathname(sp, name, n, out uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
-	p, r := vfs.FullPathname(cstring(name))
+	p, r := vfs.FullPathname(fileName(name))
 	if r != vfs.OK && r != vfs.OKSymlink {
 		return rc(r)
 	}
@@ -116,11 +137,17 @@ func host_read(sp, f, buf, n, off uintptr) (ret uintptr) {
 
 func host_write(sp, f, buf, n, off uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
+	if tooLarge(int64(off) + int64(i32(n))) {
+		return sqliteFull
+	}
 	return rc(files.get(f).WriteAt(bytesAt(buf, i32(n)), int64(off)))
 }
 
 func host_truncate(sp, f, size uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
+	if tooLarge(int64(size)) {
+		return sqliteFull
+	}
 	return rc(files.get(f).Truncate(int64(size)))
 }
 
@@ -164,6 +191,9 @@ func host_lock_state(sp, f uintptr) (ret uintptr) {
 
 func host_size_hint(sp, f, size uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
+	if tooLarge(int64(size)) {
+		return sqliteFull
+	}
 	return rc(files.get(f).SizeHint(int64(size)))
 }
 

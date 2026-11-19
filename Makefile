@@ -5,6 +5,10 @@
 
 .PHONY: bench bench-docs check check-gen gen pass test-gen vendor-check
 
+# The cases of SQLite's fuzzcheck, once go run scripts/fuzzdata.go put them in
+# .build/fuzzdata (docs/testing.md).
+FUZZDATA ?= $(if $(wildcard .build/fuzzdata/fuzzdata1.db),$(CURDIR)/.build/fuzzdata)
+
 # The checks every commit passes (docs/testing.md).
 check: vendor-check
 	scripts/check-files.sh
@@ -12,8 +16,8 @@ check: vendor-check
 	test -z "$$(git ls-files --cached --others --exclude-standard '*.go' | xargs gofmt -l -s)"
 	go vet -asmdecl=false ./...
 	scripts/docs-list.sh --check >/dev/null
-	go test -count=1 ./...
-	go test -race -count=1 . ./internal/vfs ./internal/csqlite ./replica/...
+	FUZZDATA=$(FUZZDATA) go test -count=1 ./...
+	FUZZDATA= go test -race -count=1 . ./internal/vfs ./internal/csqlite ./replica/...
 	cd bench && go vet -tags liustack ./... && go run ./cmd/benchrun docs -check
 
 # The C of engine/ as Go assembly, on a machine with LLVM 22.1.8: make gen,
