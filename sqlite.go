@@ -163,6 +163,9 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 		if conn.wl != nil {
 			closeWriteLock(conn.wl)
 		}
+		for _, a := range conn.attached {
+			closeWriteLock(a.l)
+		}
 		return nil, err
 	}
 	return conn, nil
@@ -198,6 +201,10 @@ func (c *Connector) setUp(conn *conn) error {
 		if err := cc.Exec(p); err != nil {
 			return fmt.Errorf("sqlite: %s: %w", p, err)
 		}
+	}
+	// A PRAGMA of the DSN may be followed by other statements, ATTACH too.
+	if err := conn.syncAttached(); err != nil {
+		return err
 	}
 	conn.changed()
 	// A connection SQLite opened read-only, as when the file is, runs

@@ -29,6 +29,8 @@ defer r.Close()
 db, err := sql.Open("sqlite", "app.db")
 ```
 
+To replicate several databases, call `New` once for each file, each with a URL of its own, and open each file with `sql.Open` after its `New`. Each replicator has its own goroutines, staging folder and connection to the store.
+
 `URL` is `s3://bucket/path`. The query takes `endpoint` (default `https://s3.<region>.amazonaws.com`) and `region` (default `AWS_REGION`, else `us-east-1`). R2 takes `region=auto`. A plain `http://` endpoint is refused unless `AllowHTTP` is set, for a local MinIO.
 
 Credentials come from `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` unless `Config.Credentials` gives them: `replica.StaticCredentials` for fixed keys, or your own `CredentialsProvider`, such as the AWS SDK's provider of an instance role, wrapped. No error, status or log line of the replicator shows the secret or the session token.
@@ -49,6 +51,7 @@ The settings you are most likely to change:
 - **Only this driver, in this process, is followed.** Open the database with this driver after `New`. If another process (the sqlite3 shell, another program) writes and checkpoints the file, the replicator notices that the WAL went on in a way it did not see, stages a full copy of the database, and reports it to `OnError`. Nothing is lost, but a full copy costs an upload of the whole file.
 - **A failed sync of the WAL costs a full copy.** The writes cut from the WAL may have been uploaded already, so once the WAL works again the replicator stages a full copy of the database and reports it to `OnError`. See [architecture.md](architecture.md#when-a-sync-of-the-wal-fails).
 - **One process replicates a database file at a time.** A second `New` on the same file fails while the first one runs.
+- **A replicated file cannot be attached.** `ATTACH` of it fails, from a connection of another database or of the file itself: writes through it would go around the replicator. The other way round, `New` fails while a connection has the file attached, as it does while one has it open.
 - **Disk:** the staging folder holds what is not uploaded yet and the last full copy of the database. Staging stops once what waits passes `StagingLimit`, so the last copy into it (a large transaction) can take it further, and snapshots and merges use the folder for a while too. A snapshot is one copy of the database. A merge downloads all its input files, up to 256, before it writes its output beside them, so a database that rewrites most of its pages every minute may need many copies of itself for the hourly merge. Leave room for `StagingLimit`, the largest transaction, a snapshot and the largest merge.
 - **CPU:** copying each commit costs a little on the writer's side. [Benchmarks](benchmarks.md#replication) has the numbers.
 

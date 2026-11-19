@@ -131,9 +131,16 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (*result, err
 	r, err := s.run(ctx, args)
 	c.endWrite()
 	if s.changesConn {
+		// DETACH changes the connection too: settings are read after it.
+		if aerr := c.syncAttached(); err == nil {
+			err = aerr
+		}
 		c.changed()
 	}
-	return r, err
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // prepareAgain prepares an EXPLAIN again before it runs. SQLite runs EXPLAIN
@@ -241,6 +248,13 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (*rows, erro
 	// Also when it failed: SQLite prepares a PRAGMA again as it steps it,
 	// and sets the value as it does.
 	if s.changesConn {
+		if err != nil || !row {
+			// An ATTACH has no row: it is done, and DETACH may run.
+			s.s.Reset()
+			if aerr := c.syncAttached(); err == nil {
+				err = aerr
+			}
+		}
 		c.changed()
 	}
 	if err != nil {

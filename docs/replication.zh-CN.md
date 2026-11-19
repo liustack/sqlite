@@ -29,6 +29,8 @@ defer r.Close()
 db, err := sql.Open("sqlite", "app.db")
 ```
 
+复制多个数据库时，每个文件调一次 `New`，各用各的 URL，每个文件在它的 `New` 之后再 `sql.Open`。每个复制器有自己的 goroutine、暂存目录和到存储的连接。
+
 `URL` 写成 `s3://bucket/path`。查询参数有 `endpoint`（默认 `https://s3.<region>.amazonaws.com`）和 `region`（默认取 `AWS_REGION`，没有就是 `us-east-1`）。R2 用 `region=auto`。明文 `http://` 的地址会被拒绝，除非设了 `AllowHTTP`，给本地 MinIO 用。
 
 凭证默认读 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` 和 `AWS_SESSION_TOKEN`，也可以用 `Config.Credentials` 给：固定密钥用 `replica.StaticCredentials`，或者自己实现 `CredentialsProvider`，比如把 AWS SDK 的实例角色凭证包一层。复制器的错误、状态和日志里都不会出现密钥和会话令牌。
@@ -49,6 +51,7 @@ db, err := sql.Open("sqlite", "app.db")
 - **只跟踪本进程里这个驱动的写入。** 在 `New` 之后用这个驱动打开数据库。如果别的进程（sqlite3 命令行、别的程序）写了文件还做了检查点，复制器会发现 WAL 的变化它没跟上，于是暂存一份整库，并报告给 `OnError`。数据不会丢，但整库要整个上传一次。
 - **WAL 同步失败要传一份整库。** 从 WAL 截掉的写入可能已经上传，所以 WAL 恢复后复制器暂存一份整库，并报告给 `OnError`。见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-同步失败时)。
 - **一个数据库文件同一时刻只有一个进程在复制。** 第一个还在跑时，同一个文件上的第二个 `New` 会失败。
+- **复制中的文件不能被 ATTACH。** 不管是别的数据库的连接还是这个文件自己的连接，`ATTACH` 它都会报错：从那里写入会绕过复制器。反过来，有连接 ATTACH 着这个文件时，`New` 会失败，和有连接打开着它一样。
 - **磁盘：**暂存目录放着还没上传的变更和最近一份整库。等待的变更超过 `StagingLimit` 时暂存才停下，所以最后那次复制（比如一个大事务）会让它超出一些，快照和合并也会临时用这个目录。一份快照就是一份整库。合并会先把全部输入文件（最多 256 个）下载下来，再在旁边写输出，所以一个每分钟都改写大部分页的数据库，每小时那次合并可能要占好多份整库。给它留出 `StagingLimit`、最大的事务、一份快照和最大一次合并的空间。
 - **CPU：**复制每次提交，会在写入方这边多花一点。数字见[基准测试](benchmarks.zh-CN.md#复制)。
 
