@@ -107,6 +107,40 @@ jobs:
         env:
           CGO_ENABLED: "1"
 
+  # SQL Logic Test, SQLite's scripts with their results, on each of the two
+  # engines (amd64, arm64): TestSQLLogic. The clone is cached by the pin of
+  # scripts/slt.sh.
+  slt:
+    name: slt (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux/amd64, os: ubuntu-24.04 }
+          - { name: linux/arm64, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update -q && sudo apt-get install -y -q fossil
+      - uses: actions/cache@v4
+        with:
+          path: .build/slt/slt.fossil
+          key: slt-${{ hashFiles('scripts/slt.sh') }}
+      - run: scripts/slt.sh
+      # go test passes when -run matches no test: the grep fails the step
+      # unless TestSQLLogic ran and passed.
+      - run: |
+          go test -count=1 -v -run '^TestSQLLogic$' ./internal/csqlite > slt.log || { tail -n 200 slt.log; exit 1; }
+          grep '^--- PASS: TestSQLLogic ' slt.log
+        env:
+          SLT: ${{ github.workspace }}/.build/slt/src/test
+          SLT_REQUIRED: "1"
+
   # The S3 client and the replicator against MinIO. MinIO no longer
   # publishes binaries or images, so it is built from the source of the
   # pinned release. Litestream restores the replica the tests write.
