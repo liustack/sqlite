@@ -21,14 +21,19 @@ import (
 )
 
 // TestSQLLogic runs SQL Logic Test, SQLite's suite of about 600 scripts and
-// 7 million SQL statements with the results they must give, on the engine,
-// as its C runner (sqllogictest.c with slt_sqlite.c, in verify mode) does:
-// each script on a new database file, statements through sqlite3_exec,
-// queries through one prepared statement, each value turned to text as that
-// runner does, results sorted and hashed with MD5 as the script says. A
-// statement that gives the wrong outcome, a query whose result or hash is
+// 6 million SQL statements with the results they must give, on the engine,
+// as the suite's run-all.tcl runs its C runner (sqllogictest.c with
+// slt_sqlite.c, in verify mode, -parameter integrity_check;optimizer=0 and
+// optimizer=-1): each script twice, on a new database file each time, the
+// second time with the optimizations of the query planner turned off,
+// statements through sqlite3_exec and each that worked followed by PRAGMA
+// integrity_check, queries through one prepared statement, each value
+// turned to text as that runner does, results sorted and hashed with MD5 as
+// the script says. A statement that gives the wrong outcome or leaves a
+// database that integrity_check finds wrong, a query whose result or hash is
 // not the one in the script, and two queries of a script with the same
-// label and different results all fail the script.
+// label and different results all fail the script. The runner's check for
+// leaked memory is left out, as it reads a count of all the connections.
 //
 // Its settings:
 //
@@ -82,7 +87,11 @@ func TestSQLLogic(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			runSLT(t, f, script)
+			// As the suite's run-all.tcl: once as built, once with every
+			// optimization of the query planner turned off.
+			for _, opt := range []uint32{0, math.MaxUint32} {
+				runSLT(t, fmt.Sprintf("%s optimizer=%d", f, int32(opt)), script, opt)
+			}
 		})
 	}
 	if n == 0 {
@@ -197,7 +206,7 @@ const sltHashThreshold = 8
 
 // runSLT is the main loop of sqllogictest.c in verify mode, on the engine
 // SQLite.
-func runSLT(t *testing.T, name string, script []byte) {
+func runSLT(t *testing.T, name string, script []byte, opt uint32) {
 	c, err := Open(filepath.Join(t.TempDir(), "test.db"), OpenReadWrite|OpenCreate, "")
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +217,7 @@ func runSLT(t *testing.T, name string, script []byte) {
 		}
 	}()
 	c.Exec("PRAGMA synchronous=OFF")
+	testControl(c.sp, testctrlOptimizations, c.db, uintptr(opt))
 
 	const maxErrors = 20
 	nErr := 0
@@ -230,6 +240,10 @@ func runSLT(t *testing.T, name string, script []byte) {
 	}
 	nStmt, nQuery, nSkip := 0, 0, 0
 	hashThreshold := sltHashThreshold
+	// zHash is sqllogictest.c's: the last hash taken, by a skipped query or
+	// a run one, which a query compares its hash line with when the
+	// threshold is below 0 and it has no label.
+	var zHash string
 	p := newSLTScript(script)
 	for p.findStartOfNextRecord() {
 		tok := p.tokens()
@@ -269,6 +283,7 @@ func runSLT(t *testing.T, name string, script []byte) {
 				}
 				hash = hex.EncodeToString(h.Sum(nil))
 			}
+			zHash = hash
 			if !checkLabel(tok[3], hash) {
 				fail(start, "labeled result [%s] does not agree with previous values", tok[3])
 			}
@@ -283,6 +298,9 @@ func runSLT(t *testing.T, name string, script []byte) {
 				sql = append(sql, p.line)
 			}
 			err := c.Exec(strings.Join(sql, "\n"))
+			if err == nil {
+				err = sltIntegrityCheck(c)
+			}
 			if err := c.brokenErr(); err != nil {
 				t.Fatalf("%s:%d: %v", name, start, err)
 			}
@@ -352,7 +370,6 @@ func runSLT(t *testing.T, name string, script []byte) {
 			default:
 				fail(start, "unknown sort method %q", tok[2])
 			}
-			var hashLine string
 			label := tok[3]
 			if len(label) > 20 {
 				label = label[:20]
@@ -363,7 +380,7 @@ func runSLT(t *testing.T, name string, script []byte) {
 					h.Write([]byte(v + "\n"))
 				}
 				sum := hex.EncodeToString(h.Sum(nil))
-				hashLine = fmt.Sprintf("%d values hashing to %s", len(res), sum)
+				zHash = fmt.Sprintf("%d values hashing to %s", len(res), sum)
 				if label != "" && !checkLabel(label, sum) {
 					fail(start, "labeled result [%s] does not agree with previous values", label)
 				}
@@ -391,8 +408,8 @@ func runSLT(t *testing.T, name string, script []byte) {
 					}
 					fail(p.nLine, "too few result rows: expected %d got %d", i, len(res))
 				}
-			} else if p.line != hashLine {
-				fail(p.nLine, "wrong result hash: expected [%s] got [%s]", p.line, hashLine)
+			} else if p.line != zHash {
+				fail(p.nLine, "wrong result hash: expected [%s] got [%s]", p.line, zHash)
 			}
 
 		case "hash-threshold":
@@ -470,6 +487,28 @@ func sltQuery(c *Conn, sql, types string) ([]string, error) {
 			}
 		}
 	}
+}
+
+// sltIntegrityCheck is the check slt_sqlite.c runs after each statement that
+// worked: the first row of PRAGMA integrity_check must be "ok".
+func sltIntegrityCheck(c *Conn) error {
+	s, _, err := c.Prepare("PRAGMA integrity_check;")
+	if err != nil {
+		return fmt.Errorf("cannot prepare integrity_check: %w", err)
+	}
+	defer s.Finalize()
+	ok, err := s.Step()
+	if err != nil || !ok {
+		return fmt.Errorf("cannot run integrity_check: %v", err)
+	}
+	v, err := s.ColumnText(0)
+	if err != nil {
+		return err
+	}
+	if s.ColumnType(0) == TypeNull || v != "ok" {
+		return fmt.Errorf("integrity_check returns: %s", v)
+	}
+	return nil
 }
 
 // sqlitePrintf3f is sqlite3_snprintf(200, buf, "%.3f", r).
