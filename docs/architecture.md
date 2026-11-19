@@ -224,7 +224,7 @@ The `replica` package copies a database to S3-compatible storage as it changes. 
 
 - An attached file gets no automatic checkpoints, and the PRAGMAs that would checkpoint or leave WAL mode give an error.
 - The capturer reads the new frames of the WAL up to the last commit frame, checking salts and frame checksums as SQLite's recovery does, writes them as one LTX file, and syncs it before it counts as staged. Frames after the last commit are never read.
-- Checkpoints run under the driver's write lock of the file, after the WAL is staged to its end, so no frame is copied into the database or written over before it is staged. Once the WAL holds 4000 frames, the writer that gives the lock back stages and checkpoints, as SQLite's own automatic checkpoint runs in the writer that commits. Past the `_wal_limit` of that writer the checkpoint waits for readers, as [above](#a-limit-on-the-length-of-the-wal).
+- Checkpoints run under the driver's write lock of the file, after the WAL is staged to its end, so no frame is copied into the database or written over before it is staged. Each time the WAL has grown by 4000 frames, the writer that gives the lock back stages and checkpoints, as SQLite's own automatic checkpoint runs in the writer that commits. Past the `_wal_limit` of that writer the checkpoint waits for readers, as [above](#a-limit-on-the-length-of-the-wal).
 - A WAL that went on in a way the driver did not make (other salts, a shorter WAL, frames it never saw) means another process wrote: the capturer stages a full copy of the database and reports it.
 - A snapshot takes the write lock only to stage the WAL and open a read transaction, then reads the pages without stopping writers.
 

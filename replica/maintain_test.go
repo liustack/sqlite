@@ -293,6 +293,10 @@ func TestIdle(t *testing.T) {
 		run(t, db, "INSERT INTO t VALUES (randomblob(100))")
 	}
 	busy := time.Since(start)
+	var rows int
+	if err := db.QueryRow("SELECT count(*) FROM t").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
 	level0 := 0
 	cnt.puts.Range(func(k, _ any) bool {
 		if strings.Contains(k.(string), "/0000/") {
@@ -301,8 +305,11 @@ func TestIdle(t *testing.T) {
 		return true
 	})
 	// A snapshot and a checkpoint stage what came since the last step too.
-	if most := int(busy/cfg.SyncInterval)*5/4 + 2; level0 > most {
-		t.Fatalf("%d uploads of level 0 in %v, at most %d", level0, busy, most)
+	// A checkpoint comes each 4000 frames, and a write here is a frame,
+	// now and then two. The rest: the full copy at the start, the CREATE,
+	// a step and a snapshot more than whole intervals, and a few to spare.
+	if most := int(busy/cfg.SyncInterval) + rows/2000 + int(busy/cfg.Retention) + 8; level0 > most {
+		t.Fatalf("%d uploads of level 0 in %v of %d writes, at most %d", level0, busy, rows, most)
 	}
 	// Settle: compactions, the drop of level 0, a snapshot, retention.
 	time.Sleep(3 * time.Second)
@@ -327,7 +334,7 @@ func TestIdle(t *testing.T) {
 	if txid != r.Status().Uploaded || dump(t, out) != dump(t, name) {
 		t.Fatal("the replica does not restore the database")
 	}
-	t.Logf("%d uploads of level 0 in %v, %d requests in all", level0, busy, cnt.n.Load())
+	t.Logf("%d uploads of level 0 in %v of %d writes, %d requests in all", level0, busy, rows, cnt.n.Load())
 }
 
 // Retention deletes nothing when what it would keep is not whole from the

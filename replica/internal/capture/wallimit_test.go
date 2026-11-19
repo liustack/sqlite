@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/liustack/sqlite/internal/replhook"
+	"github.com/superfly/ltx"
 )
 
 // While a reader holds frames of the WAL, a PASSIVE checkpoint copies what
@@ -126,6 +127,105 @@ func TestWALLimit(t *testing.T) {
 	}
 	if tries, restarts := counts(); tries-tries0 != 1 || restarts-restarts0 != 1 {
 		t.Fatalf("%d tries and %d restarts for a reader that ends during the wait, want one of each", tries-tries0, restarts-restarts0)
+	}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies: the WAL was lost", n)
+	}
+	sameAs(t, c, name)
+}
+
+// The checkpoint that waits for the readers comes with the commit that takes
+// the WAL past the limit, not at the next CheckpointFrames frames. After a
+// wait in vain, the writers leave the WAL alone until it has grown by a
+// quarter of the limit or by CheckpointFrames.
+func TestWALLimitAtCommit(t *testing.T) {
+	const most = 1048576 / (4096 + 24)
+	name := filepath.Join(t.TempDir(), "x.db")
+	opt := testOptions(t)
+	opt.CheckpointFrames = 100
+	c := open(t, name, opt)
+	db, err := sql.Open("sqlite", "file:"+name+"?_pragma=synchronous(NORMAL)&_wal_limit=1048576")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (0)")
+	frames := func() int64 {
+		st, err := os.Stat(name + "-wal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return max(st.Size()-32, 0) / (4096 + 24)
+	}
+	staged := func() ltx.TXID {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.txid
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow("SELECT count(*) FROM t").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	for c.walTries.Load() == 0 {
+		if n := frames(); n > most+10 {
+			t.Fatalf("%d frames in the WAL and no wait for the reader, the limit is %d", n, most)
+		}
+		run(t, db, "INSERT INTO t VALUES (1)")
+	}
+	at := frames()
+	if at < most {
+		t.Fatalf("a wait for the reader at %d frames, the limit is %d", at, most)
+	}
+	// The next wait comes most/4 = 63 frames later, the next checkpoint
+	// without one 100 frames later. A step in between changes neither.
+	step(t, c)
+	first := staged()
+	for frames() < at+55 {
+		run(t, db, "INSERT INTO t VALUES (2)")
+	}
+	if n := staged() - first; n != 0 || c.walTries.Load() != 1 {
+		t.Fatalf("%d files staged and %d waits in %d frames after a wait in vain at %d", n, c.walTries.Load()-1, frames()-at, at)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	step(t, c)
+	if n := c.FullCopies(); n != 0 {
+		t.Fatalf("%d full copies: the WAL was lost", n)
+	}
+	sameAs(t, c, name)
+}
+
+// A limit under CheckpointFrames frames holds too: the writer that takes the
+// WAL past it stages and checkpoints, and the WAL starts over.
+func TestWALLimitUnderCheckpointFrames(t *testing.T) {
+	const most = 1048576 / (4096 + 24)
+	name := filepath.Join(t.TempDir(), "x.db")
+	c := open(t, name, testOptions(t))
+	db, err := sql.Open("sqlite", "file:"+name+"?_pragma=synchronous(NORMAL)&_wal_limit=1048576")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	run(t, db, "CREATE TABLE t(x)")
+	for range 3 * most {
+		run(t, db, "INSERT INTO t VALUES (1)")
+	}
+	st, err := os.Stat(name + "-wal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := (st.Size() - 32) / (4096 + 24); n > most+10 {
+		t.Fatalf("%d frames in the WAL, the limit is %d", n, most)
+	}
+	if tries, restarts := c.walTries.Load(), c.walRestarts.Load(); restarts < 2 || tries != restarts {
+		t.Fatalf("%d checkpoints at the limit started the WAL over %d times", tries, restarts)
 	}
 	step(t, c)
 	if n := c.FullCopies(); n != 0 {

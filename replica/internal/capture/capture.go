@@ -30,9 +30,13 @@
 // so that no frame of this process is checkpointed before it is staged. A
 // writer of the driver does it as it gives the lock back (committed), as
 // SQLite's automatic checkpoints run after a commit, so the WAL stays short.
+// While readers keep the WAL from starting over, the writers do it once
+// each CheckpointFrames frames, not at each commit: each time is a staged
+// file, a sync of its folder and a checkpoint that copies a few frames.
 // A step does it too when it finds the WAL that long. Once the WAL is past
-// the _wal_limit of the writer, that checkpoint waits for the readers, so
-// that the WAL starts over though reads overlap (checkpointAt).
+// the _wal_limit of the writer, also when that is fewer frames, the writer
+// does it and that checkpoint waits for the readers, so that the WAL starts
+// over though reads overlap (checkpointAt).
 //
 // On start, the last staged file says where in the WAL staging stopped and
 // the checksum of the database there. The capturer reads the database,
@@ -65,8 +69,8 @@ import (
 type Options struct {
 	// Interval is the time between two reads of the WAL. Default 1s.
 	Interval time.Duration
-	// CheckpointFrames is how many frames the WAL holds before the capturer
-	// checkpoints it. Default 4000 (about 16 MB of 4 KiB pages): at 1000, as
+	// CheckpointFrames is how many frames the WAL grows by before the
+	// capturer checkpoints it. Default 4000 (about 16 MB of 4 KiB pages): at 1000, as
 	// SQLite's automatic checkpoints, a write costs about a tenth more.
 	CheckpointFrames uint32
 	// Limit is the most bytes of level 0 files staged and not uploaded yet
@@ -169,7 +173,15 @@ type Capturer struct {
 	later []error
 	// walSkip is the frames of the WAL below which no checkpoint waits for
 	// readers again, after one that they held off (checkpointAt).
-	walSkip int64
+	walSkip atomic.Int64
+	// ckptAt is the frames the WAL held at the last PASSIVE checkpoint
+	// that ran (passive). Both are 0 once the WAL has started over, which
+	// ckptSalt, the salt of the WAL the last writer left, tells (due). All
+	// three are written holding the driver's write lock of the file.
+	ckptAt, ckptSalt atomic.Uint32
+	// frameLen is the bytes of a frame of the WAL, 0 until Open has read
+	// the page size: a writer may commit before.
+	frameLen atomic.Int64
 
 	// walTries counts the checkpoints that waited for readers at the limit
 	// of a writer, and walRestarts those that started the WAL over.
@@ -249,6 +261,7 @@ func (c *Capturer) open() error {
 		return err
 	}
 	c.frame = make([]byte, frameSize(c.pageSize))
+	c.frameLen.Store(frameSize(c.pageSize))
 	c.commitPage = make([]byte, c.pageSize)
 	st, err := os.Stat(c.path)
 	if err != nil {
@@ -608,8 +621,8 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 // checkpoints it there, as SQLite's automatic checkpoints run after a
 // commit: no writer runs meanwhile. A step under way has the capturer, and
 // the next write tries again.
-func (c *Capturer) committed(frames uint32, limit int64) {
-	if frames < c.opt.CheckpointFrames || !c.mu.TryLock() {
+func (c *Capturer) committed(frames, salt uint32, limit int64) {
+	if !c.due(frames, salt, limit) || !c.mu.TryLock() {
 		return
 	}
 	defer c.mu.Unlock()
@@ -633,6 +646,38 @@ func (c *Capturer) committed(frames uint32, limit int64) {
 	if err != nil {
 		c.note(err)
 	}
+}
+
+// due says whether the writer that leaves the WAL at frames frames stages
+// and checkpoints it: when the WAL has grown by CheckpointFrames since the
+// last PASSIVE checkpoint that ran, or is past limit, its _wal_limit (past).
+// Without readers that is each CheckpointFrames frames, as the WAL starts
+// over after each checkpoint. While readers overlap it is too, where a
+// checkpoint at each commit would stage a file, sync its folder and copy a
+// few frames each time. salt changes when the WAL starts over
+// (csqlite.Conn.WALNow). The writer holds the driver's write lock of the
+// file.
+func (c *Capturer) due(frames, salt uint32, limit int64) bool {
+	at := c.ckptAt.Load()
+	if salt != c.ckptSalt.Load() || frames < at {
+		// It started over: a checkpoint had copied all of it. The salt
+		// tells, and so does a WAL shorter than it was, should a WAL made
+		// anew have the salt of the one before.
+		c.ckptSalt.Store(salt)
+		c.ckptAt.Store(0)
+		c.walSkip.Store(0)
+		at = 0
+	}
+	return frames-at >= c.opt.CheckpointFrames || c.past(frames, limit)
+}
+
+// past says whether a WAL of frames frames is past limit bytes, the
+// _wal_limit of a writer (0 for none), and not under the length where the
+// next wait for its readers comes after one in vain (walSkip): the
+// checkpoint of that writer then waits for the readers (checkpointAt).
+func (c *Capturer) past(frames uint32, limit int64) bool {
+	size := c.frameLen.Load()
+	return limit > 0 && size > 0 && int64(frames) >= max(limit/size, c.walSkip.Load())
 }
 
 // checkpointHeld stages the WAL to its end and checkpoints it. Call it
@@ -659,15 +704,11 @@ func (c *Capturer) checkpointHeld(limit int64) error {
 // waits replhook.WALWait for the readers, as the driver does for a file
 // that is not replicated. When they do not end in time, it still copied
 // what it could, and the next wait comes once the WAL has grown by another
-// quarter of the limit. Call it holding the driver's write lock.
+// quarter of the limit, whatever checkpoints run meanwhile for a step or
+// for a writer with another limit. Call it holding the driver's write lock.
 func (c *Capturer) checkpointAt(frames uint32, limit int64) error {
-	most := limit / frameSize(c.pageSize)
-	if limit <= 0 || int64(frames) < most {
-		c.walSkip = 0
-		return c.passive()
-	}
-	if int64(frames) < c.walSkip {
-		return c.passive()
+	if !c.past(frames, limit) {
+		return c.passive(frames)
 	}
 	c.walTries.Add(1)
 	if err := c.conn.BusyTimeout(int(replhook.WALWait / time.Millisecond)); err != nil {
@@ -680,9 +721,10 @@ func (c *Capturer) checkpointAt(frames uint32, limit int64) error {
 	}
 	switch {
 	case busy(err):
-		c.walSkip = int64(frames) + max(most/4, 1)
+		c.walSkip.Store(int64(frames) + max(limit/frameSize(c.pageSize)/4, 1))
 		return nil
 	case err == nil:
+		// The next writer starts the WAL over, which due sees.
 		c.walRestarts.Add(1)
 	}
 	return err
@@ -701,10 +743,16 @@ func (c *Capturer) syncNames() error {
 	return nil
 }
 
-// passive checkpoints the WAL, PASSIVE: it never waits, and copies what no
-// reader still uses.
-func (c *Capturer) passive() error {
-	if _, _, err := c.conn.Checkpoint(csqlite.CheckpointPassive); err != nil && !busy(err) {
+// passive checkpoints the WAL, of frames frames, PASSIVE: it never waits,
+// and copies what no reader still uses. One that could not run, as when a
+// checkpoint of another process runs, does not count: the next commit tries
+// again.
+func (c *Capturer) passive(frames uint32) error {
+	_, _, err := c.conn.Checkpoint(csqlite.CheckpointPassive)
+	switch {
+	case err == nil:
+		c.ckptAt.Store(frames)
+	case !busy(err):
 		return err
 	}
 	return nil
