@@ -132,7 +132,11 @@ jobs:
           path: .build/slt/slt.fossil
           key: slt-${{ hashFiles('scripts/slt.sh') }}
       - run: scripts/slt.sh
-      - run: go test -count=1 -run TestSQLLogic ./internal/csqlite
+      # go test passes when -run matches no test: the grep fails the step
+      # unless TestSQLLogic ran and passed.
+      - run: |
+          go test -count=1 -v -run '^TestSQLLogic$' ./internal/csqlite > slt.log || { tail -n 200 slt.log; exit 1; }
+          grep '^--- PASS: TestSQLLogic ' slt.log
         env:
           SLT: ${{ github.workspace }}/.build/slt/src/test
           SLT_REQUIRED: "1"
