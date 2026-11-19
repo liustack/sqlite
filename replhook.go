@@ -10,7 +10,10 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"slices"
+	"strings"
 
 	"github.com/liustack/sqlite/internal/replhook"
 )
@@ -46,6 +49,89 @@ func attach(path string, committed func(frames, salt uint32, limit int64)) (deta
 		writeLocks.Unlock()
 		closeWriteLock(l)
 	}, nil
+}
+
+// attachment is a file attached to a connection (ATTACH), and the reference
+// to its write lock that makes the file open to replhook.Attach.
+type attachment struct {
+	schema, name string
+	l            *writeLock
+}
+
+// syncAttached brings c.attached in line with the files attached to c,
+// after each statement that changes the connection, failed or not. A file
+// attached anew takes a reference to its write lock, so that it cannot be
+// replicated while attached, and a file detached gives its reference back.
+//
+// A replicated file is detached again, and the statement fails: writes to
+// it from c would take neither its write lock nor the replicator's
+// committed call, and would checkpoint it, so the replica would miss them.
+// That covers a connection of the file itself, which writes to the file
+// under the attached name through a pager of its own.
+func (c *conn) syncAttached() error {
+	// A broken connection runs nothing more, and keeps its references
+	// until it closes.
+	if c.c.Broken() || len(c.attached) == 0 && !c.c.Attached() {
+		return nil
+	}
+	schemas, names := c.c.Attachments()
+	kept := make([]attachment, 0, len(schemas))
+	stays := make([]bool, len(c.attached))
+	var add []int // indexes in schemas
+	for i := range schemas {
+		if j := slices.IndexFunc(c.attached, func(a attachment) bool { return a.schema == schemas[i] && a.name == names[i] }); j >= 0 {
+			stays[j] = true
+			kept = append(kept, c.attached[j])
+		} else {
+			add = append(add, i)
+		}
+	}
+	var drop []attachment
+	for j, a := range c.attached {
+		if !stays[j] {
+			drop = append(drop, a)
+		}
+	}
+	var errs []error
+	var detach []string
+	for _, i := range add {
+		// ATTACH opened the file a moment ago.
+		file, err := fileOf(names[i])
+		if err == nil {
+			writeLocks.Lock()
+			l := findWriteLock(file)
+			switch {
+			case l != nil && l.attached:
+				err = fmt.Errorf("sqlite: %s is replicated: only a connection that opens it can write to it, ATTACH cannot", names[i])
+			case l == nil:
+				l = &writeLock{file: file}
+				writeLocks.all = append(writeLocks.all, l)
+				fallthrough
+			default:
+				l.refs++
+				kept = append(kept, attachment{schemas[i], names[i], l})
+			}
+			writeLocks.Unlock()
+		}
+		if err != nil {
+			errs = append(errs, err)
+			detach = append(detach, schemas[i])
+		}
+	}
+	for _, a := range drop {
+		closeWriteLock(a.l)
+	}
+	c.attached = kept
+	for _, schema := range detach {
+		if err := c.c.Exec(`DETACH "` + strings.ReplaceAll(schema, `"`, `""`) + `"`); err != nil {
+			// Right after ATTACH, which only read the schema of the file,
+			// only a failure of SQLite itself (memory, I/O) stops DETACH,
+			// and that retires c.
+			c.bad = true
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // lockFile is replhook.Lock.

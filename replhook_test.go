@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -200,4 +201,95 @@ func TestAttachCommitted(t *testing.T) {
 	if last := calls[len(calls)-1]; last < 4 {
 		t.Fatalf("%d frames after 4 writes of a page or more", last)
 	}
+}
+
+// A file attached for replication cannot be attached (ATTACH) to a
+// connection of another database, nor to one of itself: writes there would
+// take neither its write lock nor its committed call, and run their own
+// checkpoints. The statement fails, the file is detached again, the next
+// statement of the Exec does not run, and the connection goes on.
+func TestSQLAttachReplicated(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
+	dbb := openDB(t, b)
+	if _, err := dbb.Exec("PRAGMA journal_mode=WAL; CREATE TABLE t(x)"); err != nil {
+		t.Fatal(err)
+	}
+	dbb.Close()
+	detach, err := replhook.Attach(realName(t, b), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detach()
+
+	for _, name := range []string{a, b} {
+		db := openDB(t, name)
+		db.SetMaxOpenConns(1)
+		if _, err := db.Exec("ATTACH ? AS other; INSERT INTO other.t VALUES (1)", b); err == nil {
+			t.Fatalf("%s: attached the replicated file", filepath.Base(name))
+		}
+		rows, err := db.Query("ATTACH ? AS other", b)
+		if err == nil {
+			rows.Close()
+			t.Fatalf("%s: attached the replicated file with Query", filepath.Base(name))
+		}
+		var n int
+		if err := db.QueryRow("SELECT count(*) FROM pragma_database_list WHERE name = 'other'").Scan(&n); err != nil || n != 0 {
+			t.Fatalf("%s: still attached: %d %v", filepath.Base(name), n, err)
+		}
+		// Another file attaches as before.
+		if _, err := db.Exec("ATTACH ? AS other; CREATE TABLE IF NOT EXISTS other.u(y); DETACH other", filepath.Join(dir, "c.db")); err != nil {
+			t.Fatalf("%s: %v", filepath.Base(name), err)
+		}
+		db.Close()
+	}
+	// ATTACH in a PRAGMA of the DSN fails the connection.
+	dsn := a + "?_pragma=" + url.QueryEscape("foreign_keys(1); ATTACH '"+b+"' AS other")
+	if err := openDB(t, dsn).Ping(); err == nil {
+		t.Fatal("a DSN attached the replicated file")
+	}
+	var n int
+	if err := openDB(t, b).QueryRow("SELECT count(*) FROM t").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("rows %d %v", n, err)
+	}
+}
+
+// A file that a connection has attached (ATTACH) is open: it cannot be
+// attached for replication until it is detached.
+func TestSQLAttachedFirst(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
+	dbb := openDB(t, b)
+	if err := dbb.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	dbb.Close()
+	db := openDB(t, a)
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec("ATTACH ? AS other", b); err != nil {
+		t.Fatal(err)
+	}
+	if detach, err := replhook.Attach(realName(t, b), nil); err == nil {
+		detach()
+		t.Fatal("attached a file a connection has attached")
+	}
+	if _, err := db.Exec("DETACH other"); err != nil {
+		t.Fatal(err)
+	}
+	// So does a PRAGMA of the DSN.
+	dsn := a + "?_pragma=" + url.QueryEscape("foreign_keys(1); ATTACH '"+b+"' AS other")
+	other := openDB(t, dsn)
+	if err := other.Ping(); err != nil {
+		t.Fatal(err)
+	}
+	if detach, err := replhook.Attach(realName(t, b), nil); err == nil {
+		detach()
+		t.Fatal("attached a file the DSN of a connection attached")
+	}
+	other.Close()
+	detach, err := replhook.Attach(realName(t, b), nil)
+	if err != nil {
+		t.Fatalf("once detached: %v", err)
+	}
+	detach()
 }

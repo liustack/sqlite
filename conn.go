@@ -28,6 +28,7 @@ type conn struct {
 	busyTimeout time.Duration
 	walLimit    int64            // the WAL is started over once it is longer, in bytes: 0 for never (wallimit.go)
 	replicated  bool             // the file was replicated when the connection opened: its replicator checkpoints
+	attached    []attachment     // the files attached to the connection (replhook.go)
 	walEvery    int64            // an automatic checkpoint each so many frames of WAL: 0 for none (checkpoint.go)
 	walSQLite   bool             // SQLite runs the automatic checkpoints of the connection, not the driver
 	cache       map[string]*stmt // statements of the queue (writer.go)
@@ -155,7 +156,12 @@ func (c *conn) Close() error {
 	if c.wl != nil {
 		closeWriteLock(c.wl)
 	}
-	return c.c.Close()
+	err := c.c.Close()
+	// Once the files are closed: until then they are open.
+	for _, a := range c.attached {
+		closeWriteLock(a.l)
+	}
+	return err
 }
 
 func (c *conn) Begin() (driver.Tx, error) {

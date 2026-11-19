@@ -927,6 +927,26 @@ func (c *Conn) Filenames() []string {
 	}
 }
 
+// Attachments are the databases attached to the connection (ATTACH) that
+// are files: their schema names, and the absolute names of their files.
+func (c *Conn) Attachments() (schemas, files []string) {
+	if c.brokenErr() != nil {
+		return nil, nil
+	}
+	// 0 is main and 1 is temp.
+	for i := 2; ; i++ {
+		a := c.args()
+		z := sqlite3_db_name(a.top, c.db, uintptr(i))
+		if z == 0 {
+			return schemas, files
+		}
+		if name := cstring(sqlite3_db_filename(a.top, c.db, z)); name != "" {
+			schemas = append(schemas, cstring(z))
+			files = append(files, name)
+		}
+	}
+}
+
 // Filename is the absolute name of the file of database schema ("main"), or
 // "" for a memory or temporary database.
 func (c *Conn) Filename(schema string) string {
