@@ -22,18 +22,26 @@ var files table[vfs.File]
 
 func i32(w uintptr) int { return int(int32(w)) }
 
-// testPath, set by a test only, maps each file name SQLite gives the VFS:
-// TestFuzzData keeps the files its SQL names in one directory.
-var testPath func(string) string
+// testFiles, set by a test only, changes what the VFS does with the files of
+// SQLite. TestFuzzData keeps them in one directory (path maps each name) and
+// smaller than maxSize bytes, as fuzzcheck's VFS does: a write or a truncate
+// that would reach it is SQLITE_FULL.
+var testFiles struct {
+	path    func(string) string
+	maxSize int64
+}
 
 // fileName is the file name at a, as the VFS takes it.
 func fileName(a uintptr) string {
 	name := cstring(a)
-	if testPath != nil && name != "" {
-		name = testPath(name)
+	if testFiles.path != nil && name != "" {
+		name = testFiles.path(name)
 	}
 	return name
 }
+
+// tooLarge says a file of size bytes is past testFiles.maxSize.
+func tooLarge(size int64) bool { return testFiles.maxSize > 0 && size >= testFiles.maxSize }
 
 func rc(r int) uintptr { return uintptr(int32(r)) }
 
@@ -129,11 +137,17 @@ func host_read(sp, f, buf, n, off uintptr) (ret uintptr) {
 
 func host_write(sp, f, buf, n, off uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
+	if tooLarge(int64(off) + int64(i32(n))) {
+		return sqliteFull
+	}
 	return rc(files.get(f).WriteAt(bytesAt(buf, i32(n)), int64(off)))
 }
 
 func host_truncate(sp, f, size uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
+	if tooLarge(int64(size)) {
+		return sqliteFull
+	}
 	return rc(files.get(f).Truncate(int64(size)))
 }
 
@@ -177,6 +191,9 @@ func host_lock_state(sp, f uintptr) (ret uintptr) {
 
 func host_size_hint(sp, f, size uintptr) (ret uintptr) {
 	defer failWith(sp, &ret, sqliteIOErr)
+	if tooLarge(int64(size)) {
+		return sqliteFull
+	}
 	return rc(files.get(f).SizeHint(int64(size)))
 }
 

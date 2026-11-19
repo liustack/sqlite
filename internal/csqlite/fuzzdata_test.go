@@ -9,6 +9,7 @@ package csqlite
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,7 +47,9 @@ import (
 //   - Its files are in memory (its own VFS). Here a case with no database
 //     image runs on a memory database, as fuzzcheck --native-vfs does, and a
 //     case with one on a file of the engine's VFS in a temporary directory.
-//     Every file a case names goes in that directory (confine). A busy wait
+//     Every file a case names goes in that directory (confine), and stays
+//     under fuzzcheck's 10,000,000 bytes: a damaged database can make SQLite
+//     write a page at 100 GB, which Windows fills with zeros. A busy wait
 //     on a file the case locked itself does not stop at an interrupt: one
 //     that lasts a minute is reported as the engine not stopping.
 //
@@ -227,8 +230,8 @@ func (r *fuzzRun) file(path string) {
 		images = []fuzzBlob{{id: 1}}
 	}
 	// Only while the cases run: the fuzzdata file is not in the directory.
-	testPath = r.confine
-	defer func() { testPath = nil }()
+	testFiles.path, testFiles.maxSize = r.confine, mxFileSz
+	defer func() { testFiles.path, testFiles.maxSize = nil, 0 }()
 	name := filepath.Base(path)
 	r.cases, r.cut, r.stmts, r.prepared, r.rows = 0, 0, 0, 0, 0
 	start := time.Now()
@@ -876,5 +879,25 @@ func TestConfine(t *testing.T) {
 		if f(got) != got {
 			t.Errorf("confine(%q) = %q, which confine changes again", name, got)
 		}
+	}
+}
+
+// TestFileCap checks testFiles.maxSize: a write that would make a file that
+// large fails with SQLITE_FULL, as in fuzzcheck's VFS.
+func TestFileCap(t *testing.T) {
+	testFiles.maxSize = 64 << 10
+	defer func() { testFiles.maxSize = 0 }()
+	c, err := Open(filepath.Join(t.TempDir(), "cap.db"), OpenReadWrite|OpenCreate, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.Exec("CREATE TABLE t(b)"); err != nil {
+		t.Fatal(err)
+	}
+	err = c.Exec("INSERT INTO t VALUES (randomblob(200000))")
+	var e *Error
+	if !errors.As(err, &e) || e.Code() != sqliteFull {
+		t.Fatalf("insert of 200000 bytes into a file capped at 64 KiB: %v, want SQLITE_FULL", err)
 	}
 }
