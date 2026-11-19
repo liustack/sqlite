@@ -118,7 +118,9 @@ jobs:
         with:
           go-version-file: go.mod
       - name: LLVM 22.1.8
-        run: echo "LLVM_BIN=$(scripts/llvm-get.sh "$RUNNER_TEMP/llvm")" >> "$GITHUB_ENV"
+        run: |
+          bin=$(scripts/llvm-get.sh "$RUNNER_TEMP/llvm")
+          echo "LLVM_BIN=$bin" >> "$GITHUB_ENV"
       - run: make check-gen
         if: matrix.gen
       - run: make test-gen

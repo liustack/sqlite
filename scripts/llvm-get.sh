@@ -10,9 +10,9 @@
 # checks that need LLVM (.github/workflows/weekly.yml). The static libraries
 # are left out: nothing here links against LLVM.
 set -eu
-case $(uname -m) in
-x86_64) name=LLVM-22.1.8-Linux-X64 sum=df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384 ;;
-aarch64) name=LLVM-22.1.8-Linux-ARM64 sum=805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34 ;;
+case $(uname -s)/$(uname -m) in
+Linux/x86_64) name=LLVM-22.1.8-Linux-X64 sum=df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384 ;;
+Linux/aarch64) name=LLVM-22.1.8-Linux-ARM64 sum=805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34 ;;
 *) echo "llvm-get.sh: no release for $(uname -s)/$(uname -m)" >&2; exit 1 ;;
 esac
 dir=${1:-.build/llvm}
