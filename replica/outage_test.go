@@ -318,9 +318,18 @@ func TestSoak(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	points[r.c.Durable()] = dump(t, name)
+	// Compaction and retention wait while the points restore: they drop the
+	// files that end at a point once later files cover it.
 	r.busy <- struct{}{}
+	held := true
+	release := func() {
+		if held {
+			held = false
+			<-r.busy
+		}
+	}
+	defer release()
 	files := slices.Clone(r.files)
-	<-r.busy
 	ends := map[ltx.TXID]bool{}
 	var oldest ltx.TXID = 1
 	for _, f := range files {
@@ -340,6 +349,7 @@ func TestSoak(t *testing.T) {
 		}
 		checked++
 	}
+	release()
 	levels := map[int]int{}
 	for _, f := range files {
 		levels[f.level]++
