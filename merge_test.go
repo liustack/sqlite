@@ -213,6 +213,37 @@ func TestMergeSynchronousDiffers(t *testing.T) {
 	}
 }
 
+// PRAGMA optimize that picks one table to analyze runs ANALYZE inside it,
+// and SQLite still says the statement writes nothing
+// (sqlite3_stmt_readonly). It must wait for the write lock as any write
+// does, not start reading and then get SQLITE_BUSY for the write.
+func TestOptimizeWaitsForWriteLock(t *testing.T) {
+	for _, mode := range []string{"wal", "delete"} {
+		t.Run(mode, func(t *testing.T) {
+			db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode("+mode+")")
+			mExec(t, db, schemaH)
+			mExec(t, db, `CREATE TABLE t(x)`)
+			mExec(t, db, `CREATE INDEX tx ON t(x)`)
+			mExec(t, db, `INSERT INTO t VALUES (1), (2), (3)`)
+			ctx := context.Background()
+			holder, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer holder.Close()
+			if err := behind(t, holder, func() error {
+				_, err := db.Exec(`PRAGMA optimize`)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if n := mCount(t, db, `SELECT count(*) FROM sqlite_stat1 WHERE tbl = 't'`); n != 1 {
+				t.Fatalf("sqlite_stat1 has %d rows for t, want 1", n)
+			}
+		})
+	}
+}
+
 func TestMergeTempShadow(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)")
