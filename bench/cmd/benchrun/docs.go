@@ -86,6 +86,13 @@ var readme = map[string][]readmeRow{
 	},
 }
 
+// readmeThrough lists the throughput tables of the READMEs
+// (<!-- bench:readme-through-NAME -->): the throughput table of a
+// comparison with SQLite in C, under the heading of a README table.
+var readmeThrough = map[string]string{
+	"linux-amd64": "native-linux-amd64",
+}
+
 // driverHead is the column of a driver in a README table.
 var driverHead = map[string]string{
 	"mattn":   "[mattn](https://github.com/mattn/go-sqlite3) (cgo)",
@@ -170,6 +177,17 @@ func loadSets() (map[string]*Set, error) {
 }
 
 func renderMarker(name string, sets map[string]*Set, l *lang) (string, error) {
+	if r, ok := strings.CutPrefix(name, "readme-through-"); ok {
+		set, ok := readmeThrough[r]
+		if !ok {
+			return "", fmt.Errorf("no README throughput table %q in benchrun", r)
+		}
+		s, ok := sets[set]
+		if !ok {
+			return "", fmt.Errorf("no bench/published/%s.json", set)
+		}
+		return renderThrough(r, s, l)
+	}
 	if r, ok := strings.CutPrefix(name, "readme-"); ok {
 		rows, ok := readme[r]
 		if !ok {
@@ -195,9 +213,29 @@ func renderMarker(name string, sets map[string]*Set, l *lang) (string, error) {
 // comparison with C (native-*) says in words what each row and column is,
 // and how much longer the engine takes than C.
 func renderSet(s *Set, l *lang) string {
+	return renderTables(s, l, metaLine(s.Meta, l)+"\n\n", false)
+}
+
+// renderThrough is the throughput table of a comparison with C, for a
+// README: under the heading of a README table, not the whole meta line.
+func renderThrough(name string, s *Set, l *lang) (string, error) {
+	if !strings.HasPrefix(s.Name, "native-") {
+		return "", fmt.Errorf("the README throughput table %s needs a native-* set, not %s", name, s.Name)
+	}
+	for _, r := range s.Rows {
+		if _, ok := nativeLabel(r, l); !ok {
+			return "", fmt.Errorf("%s: no words for %s (%s) in nativeWork", s.Name, r.Bench, r.Unit)
+		}
+	}
+	return renderTables(s, l, readmeHeading(name, s.Meta, l), true), nil
+}
+
+// renderTables writes head, then the tables of s: for a comparison with C
+// the throughput table only when through is set.
+func renderTables(s *Set, l *lang, head string, through bool) string {
 	native := strings.HasPrefix(s.Name, "native-")
 	var b strings.Builder
-	b.WriteString(metaLine(s.Meta, l) + "\n\n")
+	b.WriteString(head)
 	table := func(title string, keep func(unit string) bool, spread, columns bool) {
 		var rows []Row
 		for _, r := range s.Rows {
@@ -271,7 +309,9 @@ func renderSet(s *Set, l *lang) string {
 		b.WriteString("\n")
 	}
 	if native {
-		table(l.work, func(u string) bool { return u == "sec/op" }, true, false)
+		if !through {
+			table(l.work, func(u string) bool { return u == "sec/op" }, true, false)
+		}
 		table(l.through, higher, true, true)
 		return b.String()
 	}
@@ -304,23 +344,7 @@ func renderReadme(name string, rows []readmeRow, sets map[string]*Set, l *lang) 
 		}
 	}
 	var b strings.Builder
-	m := first.Meta
-	plat := strings.Replace(name, "-", "/", 1)
-	note := m.Get("note")
-	if l.zh {
-		note = m.Get("note_zh")
-		fmt.Fprintf(&b, "**%s**（%s，Go %s，%s `%s`", plat, m.Get("cpu"), m.Get("go"), l.commit, m.Get("commit"))
-		if note != "" {
-			b.WriteString("，" + note)
-		}
-		b.WriteString("）：\n\n")
-	} else {
-		fmt.Fprintf(&b, "**%s** (%s, Go %s, %s `%s`", plat, m.Get("cpu"), m.Get("go"), strings.ToLower(l.commit), m.Get("commit"))
-		if note != "" {
-			b.WriteString(", " + note)
-		}
-		b.WriteString("):\n\n")
-	}
+	b.WriteString(readmeHeading(name, first.Meta, l))
 	head := "| Workload"
 	if l.zh {
 		head = "| 场景"
@@ -358,6 +382,29 @@ func renderReadme(name string, rows []readmeRow, sets map[string]*Set, l *lang) 
 		b.WriteString(" |\n")
 	}
 	return b.String(), nil
+}
+
+// readmeHeading is the line above a README table: the platform, the CPU,
+// Go and the commit.
+func readmeHeading(name string, m Meta, l *lang) string {
+	var b strings.Builder
+	plat := strings.Replace(name, "-", "/", 1)
+	note := m.Get("note")
+	if l.zh {
+		note = m.Get("note_zh")
+		fmt.Fprintf(&b, "**%s**（%s，Go %s，%s `%s`", plat, m.Get("cpu"), m.Get("go"), l.commit, m.Get("commit"))
+		if note != "" {
+			b.WriteString("，" + note)
+		}
+		b.WriteString("）：\n\n")
+	} else {
+		fmt.Fprintf(&b, "**%s** (%s, Go %s, %s `%s`", plat, m.Get("cpu"), m.Get("go"), strings.ToLower(l.commit), m.Get("commit"))
+		if note != "" {
+			b.WriteString(", " + note)
+		}
+		b.WriteString("):\n\n")
+	}
+	return b.String()
 }
 
 func findRow(s *Set, bench, unit string) *Row {
@@ -559,6 +606,9 @@ func complete(path string, doc []byte, found map[string]int, readmeTables bool, 
 	if readmeTables {
 		for name := range readme {
 			want = append(want, "readme-"+name)
+		}
+		for name := range readmeThrough {
+			want = append(want, "readme-through-"+name)
 		}
 	} else {
 		for name := range sets {

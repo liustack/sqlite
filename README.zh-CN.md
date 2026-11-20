@@ -67,6 +67,27 @@
 | 64 个 goroutine 同时插入 | **1.19 µs** | 9.94 µs | 5.67 ms | 85.8 µs |
 <!-- /bench:readme-darwin-arm64 -->
 
+和 C 写的 SQLite 在同一台机器上比：SQLite(C) 是直接调用 SQLite 的 C 程序，liustack/sqlite(直接调用) 不经过 `database/sql` 直接调驱动，两列 `database/sql` 像普通程序一样读写。多个写者同时写时更快，是因为驱动把它们的提交合成一次。
+
+<!-- bench:readme-through-linux-amd64 -->
+**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `44acf8c`）：
+
+**吞吐量**：所有线程加起来每秒完成多少次读或写，文件是 WAL 模式、10 万行，越高越好：
+
+| 基准 | SQLite(C) | liustack/sqlite(直接调用) | liustack/sqlite(database/sql) | mattn(database/sql) |
+| :-- | --: | --: | --: | --: |
+| 1 个线程，每次按主键读一行 | 194k reads/s ±1% | **380k reads/s** ±1% | 290k reads/s ±1% | 103k reads/s ±0% |
+| 8 个线程，每次按主键读一行 | 1154k reads/s ±5% | **1320k reads/s** ±2% | 987k reads/s ±2% | 423k reads/s ±5% |
+| 64 个线程，每次按主键读一行 | 1034k reads/s ±8% | **1325k reads/s** ±1% | 939k reads/s ±3% | 425k reads/s ±3% |
+| 1 个线程，每次按主键读一行，整个文件在缓存里 | 241k reads/s ±2% | **756k reads/s** ±2% | 487k reads/s ±2% | 117k reads/s ±1% |
+| 8 个线程，每次按主键读一行，整个文件在缓存里 | 1499k reads/s ±8% | **2394k reads/s** ±4% | 1463k reads/s ±3% | 455k reads/s ±4% |
+| 64 个线程，每次按主键读一行，整个文件在缓存里 | 1241k reads/s ±5% | **2123k reads/s** ±4% | 1293k reads/s ±5% | 327k reads/s ±8% |
+| 8 个线程照上面读，同时另有 8 个线程在写 | 1005k reads/s ±8% | 1021k reads/s ±4% | 615k reads/s ±5% | 167k reads/s ±2% |
+| 8 个线程，每次插入一行，同时另有 8 个线程在读 | 2796 writes/s ±25% | 19467 writes/s ±11% | **28900 writes/s** ±4% | 15437 writes/s ±2% |
+| 64 个线程，每次插入一行，`synchronous=FULL` | 819 writes/s ±6% | 56830 writes/s ±5% | 55212 writes/s ±2% | 845 writes/s ±2% |
+
+<!-- /bench:readme-through-linux-amd64 -->
+
 别的驱动还赢的地方：全在 SQLite 内部算的活（连表），本驱动跑的是同一份 C，只是变成了 Go 汇编，还有读大文本。读和多写为什么更快、各驱动的版本、怎么自己再跑一遍，见 [docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md)。
 
 ## 实时备份到 S3
