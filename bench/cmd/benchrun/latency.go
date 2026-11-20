@@ -47,8 +47,8 @@ func cmdLatency(args []string) error {
 	fs.Parse(args)
 	tags := strings.Split(*only, ",")
 	for _, t := range tags {
-		if !contains(drivers, t) {
-			return fmt.Errorf("unknown driver %q (want %s)", t, strings.Join(drivers, ", "))
+		if !known(t) {
+			return fmt.Errorf("unknown driver %q (want %s)", t, strings.Join(append(drivers, optional...), ", "))
 		}
 	}
 	var percents []float64

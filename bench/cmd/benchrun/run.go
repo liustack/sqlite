@@ -21,6 +21,14 @@ import (
 // drivers are the build tags of bench/, in the order of the table columns.
 var drivers = []string{"liustack", "mattn", "modernc", "ncruces"}
 
+// optional are the build tags that run only when -drivers names them:
+// turso is not SQLite but a rewrite of it in Rust, so the tables of
+// docs/benchmarks.md leave it out.
+var optional = []string{"turso"}
+
+// known says t is a build tag of bench/.
+func known(t string) bool { return contains(drivers, t) || contains(optional, t) }
+
 // cgo says which drivers need cgo.
 var cgo = map[string]bool{"mattn": true}
 
@@ -64,8 +72,8 @@ func cmdRun(args []string) error {
 	fs.Parse(args)
 	tags := strings.Split(*only, ",")
 	for _, t := range tags {
-		if !contains(drivers, t) {
-			return fmt.Errorf("unknown driver %q (want %s)", t, strings.Join(drivers, ", "))
+		if !known(t) {
+			return fmt.Errorf("unknown driver %q (want %s)", t, strings.Join(append(drivers, optional...), ", "))
 		}
 	}
 	bin := filepath.Join(*out, "bin")
@@ -160,7 +168,8 @@ func machine() Meta {
 		m.Set("gomaxprocs", fmt.Sprint(runtime.NumCPU()))
 	}
 	m.Set("modules", strings.Join(strings.Fields(output("go", "list", "-m",
-		"github.com/mattn/go-sqlite3", "modernc.org/sqlite", "github.com/ncruces/go-sqlite3")), " "))
+		"github.com/mattn/go-sqlite3", "modernc.org/sqlite", "github.com/ncruces/go-sqlite3",
+		"turso.tech/database/tursogo")), " "))
 	return m
 }
 

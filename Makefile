@@ -20,7 +20,7 @@ check: vendor-check
 	scripts/docs-list.sh --check >/dev/null
 	FUZZDATA=$(FUZZDATA) SLT=$(SLT) go test -count=1 ./...
 	FUZZDATA= SLT= go test -race -count=1 . ./internal/vfs ./internal/csqlite ./replica/...
-	cd bench && go vet -tags liustack ./... && go run ./cmd/benchrun docs -check
+	cd bench && go vet -tags liustack ./... && go vet -tags turso ./... && go run ./cmd/benchrun docs -check
 
 # The C of engine/ as Go assembly, on a machine with LLVM 22.1.8: make gen,
 # make gen ARCH=amd64. ARCH defaults to the machine's. It compiles with the
