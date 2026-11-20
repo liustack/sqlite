@@ -21,6 +21,7 @@ import (
 func init() {
 	replhook.Attach = attach
 	replhook.Lock = lockFile
+	replhook.TryLock = tryLockFile
 }
 
 // attach is replhook.Attach.
@@ -136,6 +137,31 @@ func (c *conn) syncAttached() error {
 
 // lockFile is replhook.Lock.
 func lockFile(ctx context.Context, path string) (unlock func(), err error) {
+	l, err := attachedLock(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := l.acquire(ctx, math.MaxInt64); err != nil {
+		return nil, err
+	}
+	return func() { l.release(nil) }, nil
+}
+
+// tryLockFile is replhook.TryLock.
+func tryLockFile(path string) (unlock func(), ok bool, err error) {
+	l, err := attachedLock(path)
+	if err != nil {
+		return nil, false, err
+	}
+	// With no wait, acquire fails only when the lock is held.
+	if l.acquire(context.Background(), 0) != nil {
+		return nil, false, nil
+	}
+	return func() { l.release(nil) }, true, nil
+}
+
+// attachedLock is the write lock of path, which must be attached.
+func attachedLock(path string) (*writeLock, error) {
 	file, err := fileOf(path)
 	if err != nil {
 		return nil, err
@@ -146,8 +172,5 @@ func lockFile(ctx context.Context, path string) (unlock func(), err error) {
 	if l == nil || !l.attached {
 		return nil, errors.New("sqlite: " + path + " is not replicated")
 	}
-	if err := l.acquire(ctx, math.MaxInt64); err != nil {
-		return nil, err
-	}
-	return func() { l.release(nil) }, nil
+	return l, nil
 }

@@ -33,7 +33,9 @@
 // While readers keep the WAL from starting over, the writers do it once
 // each CheckpointFrames frames, not at each commit: each time is a staged
 // file, a sync of its folder and a checkpoint that copies a few frames.
-// A step does it too when it finds the WAL that long. Once the WAL is past
+// A step does it too when it finds the WAL that long and no writer holds the
+// lock: it never waits for the lock, so that a long write transaction holds
+// staging off no longer than its own commit. Once the WAL is past
 // the _wal_limit of the writer, also when that is fewer frames, the writer
 // does it and that checkpoint waits for the readers, so that the WAL starts
 // over though reads overlap (checkpointAt).
@@ -127,6 +129,11 @@ var ErrStagingFull = errors.New("capture: the staged files not uploaded reached 
 // checkpoint. Tests shorten it.
 var closeWait = 5 * time.Second
 
+// stepWait is the longest a writer whose WAL is long waits for a step to
+// end, holding the driver's write lock (committed). A step stages a file and
+// syncs it, tens of milliseconds on a slow disk.
+const stepWait = 100 * time.Millisecond
+
 // A Capturer stages the changes of one database file.
 type Capturer struct {
 	opt    Options
@@ -142,7 +149,14 @@ type Capturer struct {
 	cancel context.CancelFunc
 	done   chan struct{} // closed when the loop has stopped
 
-	mu lock // one step at a time
+	// mu: one step at a time. Whoever holds it never waits for the driver's
+	// write lock: a writer that holds that lock may wait for mu
+	// (committed). Take the write lock first, then mu.
+	mu lock
+	// long says a full copy, or the read of the database on start, holds mu:
+	// a writer does not wait for it. gaveUp says a writer waited stepWait in
+	// vain: the others do not wait until a step ends.
+	long, gaveUp atomic.Bool
 	// What is staged: the database file and frames 1 to pos of the WAL
 	// generation gen, after change commits.
 	gen    [8]byte
@@ -217,6 +231,9 @@ func Open(name string, opt Options) (*Capturer, error) {
 	err = c.open()
 	later := c.later
 	c.later = nil
+	// A writer that gets mu next finds the capturer closed, not c.conn
+	// closing (release).
+	c.closed = err != nil
 	c.mu.Unlock()
 	if err != nil {
 		c.release(false)
@@ -378,7 +395,7 @@ func (c *Capturer) run() {
 		case <-t.C:
 		}
 		c.mu.Lock()
-		err := c.step(c.ctx)
+		err := c.step()
 		later := c.later
 		c.later = nil
 		c.mu.Unlock()
@@ -403,9 +420,8 @@ func (c *Capturer) report(err error) {
 	}
 }
 
-// Sync stages what was committed up to now. ctx bounds the waits for the
-// capturer and for the driver's write lock, which a checkpoint takes, and
-// so does Close.
+// Sync stages what was committed up to now. ctx bounds the wait for the
+// capturer, and so does Close. It does not wait for the driver's write lock.
 func (c *Capturer) Sync(ctx context.Context) error {
 	ctx, cancel := c.bind(ctx)
 	defer cancel()
@@ -416,7 +432,7 @@ func (c *Capturer) Sync(ctx context.Context) error {
 	if c.closed {
 		return errors.New("capture: closed")
 	}
-	if err := c.step(ctx); err != nil {
+	if err := c.step(); err != nil {
 		return err
 	}
 	if c.full {
@@ -458,22 +474,27 @@ func (c *Capturer) close() ([]error, error) {
 	c.snapMu.Lock()
 	defer c.snapMu.Unlock()
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return nil, nil
 	}
+	// Once closed, nothing else stages or checkpoints: the last checkpoint
+	// can take the write lock before mu.
 	c.closed = true
-	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
-	defer cancel()
-	err := c.step(ctx)
-	if err == nil && c.full {
-		err = c.checkpointOnly(ctx)
-	} else if err == nil {
+	err := c.step()
+	c.mu.Unlock()
+	// When a write transaction keeps the lock past closeWait, the WAL is
+	// left as it is, staged, for the next Open.
+	if err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), closeWait)
 		err = c.checkpoint(ctx)
+		cancel()
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = nil
+		}
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		err = nil
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// What was committed since staging stopped is in the database only:
 	// the next Open stages it as a full copy.
 	if c.full {
@@ -505,7 +526,9 @@ func (c *Capturer) Dir() string { return c.dir }
 // step stages what was committed, or a full copy when the WAL was lost, and
 // checkpoints when the WAL is long enough. Past the limit it stops staging
 // and only checkpoints, until nothing staged is pending.
-func (c *Capturer) step(ctx context.Context) error {
+func (c *Capturer) step() error {
+	// The writers may wait for the next step.
+	defer c.gaveUp.Store(false)
 	if vfs.WALStopped(c.path) {
 		if err := c.walStopped(); err != nil {
 			return err
@@ -522,12 +545,12 @@ func (c *Capturer) step(ctx context.Context) error {
 		c.note(c.stop())
 	}
 	if c.full {
-		return c.checkpointLost(ctx)
+		return c.checkpointLost()
 	}
 	if c.lost != nil {
 		return c.copyLost()
 	}
-	return c.stageAndCheckpoint(ctx)
+	return c.stageAndCheckpoint()
 }
 
 // errWALStopped is why the WAL is lost after a failed sync stopped it.
@@ -594,9 +617,12 @@ func (c *Capturer) copyLost() error {
 }
 
 // stageAndCheckpoint stages what was committed and, when the WAL holds
-// CheckpointFrames frames, checkpoints it under the driver's write lock. The
-// writers of the driver mostly do that first, as they commit (committed).
-func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
+// CheckpointFrames frames, checkpoints it under the driver's write lock if
+// no writer holds it. A writer that does checkpoints as it gives the lock
+// back (committed), as the writers of the driver mostly do first: waiting
+// for the lock here would hold staging off for as long as the writers
+// ahead keep it, a long transaction too.
+func (c *Capturer) stageAndCheckpoint() error {
 	frames, err := c.capture()
 	switch {
 	case err != nil:
@@ -606,8 +632,8 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 	case frames < c.opt.CheckpointFrames || c.over():
 		return nil
 	}
-	unlock, err := replhook.Lock(ctx, c.path)
-	if err != nil {
+	unlock, ok, err := replhook.TryLock(c.path)
+	if err != nil || !ok {
 		return err
 	}
 	defer unlock()
@@ -619,11 +645,28 @@ func (c *Capturer) stageAndCheckpoint(ctx context.Context) error {
 // of the file back, with the frames of the WAL it left (replhook.Attach).
 // Once the WAL holds CheckpointFrames frames, the capturer stages it and
 // checkpoints it there, as SQLite's automatic checkpoints run after a
-// commit: no writer runs meanwhile. A step under way has the capturer, and
-// the next write tries again.
+// commit: no writer runs meanwhile. A step under way has the capturer: the
+// next write tries again, and a step that finds the WAL long leaves the
+// checkpoint to the writers while one holds the lock. So once the WAL has
+// grown by twice CheckpointFrames, the writer waits for the step, which
+// never waits for the write lock, up to stepWait, and once a writer waited
+// in vain, the others do not until a step ends. It does not wait for a full
+// copy.
 func (c *Capturer) committed(frames, salt uint32, limit int64) {
-	if !c.due(frames, salt, limit) || !c.mu.TryLock() {
+	if !c.due(frames, salt, limit) {
 		return
+	}
+	if !c.mu.TryLock() {
+		if uint64(frames-c.ckptAt.Load()) < 2*uint64(c.opt.CheckpointFrames) || c.long.Load() || c.gaveUp.Load() {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), stepWait)
+		err := c.mu.LockCtx(ctx)
+		cancel()
+		if err != nil {
+			c.gaveUp.Store(true)
+			return
+		}
 	}
 	defer c.mu.Unlock()
 	if c.closed {
@@ -765,13 +808,21 @@ func busy(err error) bool {
 }
 
 // checkpoint stages the WAL to its end under the driver's write lock of the
-// file and checkpoints it. When the WAL was lost, it stages a full copy
-// instead, after the lock, so that writers do not wait for it, and leaves
-// the checkpoint to a later step.
+// file and checkpoints it, waiting for the lock until ctx is done. When the
+// WAL was lost, it stages a full copy instead, after the lock, so that
+// writers do not wait for it, and leaves the checkpoint to a later one. With
+// staging stopped at the limit, it only checkpoints. Call it without mu: it
+// takes mu after the write lock.
 func (c *Capturer) checkpoint(ctx context.Context) error {
 	unlock, err := replhook.Lock(ctx, c.path)
 	if err != nil {
 		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.full {
+		defer unlock()
+		return c.truncate()
 	}
 	if _, err := c.capture(); err != nil || c.lost != nil {
 		unlock()
@@ -800,8 +851,10 @@ func (c *Capturer) truncate() error {
 }
 
 // checkpointLost checkpoints without staging, when the WAL is long enough:
-// once the WAL is lost, its frames are not staged.
-func (c *Capturer) checkpointLost(ctx context.Context) error {
+// once the WAL is lost, its frames are not staged. It does when no writer
+// holds the driver's write lock: one that does checkpoints as it gives the
+// lock back (committed).
+func (c *Capturer) checkpointLost() error {
 	if err := c.beginRead(); err != nil {
 		return err
 	}
@@ -810,14 +863,8 @@ func (c *Capturer) checkpointLost(ctx context.Context) error {
 	if err != nil || h.MaxFrame < c.opt.CheckpointFrames {
 		return err
 	}
-	return c.checkpointOnly(ctx)
-}
-
-// checkpointOnly checkpoints under the driver's write lock, staging
-// nothing.
-func (c *Capturer) checkpointOnly(ctx context.Context) error {
-	unlock, err := replhook.Lock(ctx, c.path)
-	if err != nil {
+	unlock, ok, err := replhook.TryLock(c.path)
+	if err != nil || !ok {
 		return err
 	}
 	defer unlock()
@@ -1049,6 +1096,8 @@ func (c *Capturer) header(size uint32) ltx.Header {
 // fullCopy stages every page of the database as the next TXID, a snapshot
 // for TXID 1. why is the reason when it is not the first.
 func (c *Capturer) fullCopy(why error) error {
+	c.long.Store(true)
+	defer c.long.Store(false)
 	if err := c.beginRead(); err != nil {
 		return err
 	}
@@ -1106,6 +1155,8 @@ func (c *Capturer) fullCopy(why error) error {
 // whole database, works out its checksum where the file ends from the
 // frames written since, and stages those frames when it is the same.
 func (c *Capturer) resume(last ltx.Header, post ltx.Checksum) (bool, error) {
+	c.long.Store(true)
+	defer c.long.Store(false)
 	if int(last.PageSize) != c.pageSize {
 		return false, nil
 	}

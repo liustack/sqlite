@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -454,9 +455,7 @@ func TestResumeAfterCrash(t *testing.T) {
 			run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (randomblob(5000))")
 			step(t, c)
 			if checkpoint {
-				c.mu.Lock()
 				err := c.checkpoint(context.Background())
-				c.mu.Unlock()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -509,12 +508,13 @@ func TestOtherProcess(t *testing.T) {
 	db := openApp(t, name)
 	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
 	step(t, c)
-	cli := func(sql string) {
+	cli := func(sql string) string {
 		t.Helper()
 		out, err := exec.Command(shell, name, sql).CombinedOutput()
 		if err != nil {
 			t.Fatalf("sqlite3: %v: %s", err, out)
 		}
+		return string(out)
 	}
 	cli("INSERT INTO t VALUES (randomblob(3000)); INSERT INTO t VALUES (randomblob(3000));")
 	run(t, db, "INSERT INTO t VALUES (2)")
@@ -523,7 +523,13 @@ func TestOtherProcess(t *testing.T) {
 	if c.FullCopies() != 0 {
 		t.Fatalf("%d full copies for frames another process appended", c.FullCopies())
 	}
-	cli("INSERT INTO t VALUES (randomblob(3000)); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (3);")
+	// A read slot this process locked a moment ago may still be locked: the
+	// checkpoint waits for it, as a checkpoint waits for a reader, and
+	// returns busy only if it never goes.
+	out := cli("PRAGMA busy_timeout=5000; INSERT INTO t VALUES (randomblob(3000)); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (3);")
+	if !slices.Contains(strings.Fields(out), "0|0|0") {
+		t.Fatalf("the checkpoint of the other process did not start the WAL over: %q", out)
+	}
 	run(t, db, "INSERT INTO t VALUES (4)")
 	step(t, c)
 	if c.FullCopies() != 1 {
@@ -601,9 +607,7 @@ func TestCheckpointLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		c.mu.Lock()
 		err = c.checkpoint(context.Background())
-		c.mu.Unlock()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -854,8 +858,9 @@ func TestSnapshot(t *testing.T) {
 	step(t, c)
 	stop := make(chan struct{})
 	errs := make(chan error, 1)
+	wrote := make(chan struct{})
 	go func() {
-		for {
+		for i := 0; ; i++ {
 			select {
 			case <-stop:
 				errs <- nil
@@ -870,8 +875,18 @@ func TestSnapshot(t *testing.T) {
 				errs <- err
 				return
 			}
+			if i == 0 {
+				close(wrote)
+			}
 		}
 	}()
+	// The snapshot starts once the program writes, and the program may stop
+	// before it writes again: one more write follows the snapshot.
+	select {
+	case <-wrote:
+	case err := <-errs:
+		t.Fatal(err)
+	}
 	snap, txid, err := c.Snapshot(context.Background())
 	close(stop)
 	if werr := <-errs; werr != nil {
@@ -899,6 +914,7 @@ func TestSnapshot(t *testing.T) {
 	if post := dec.Trailer().PostApplyChecksum; post != staged.Post {
 		t.Fatalf("the snapshot of TXID %s has checksum %s, the staged file %s", txid, post, staged.Post)
 	}
+	run(t, db, "INSERT INTO t VALUES (randomblob(500))")
 	step(t, c)
 	if c.TXID() <= txid {
 		t.Fatalf("nothing staged after the snapshot of TXID %s", txid)
@@ -1741,64 +1757,50 @@ func TestOpenSyncsFolders(t *testing.T) {
 	}
 }
 
-// busySync has a Sync wait for the driver's write lock, which a write
-// transaction holds, with CheckpointFrames frames in the WAL. It returns the
-// transaction and the result of that Sync.
-func busySync(t *testing.T) (*Capturer, *sql.Tx, chan error) {
+// waitingSync has a Sync wait for the capturer, which the test holds as a
+// long step would. It returns the result of that Sync, and release, which
+// gives the capturer back, at the end of the test if not before.
+func waitingSync(t *testing.T) (c *Capturer, synced chan error, release func()) {
 	name := filepath.Join(t.TempDir(), "x.db")
-	opt := testOptions(t)
-	opt.CheckpointFrames = 4
-	c := open(t, name, opt)
+	c = open(t, name, testOptions(t))
 	db := openApp(t, name)
-	// The writes do not checkpoint while the capturer is busy.
+	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
 	c.mu.Lock()
-	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (randomblob(9000))")
-	c.mu.Unlock()
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { tx.Rollback() })
-	if _, err := tx.Exec("INSERT INTO t VALUES (1)"); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	synced := make(chan error, 1)
-	go func() { synced <- c.Sync(ctx) }()
-	// Sync has the capturer once nothing else can take it.
-	for c.mu.TryLock() {
-		c.mu.Unlock()
-		time.Sleep(time.Millisecond)
-	}
+	release = sync.OnceFunc(c.mu.Unlock)
+	t.Cleanup(release)
+	synced = make(chan error, 1)
+	go func() { synced <- c.Sync(context.Background()) }()
 	time.Sleep(20 * time.Millisecond)
-	return c, tx, synced
+	select {
+	case err := <-synced:
+		t.Fatalf("Sync did not wait for the capturer: %v", err)
+	default:
+	}
+	return c, synced, release
 }
 
-// Close does not wait for a Sync that waits for a write transaction.
+// Close stops a Sync that waits for the capturer.
 func TestCloseDuringSync(t *testing.T) {
-	c, _, synced := busySync(t)
-	wait := closeWait
-	closeWait = 50 * time.Millisecond
-	t.Cleanup(func() { closeWait = wait })
+	c, synced, release := waitingSync(t)
 	done := make(chan error, 1)
 	go func() { done <- c.Close() }()
 	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
+	case err := <-synced:
+		if err == nil {
+			t.Fatal("the Sync that Close stopped gave no error")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("Close waits for the Sync")
+		t.Fatal("Close does not stop the Sync")
 	}
-	if err := <-synced; err == nil {
-		t.Fatal("the Sync that Close stopped gave no error")
+	release()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 
 // A Sync waits for the capturer no longer than its context lets it.
 func TestSyncWaitsBounded(t *testing.T) {
-	c, _, _ := busySync(t)
+	c, _, _ := waitingSync(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	done := make(chan error, 1)

@@ -42,3 +42,7 @@ var Attach func(path string, committed func(frames, salt uint32, limit int64)) (
 // waiting until ctx is done: until unlock, no connection of this process
 // writes to the file.
 var Lock func(ctx context.Context, path string) (unlock func(), err error)
+
+// TryLock takes the driver's write lock of an attached file only if no one
+// holds it: ok is false when a writer does.
+var TryLock func(path string) (unlock func(), ok bool, err error)

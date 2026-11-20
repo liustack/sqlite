@@ -7,6 +7,7 @@ package capture
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -65,6 +66,11 @@ func killHelper(name string) int {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS t(w INTEGER, k INTEGER, pad BLOB);
 		CREATE INDEX IF NOT EXISTS tk ON t(w, k);
 		CREATE TABLE IF NOT EXISTS u(pad BLOB)`); err != nil {
+		return fail(err)
+	}
+	// The tables are staged before the kill, however soon it comes: check
+	// reads them.
+	if err := c.Sync(context.Background()); err != nil {
 		return fail(err)
 	}
 	fmt.Println("ready", c.FullCopies())
