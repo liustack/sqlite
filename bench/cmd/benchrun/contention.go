@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -51,12 +52,12 @@ var contentionCases = []struct {
 	readme      bool
 }{
 	{"insert-autocommit-NORMAL-g64-hold0s", "Insert one row, 64 goroutines at once", "64 个 goroutine 同时各插入一行", true},
-	{"transfer-deferred-NORMAL-g64-hold0s", "Read two rows then update them, 64 goroutines, transactions deferred", "先读两行再改，64 个 goroutine，事务用 deferred", false},
-	{"transfer-immediate-NORMAL-g64-hold0s", "The same, transactions `_txlock=immediate`", "同上，事务用 `_txlock=immediate`", true},
-	{"transfer-immediate-NORMAL-g64-hold2ms", "The same, 2 ms of work inside each transaction", "同上，每个事务里再做 2 ms 的事", true},
-	{"writefirst-deferred-NORMAL-g64-hold2ms", "The same, deferred, the first statement a write", "同上，事务用 deferred，第一条语句就写", false},
-	{"transfer-immediate-FULL-g64-hold0s", "Immediate transactions, 64 goroutines, `synchronous=FULL`", "immediate 事务，64 个 goroutine，`synchronous=FULL`", true},
-	{"transfer-immediate-NORMAL-g256-hold1ms", "Immediate transactions, 256 goroutines, 1 ms of work inside each", "immediate 事务，256 个 goroutine，每个事务里再做 1 ms 的事", true},
+	{"transfer-deferred-NORMAL-g64-hold0s", "Transactions, 64 goroutines, deferred", "事务，64 个 goroutine，deferred", false},
+	{"transfer-immediate-NORMAL-g64-hold0s", "Transactions, 64 goroutines, `_txlock=immediate`", "事务，64 个 goroutine，`_txlock=immediate`", true},
+	{"transfer-immediate-NORMAL-g64-hold2ms", "Transactions, 64 goroutines, immediate, 2 ms of work in each", "事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事", true},
+	{"writefirst-deferred-NORMAL-g64-hold2ms", "Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each", "事务，64 个 goroutine，deferred，第一条就写，每个事务里做 2 ms 的事", false},
+	{"transfer-immediate-FULL-g64-hold0s", "Transactions, 64 goroutines, immediate, `synchronous=FULL`", "事务，64 个 goroutine，immediate，`synchronous=FULL`", true},
+	{"transfer-immediate-NORMAL-g256-hold1ms", "Transactions, 256 goroutines, immediate, 1 ms of work in each", "事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事", true},
 }
 
 func cmdContention(args []string) error {
@@ -65,6 +66,7 @@ func cmdContention(args []string) error {
 	only := fs.String("drivers", strings.Join(drivers, ","), "the drivers, by build tag")
 	out := fs.String("out", filepath.Join("results", runtime.GOOS+"-"+runtime.GOARCH, "contention"), "where the results go")
 	samples := fs.Bool("samples", false, "write every write of each case to <out>/samples")
+	name := fs.String("name", runtime.GOOS+"-"+runtime.GOARCH, "the name of the run, as its markers in the docs name it")
 	buildOnly := fs.Bool("build-only", false, "build and check the test binaries, run nothing")
 	noBuild := fs.Bool("no-build", false, "use the test binaries of an earlier -build-only")
 	fs.Parse(args)
@@ -88,7 +90,7 @@ func cmdContention(args []string) error {
 	if *buildOnly {
 		return nil
 	}
-	set := contentionSet{Meta: machine(), Drivers: tags}
+	set := contentionSet{Name: *name, Meta: machine(), Drivers: tags}
 	set.Meta.Set("time", run.String())
 	set.Meta.Set("load_before", loadAverage())
 	os.Setenv("CONTENTION", run.String())
@@ -186,6 +188,12 @@ func renderContention(s *contentionSet, l *lang, readmeTable bool) string {
 		res[[2]string{r.Case, r.Driver}] = r
 	}
 	secs := s.Meta.Get("time")
+	if d, err := time.ParseDuration(secs); err == nil {
+		secs = strconv.FormatFloat(d.Seconds(), 'f', -1, 64) + " s"
+		if l.zh {
+			secs = strconv.FormatFloat(d.Seconds(), 'f', -1, 64) + " 秒"
+		}
+	}
 	if readmeTable {
 		b.WriteString(readmeHeading(s.Name, s.Meta, l))
 	} else {
@@ -232,10 +240,10 @@ func renderContention(s *contentionSet, l *lang, readmeTable bool) string {
 		}
 		return fmt.Sprintf("%s, %d locked", v, r.Locked)
 	}
-	waitIntro := "**The slowest write**, and how many writes got `database is locked`, in " + secs + " of each:"
+	waitIntro := "**The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in " + secs + " of each:"
 	rateIntro := "**Writes done per second**, all goroutines together:"
 	if l.zh {
-		waitIntro = "**最慢的一次写**，以及每项 " + secs + " 里有多少次写报 `database is locked`："
+		waitIntro = "**最慢的一次写**（一个事务，或一条自动提交的语句），以及每项 " + secs + "里有多少次写报 `database is locked`："
 		rateIntro = "**每秒完成的写**，所有 goroutine 加起来："
 	}
 	table(waitIntro, wait, !readmeTable)
