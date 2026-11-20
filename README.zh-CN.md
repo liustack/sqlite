@@ -1,6 +1,6 @@
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
-<p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。</b></p>
+<p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。<br>并发写按顺序排队，<code>database is locked</code> 只代表真过载，不再是运气不好。</b></p>
 
 <p align="center">
   <a href="README.md">English</a> · 简体中文 ·
@@ -90,6 +90,27 @@
 
 别的驱动还赢的地方：全在 SQLite 内部算的活（连表），本驱动跑的是同一份 C，只是变成了 Go 汇编，还有读大文本。读和多写为什么更快、各驱动的版本、怎么自己再跑一遍，见 [docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md)。
 
+## 并发写不再报 `database is locked`
+
+同一个进程里的写者按到达顺序排队，不去抢 SQLite 的锁。用 `_txlock=immediate` 打开数据库，一个写事务只有在排在它前面的事务加起来超过 busy timeout（默认 5 秒）时才会报 `database is locked`，也就是写入速度真的超过了磁盘能提交的速度。别的驱动里，抢锁一直输的写者会等上好几秒然后超时，而同样的负载下其他写者只等几毫秒。
+
+<!-- bench:readme-contention-linux-amd64 -->
+**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `e5fe295`）：
+
+**最慢的一次写**（一个事务，或一条自动提交的语句），以及每项 30 秒里有多少次写报 `database is locked`：
+
+| 负载 | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
+| :-- | --: | --: | --: | --: |
+| 64 个 goroutine 同时各插入一行 | 23.9 ms | 3.93 s | 3.63 s | 86.4 ms |
+| 事务，64 个 goroutine，`_txlock=immediate` | 22.6 ms | 4.83 s，3 次锁错误 | 3.84 s | 252 ms |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 173 ms | 5.01 s，70 次锁错误 | 5.06 s，18 次锁错误 | 2.22 s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 215 ms | 5.01 s，77 次锁错误 | 5.04 s，125 次锁错误 | 1.41 s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 329 ms | 5.01 s，273 次锁错误 | 5.11 s，232 次锁错误 | 5.01 s，7 次锁错误 |
+
+<!-- /bench:readme-contention-linux-amd64 -->
+
+这里的事务先读两行再改它们，事务里做的事拿着写锁。各项场景、中位数和每秒写入数见 [docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md#很多写者同时写)。
+
 ## 实时备份到 S3
 
 打开数据库之前先启动复制器，之后每次提交约一秒就传到 S3、Cloudflare R2 或 MinIO：
@@ -138,10 +159,10 @@ import (
 	_ "github.com/liustack/sqlite"
 )
 
-db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate")
 ```
 
-名字可以是文件名、`:memory:` 或 [SQLite URI](https://sqlite.org/uri.html)。`_pragma=name(value)` 在每个新连接上执行一条 PRAGMA，`_txlock=immediate` 让 `BEGIN` 马上拿写锁。没有用 `busy_timeout` 另设的话，连接等锁最多 5 秒。其余见 [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite)。
+名字可以是文件名、`:memory:` 或 [SQLite URI](https://sqlite.org/uri.html)。`_pragma=name(value)` 在每个新连接上执行一条 PRAGMA，`_txlock=immediate` 让 `BEGIN` 先排队拿到写锁，这样先读后写的事务不会写到一半报 `database is locked`。只读的事务用 `db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})` 开，它不拿写锁。没有用 `busy_timeout` 另设的话，连接等锁最多 5 秒。其余见 [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite)。
 
 每个连接在关闭前都留着 SQLite 的页缓存，默认最多 2 MB，而 `database/sql` 会给每个同时在跑的查询开一个连接。给连接池定个大小，并让它留着同样多的空闲连接，免得连接关了又开：
 

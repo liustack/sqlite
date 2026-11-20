@@ -1,5 +1,5 @@
 ---
-summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, against SQLite in C, what replication costs, and how the numbers were taken'
+summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, how many writes get database is locked when many write at once, against SQLite in C, what replication costs, and how the numbers were taken'
 read_when:
   - Asked how fast the driver is, or how it compares with other drivers
   - Changing something on the path of a query or a commit, to measure it again
@@ -216,6 +216,44 @@ Allocations per op, lower is better:
 | ReadWrite | **15** | 19 | 31 | 19 |
 
 <!-- /bench:darwin-arm64 -->
+
+## Many writers at once
+
+`TestContention` in `bench/contention_test.go` has 64 or 256 goroutines write at once, 30 s for each case on each driver, with `busy_timeout` 5 s for every driver, and counts the writes that got `database is locked`. A transfer is a transaction that reads two rows and updates them. Work inside a transaction is time the program spends there holding the write lock, as a program that computes something between its statements does. Each case checks that the balances still add up. `benchrun contention` runs it on every driver (see [bench/README.md](../bench/README.md)).
+
+<!-- bench:contention-linux-amd64 -->
+Commit `e5fe295`, Go 1.27.4, AMD EPYC 7B13, Linux 7.0.0-1017-gcp x86_64, GOMAXPROCS 4 of 4 threads, 2026-11-20. Load average (1, 5, 15 minutes) before: 0.07 0.32 0.80, after: 3.27 2.55 1.80.
+
+**The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 23.9 ms | 3.93 s | 3.63 s | 86.4 ms |
+| Transactions, 64 goroutines, deferred | 610 ms, 5289455 locked | 1.78 s, 3034824 locked | 39.6 ms, 935625 locked | 1.34 s, 1663455 locked |
+| Transactions, 64 goroutines, `_txlock=immediate` | 22.6 ms | 4.83 s, 3 locked | 3.84 s | 252 ms |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 173 ms | 5.01 s, 70 locked | 5.06 s, 18 locked | 2.22 s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 172 ms | 5.02 s, 18 locked | 5.02 s, 37 locked | 2.06 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 215 ms | 5.01 s, 77 locked | 5.04 s, 125 locked | 1.41 s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 329 ms | 5.01 s, 273 locked | 5.11 s, 232 locked | 5.01 s, 7 locked |
+
+**Writes done per second**, all goroutines together:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 240k writes/s | 46957 writes/s | 20563 writes/s | 14560 writes/s |
+| Transactions, 64 goroutines, deferred | 3668 writes/s | 2739 writes/s | 1061 writes/s | 1007 writes/s |
+| Transactions, 64 goroutines, `_txlock=immediate` | 14148 writes/s | 11267 writes/s | 6030 writes/s | 5787 writes/s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 426 writes/s | 330 writes/s | 325 writes/s | 338 writes/s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 423 writes/s | 314 writes/s | 315 writes/s | 330 writes/s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 1610 writes/s | 480 writes/s | 486 writes/s | 1109 writes/s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 831 writes/s | 610 writes/s | 528 writes/s | 354 writes/s |
+
+<!-- /bench:contention-linux-amd64 -->
+
+- **Deferred transactions that read before they write** fail most of the time with every driver. In WAL mode such a transaction cannot wait for the write lock: once another writer commits, the snapshot it read is old. Start them with `_txlock=immediate`.
+- **With `_txlock=immediate`, or a first statement that writes,** no write of this driver got `database is locked`, and the slowest took 23 to 329 ms. Writers of one process wait for each other in a queue, in the order they came, so a write waits for the writes ahead of it and no more. With the other drivers they race for SQLite's lock and sleep longer and longer between tries: most writes get through fast, and a few lose again and again until the busy timeout. mattn had writes fail that way in every such case, modernc in all but one and ncruces in one, while most writes waited a few milliseconds.
+- **The waits are spread evenly**, so the median is longer with this driver where writers queue: with 2 ms of work in each transaction, 149 ms against 7 ms with mattn and modernc, and the 99th percentile 166 ms against 2.8 to 3.0 s.
+- **Writes per second** are 25 to 36% higher than mattn's in transactions, 3.4 times with `synchronous=FULL`, and 5 times for autocommit inserts, which group commit merges.
 
 ## Replication
 

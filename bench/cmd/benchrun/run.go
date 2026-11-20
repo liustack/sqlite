@@ -95,16 +95,8 @@ func cmdRun(args []string) error {
 			}
 			continue
 		}
-		logf("build %s", t)
-		cmd := exec.Command("go", "test", "-c", "-tags", t, "-o", filepath.Join(bin, t+".test"), ".")
-		cmd.Env = append(os.Environ(), "CGO_ENABLED="+map[bool]string{false: "0", true: "1"}[cgo[t]])
-		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("build %s: %w", t, err)
-		}
-		// The settings every driver must run with (pragma_test.go).
-		if err := runIn(bin, nil, "./"+t+".test", "-test.count=1", "-test.run=^TestPragmas$"); err != nil {
-			return fmt.Errorf("%s: settings: %w", t, err)
+		if err := buildDriver(t, bin); err != nil {
+			return err
 		}
 		if err := os.WriteFile(filepath.Join(*out, t+".txt"), nil, 0o644); err != nil {
 			return err
@@ -242,4 +234,20 @@ func contains(list []string, s string) bool {
 
 func logf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, ">> "+format+"\n", args...)
+}
+
+// buildDriver builds the test binary of driver t into bin and checks the
+// settings every driver must run with (pragma_test.go).
+func buildDriver(t, bin string) error {
+	logf("build %s", t)
+	cmd := exec.Command("go", "test", "-c", "-tags", t, "-o", filepath.Join(bin, t+".test"), ".")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED="+map[bool]string{false: "0", true: "1"}[cgo[t]])
+	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("build %s: %w", t, err)
+	}
+	if err := runIn(bin, nil, "./"+t+".test", "-test.count=1", "-test.run=^TestPragmas$"); err != nil {
+		return fmt.Errorf("%s: settings: %w", t, err)
+	}
+	return nil
 }

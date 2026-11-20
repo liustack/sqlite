@@ -209,6 +209,44 @@
 
 <!-- /bench:darwin-arm64 -->
 
+## 很多写者同时写
+
+`bench/contention_test.go` 里的 `TestContention` 让 64 或 256 个 goroutine 同时写，每个驱动每项跑 30 秒，每个驱动的 `busy_timeout` 都是 5 秒，数一数有多少次写报了 `database is locked`。转账是一个事务，先读两行再改它们。事务里做的事，是程序拿着写锁在事务里花的时间，就像程序在两条语句之间算点东西。每一项都检查余额加起来没变。`benchrun contention` 在每个驱动上跑它（见 [bench/README.md](../bench/README.md)）。
+
+<!-- bench:contention-linux-amd64 -->
+提交 `e5fe295`，Go 1.27.4，AMD EPYC 7B13，Linux 7.0.0-1017-gcp x86_64，GOMAXPROCS 4，共 4 个线程，2026-11-20。负载（1、5、15 分钟）开始前 0.07 0.32 0.80，结束后 3.27 2.55 1.80。
+
+**最慢的一次写**（一个事务，或一条自动提交的语句），以及每项 30 秒里有多少次写报 `database is locked`：
+
+| 负载 | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| 64 个 goroutine 同时各插入一行 | 23.9 ms | 3.93 s | 3.63 s | 86.4 ms |
+| 事务，64 个 goroutine，deferred | 610 ms，5289455 次锁错误 | 1.78 s，3034824 次锁错误 | 39.6 ms，935625 次锁错误 | 1.34 s，1663455 次锁错误 |
+| 事务，64 个 goroutine，`_txlock=immediate` | 22.6 ms | 4.83 s，3 次锁错误 | 3.84 s | 252 ms |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 173 ms | 5.01 s，70 次锁错误 | 5.06 s，18 次锁错误 | 2.22 s |
+| 事务，64 个 goroutine，deferred，第一条就写，每个事务里做 2 ms 的事 | 172 ms | 5.02 s，18 次锁错误 | 5.02 s，37 次锁错误 | 2.06 s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 215 ms | 5.01 s，77 次锁错误 | 5.04 s，125 次锁错误 | 1.41 s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 329 ms | 5.01 s，273 次锁错误 | 5.11 s，232 次锁错误 | 5.01 s，7 次锁错误 |
+
+**每秒完成的写**，所有 goroutine 加起来：
+
+| 负载 | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| 64 个 goroutine 同时各插入一行 | 240k writes/s | 46957 writes/s | 20563 writes/s | 14560 writes/s |
+| 事务，64 个 goroutine，deferred | 3668 writes/s | 2739 writes/s | 1061 writes/s | 1007 writes/s |
+| 事务，64 个 goroutine，`_txlock=immediate` | 14148 writes/s | 11267 writes/s | 6030 writes/s | 5787 writes/s |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 426 writes/s | 330 writes/s | 325 writes/s | 338 writes/s |
+| 事务，64 个 goroutine，deferred，第一条就写，每个事务里做 2 ms 的事 | 423 writes/s | 314 writes/s | 315 writes/s | 330 writes/s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 1610 writes/s | 480 writes/s | 486 writes/s | 1109 writes/s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 831 writes/s | 610 writes/s | 528 writes/s | 354 writes/s |
+
+<!-- /bench:contention-linux-amd64 -->
+
+- **先读后写的 deferred 事务**在每个驱动上大多数都失败。WAL 模式下这种事务不能等写锁：别的写者一提交，它读到的快照就旧了。这种事务用 `_txlock=immediate` 开始。
+- **用 `_txlock=immediate`，或者第一条语句就写**，本驱动没有一次写报 `database is locked`，最慢的一次 23 到 329 ms。同一个进程里的写者按到达顺序排队，一次写只等排在它前面的写。别的驱动里写者去抢 SQLite 的锁，两次尝试之间睡得越来越久：大多数写很快就过去了，少数几次一输再输，直到 busy timeout。mattn 在每一项这样的场景里都有写因此失败，modernc 只有一项没有，ncruces 有一项，而同时大多数写只等了几毫秒。
+- **等待分得均匀**，所以写者排队时本驱动的中位数更长：每个事务里做 2 ms 的事时，中位数 149 ms，mattn 和 modernc 7 ms，第 99 百分位 166 ms，它们 2.8 到 3.0 秒。
+- **每秒完成的写**：事务比 mattn 多 25% 到 36%，`synchronous=FULL` 下是 3.4 倍，自动提交的插入是 5 倍，因为组提交把它们合成一次提交。
+
 ## 复制
 
 [复制](replication.zh-CN.md)在程序里复制每次提交，所以 CPU 花在程序自己的进程里。`replica` 里的 `BenchmarkGroupCommit` 让 8 个或 64 个 goroutine 同时插入，每次一行（WAL，`synchronous=NORMAL`），分别关掉和打开复制。存储是同一台机器另一个核上的 MinIO，它的开销不落在基准的核上，就像存储在别的机器上时一样。
