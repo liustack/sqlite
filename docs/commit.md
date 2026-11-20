@@ -1,5 +1,5 @@
 ---
-summary: 'Commit rules: message format, the type list, atomic commits, generated files, branches and merges'
+summary: 'Commit rules: message format, the type list, atomic commits, generated files, branches and merges, the changelog'
 read_when:
   - Getting ready to commit
   - Writing a commit message or a merge message
@@ -36,3 +36,9 @@ read_when:
 - Work on a branch (`git switch -c <branch>`), not on `main`.
 - A branch goes into `main` with a merge commit (`git merge --no-ff`), whose message is `merge: <what the branch does>`. `git log --first-parent main` then reads as the list of changes.
 - Run [the checks](testing.md#before-committing) before every commit.
+
+## The changelog
+
+- A merge that changes what users get (a fix, a new feature, a new limit, a supported target) adds a line under `Unreleased` in [CHANGELOG.md](../CHANGELOG.md): what changed for the user, not how. Tests, CI, benchmarks and docs get no line.
+- A change that an issue asked for links the issue and thanks the person who opened it.
+- Before a tag, `Unreleased` becomes `vX.Y.Z (date)`, in its own commit.
