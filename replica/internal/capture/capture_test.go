@@ -854,8 +854,9 @@ func TestSnapshot(t *testing.T) {
 	step(t, c)
 	stop := make(chan struct{})
 	errs := make(chan error, 1)
+	wrote := make(chan struct{})
 	go func() {
-		for {
+		for i := 0; ; i++ {
 			select {
 			case <-stop:
 				errs <- nil
@@ -870,8 +871,18 @@ func TestSnapshot(t *testing.T) {
 				errs <- err
 				return
 			}
+			if i == 0 {
+				close(wrote)
+			}
 		}
 	}()
+	// The snapshot starts once the program writes, and the program may stop
+	// before it writes again: one more write follows the snapshot.
+	select {
+	case <-wrote:
+	case err := <-errs:
+		t.Fatal(err)
+	}
 	snap, txid, err := c.Snapshot(context.Background())
 	close(stop)
 	if werr := <-errs; werr != nil {
@@ -899,6 +910,7 @@ func TestSnapshot(t *testing.T) {
 	if post := dec.Trailer().PostApplyChecksum; post != staged.Post {
 		t.Fatalf("the snapshot of TXID %s has checksum %s, the staged file %s", txid, post, staged.Post)
 	}
+	run(t, db, "INSERT INTO t VALUES (randomblob(500))")
 	step(t, c)
 	if c.TXID() <= txid {
 		t.Fatalf("nothing staged after the snapshot of TXID %s", txid)
