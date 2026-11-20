@@ -98,7 +98,9 @@ func behind(t *testing.T, holder execBeginner, f func() error) error {
 		default:
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the caller never waited for the lock")
+			// Let the caller go, or the connection never closes.
+			tx.Rollback()
+			t.Fatalf("the caller never waited for the lock (it returned %v)", <-ch)
 		}
 		time.Sleep(time.Millisecond)
 	}
