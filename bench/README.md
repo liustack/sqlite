@@ -127,3 +127,15 @@ The server (`latency/`, built once per driver) is a process of its own: `net/htt
 3. Each round starts with the next driver. The table has the median of the rounds.
 
 Every driver gets the same load, so the times compare. A driver that answers fewer reads than were sent is past what it can do at that load. Keep the loads below 100%: at the base itself the slowest driver is always behind. On linux give the server cores of its own with `-wrap`, and run `benchrun` on others.
+
+## Many writers at once
+
+`TestContention` (`contention_test.go`) has many goroutines write at once and counts the writes that get `database is locked`, with the time each write that succeeds takes. It skips unless `CONTENTION` says how long each case runs. `benchrun contention` builds the test binary of every driver, runs it on each in turn and writes `results/<goos>-<goarch>/contention/contention.json`, which goes to `published/contention/<name>.json` for the tables of [docs/benchmarks.md](../docs/benchmarks.md#many-writers-at-once) and the READMEs:
+
+```sh
+go run ./cmd/benchrun contention -time 30s -name linux-amd64
+cp results/linux-amd64/contention/contention.json published/contention/linux-amd64.json
+cd .. && make bench-docs
+```
+
+`-samples` also writes every write of each case, when it started and how long it took, to `samples/<driver>-<case>.csv.gz`. `-build-only` and `-no-build` work as for `run`.
