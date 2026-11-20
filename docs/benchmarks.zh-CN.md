@@ -211,29 +211,29 @@
 
 ## 复制
 
-[复制](replication.zh-CN.md)在程序里复制每次提交，所以 CPU 花在程序自己的进程里。`replica` 里的 `BenchmarkGroupCommit` 让 8 个或 64 个 goroutine 同时插入，每次一行（WAL，`synchronous=NORMAL`），分别关掉和打开复制。存储是同一台机器另外两个线程上的 MinIO，它的开销不落在基准的线程上，就像存储在别的机器上时一样。
+[复制](replication.zh-CN.md)在程序里复制每次提交，所以 CPU 花在程序自己的进程里。`replica` 里的 `BenchmarkGroupCommit` 让 8 个或 64 个 goroutine 同时插入，每次一行（WAL，`synchronous=NORMAL`），分别关掉和打开复制。存储是同一台机器另一个核上的 MinIO，它的开销不落在基准的核上，就像存储在别的机器上时一样。
 
-提交 `def7170`，Go 1.27.2，早先一台同样 CPU 的虚拟机（4 核 8 线程），Linux 7.3.0-1003-gcp。每组跑 6 轮，用 benchstat 比较（`~` 表示和噪声分不开）。负载开始前 1.12，结束后 1.92。原始输出在 [bench/published/replica/](../bench/published/replica/)。
+提交 `8671819`，Go 1.27.4，AMD EPYC 7B13（4 核，没有超线程），Linux 7.0.0-1017-gcp，2026-11-20。每组跑 6 轮，用 benchstat 比较（`~` 表示和噪声分不开）。负载开始前 0.00，结束后 2.42。原始输出在 [bench/published/replica/](../bench/published/replica/)。
 
-单线程（`GOMAXPROCS=1`，核 0 和 4，MinIO 在 3 和 7）：
-
-```
-              关复制          开复制
-g=8           18.72µ ± 2%    19.90µ ± 2%   +6.31% (p=0.002 n=6)
-g=64          17.59µ ± 3%    19.59µ ± 1%  +11.38% (p=0.002 n=6)
-geomean       18.14µ         19.74µ        +8.82%
-```
-
-六线程（`GOMAXPROCS=6`，MinIO 在另外两个线程上）：
+单核（`GOMAXPROCS=1`，在核 0 上，MinIO 在核 3）：
 
 ```
               关复制          开复制
-g=8            9.810µ ±  2%  10.893µ ± 9%  +11.04% (p=0.002 n=6)
-g=64           3.577µ ± 20%   3.921µ ± 7%        ~ (p=0.065 n=6)
-geomean        5.923µ         6.535µ       +10.33%
+g=8           24.27µ ± 3%    24.13µ ± 3%        ~ (p=0.818 n=6)
+g=64          22.28µ ± 2%    23.08µ ± 1%   +3.57% (p=0.002 n=6)
+geomean       23.25µ         23.60µ        +1.48%
 ```
 
-也就是说，开复制后每次插入多花约 6% 到 11%。六线程 64 个写入方那一组，关复制的 6 轮里有一轮偏慢，差距落在噪声里。用 MinIO 二进制自己跑一遍，把它绑在基准以外的核上：
+三核（`GOMAXPROCS=3`，在核 0 到 2 上，MinIO 在核 3）：
+
+```
+              关复制          开复制
+g=8           12.20µ ±  2%   12.33µ ±  2%        ~ (p=0.180 n=6)
+g=64           4.154µ ± 4%    4.098µ ± 10%       ~ (p=0.937 n=6)
+geomean        7.118µ         7.107µ        -0.15%
+```
+
+也就是说，开复制后每次插入最多多花约 4%，三核上看不出差别。用 MinIO 二进制自己跑一遍，把它绑在基准以外的核上（linux 上 `MINIO` 可以指向一个执行 `taskset -c 3 minio "$@"` 的脚本，测试本身用 `taskset -c 0` 跑）：
 
 ```sh
 MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -count 6

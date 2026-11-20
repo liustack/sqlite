@@ -219,29 +219,29 @@ Allocations per op, lower is better:
 
 ## Replication
 
-[Replication](replication.md) copies each commit inside the program, so it costs CPU in the program's process. `BenchmarkGroupCommit` in `replica` inserts one row per call from 8 or 64 goroutines at once (WAL, `synchronous=NORMAL`), with replication off and on. The store is a MinIO on two other threads of the same machine, so that its work does not fall on the benchmark's, as a store on another machine's would not.
+[Replication](replication.md) copies each commit inside the program, so it costs CPU in the program's process. `BenchmarkGroupCommit` in `replica` inserts one row per call from 8 or 64 goroutines at once (WAL, `synchronous=NORMAL`), with replication off and on. The store is a MinIO on another core of the same machine, so that its work does not fall on the benchmark's, as a store on another machine's would not.
 
-Commit `def7170`, Go 1.27.2, an earlier VM with the same CPU, 4 cores and 8 threads, Linux 7.3.0-1003-gcp. 6 runs each, compared with benchstat (`~` is no difference it can tell from noise). Load average 1.12 before and 1.92 after. The raw output is in [bench/published/replica/](../bench/published/replica/).
+Commit `8671819`, Go 1.27.4, AMD EPYC 7B13 (4 cores, no SMT), Linux 7.0.0-1017-gcp, 2026-11-20. 6 runs each, compared with benchstat (`~` is no difference it can tell from noise). Load average 0.00 before and 2.42 after. The raw output is in [bench/published/replica/](../bench/published/replica/).
 
-One thread (`GOMAXPROCS=1`, cores 0 and 4, MinIO on 3 and 7):
-
-```
-              replica off    replica on
-g=8           18.72µ ± 2%    19.90µ ± 2%   +6.31% (p=0.002 n=6)
-g=64          17.59µ ± 3%    19.59µ ± 1%  +11.38% (p=0.002 n=6)
-geomean       18.14µ         19.74µ        +8.82%
-```
-
-Six threads (`GOMAXPROCS=6`, MinIO on the other two):
+One core (`GOMAXPROCS=1` on core 0, MinIO on core 3):
 
 ```
               replica off    replica on
-g=8            9.810µ ±  2%  10.893µ ± 9%  +11.04% (p=0.002 n=6)
-g=64           3.577µ ± 20%   3.921µ ± 7%        ~ (p=0.065 n=6)
-geomean        5.923µ         6.535µ       +10.33%
+g=8           24.27µ ± 3%    24.13µ ± 3%        ~ (p=0.818 n=6)
+g=64          22.28µ ± 2%    23.08µ ± 1%   +3.57% (p=0.002 n=6)
+geomean       23.25µ         23.60µ        +1.48%
 ```
 
-So an insert costs about 6 to 11% more with replication on. At 64 writers on six threads one slow run of the six without replication left the difference inside the noise. Run it with a MinIO binary, pinned away from the benchmark:
+Three cores (`GOMAXPROCS=3` on cores 0 to 2, MinIO on core 3):
+
+```
+              replica off    replica on
+g=8           12.20µ ±  2%   12.33µ ±  2%        ~ (p=0.180 n=6)
+g=64           4.154µ ± 4%    4.098µ ± 10%       ~ (p=0.937 n=6)
+geomean        7.118µ         7.107µ        -0.15%
+```
+
+So an insert costs at most about 4% more with replication on, and on three cores no difference shows. Run it with a MinIO binary, pinned away from the benchmark (on linux, `MINIO` can name a script that runs `taskset -c 3 minio "$@"`, and the test runs under `taskset -c 0`):
 
 ```sh
 MINIO=<minio> go test ./replica -run '^$' -bench GroupCommit -benchtime 3s -count 6
