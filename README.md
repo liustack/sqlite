@@ -1,6 +1,6 @@
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
-<p align="center"><b>The fastest cgo-free SQLite driver out there, fully compatible with Go's <code>database/sql</code>.<br>Real-time backup to Cloudflare R2 built in keeps your app stable and reliable on a single VPS.</b></p>
+<p align="center"><b>The fastest cgo-free SQLite driver out there, fully compatible with Go's <code>database/sql</code>.<br>Real-time backup to Cloudflare R2 built in keeps your app stable and reliable on a single VPS.<br>Concurrent writes wait their turn, so <code>database is locked</code> means real overload, never bad luck.</b></p>
 
 <p align="center">
   English · <a href="README.zh-CN.md">简体中文</a> ·
@@ -90,6 +90,27 @@ Against SQLite in C on the same machine: SQLite(C) is a C program calling SQLite
 
 Where another driver still wins: work that stays inside SQLite (the join), where this driver runs the same C but as Go assembly, and reading large text values. Why reads and many writers are faster, the versions of each driver, and how to run it all again are in [docs/benchmarks.md](docs/benchmarks.md).
 
+## Concurrent writes without `database is locked`
+
+Writers in one process wait their turn in order instead of racing for SQLite's lock. Open the database with `_txlock=immediate`, and a write transaction gets `database is locked` only when the ones queued ahead of it take longer than the busy timeout (5 s by default), that is, only when writes come faster than the disk can commit them. With other drivers, a writer that keeps losing the race waits for seconds and times out at a load where the rest wait a few milliseconds.
+
+<!-- bench:readme-contention-linux-amd64 -->
+**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `e5fe295`):
+
+**The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
+
+| Workload | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 23.9 ms | 3.93 s | 3.63 s | 86.4 ms |
+| Transactions, 64 goroutines, `_txlock=immediate` | 22.6 ms | 4.83 s, 3 locked | 3.84 s | 252 ms |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 173 ms | 5.01 s, 70 locked | 5.06 s, 18 locked | 2.22 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 215 ms | 5.01 s, 77 locked | 5.04 s, 125 locked | 1.41 s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 329 ms | 5.01 s, 273 locked | 5.11 s, 232 locked | 5.01 s, 7 locked |
+
+<!-- /bench:readme-contention-linux-amd64 -->
+
+A transaction here reads two rows and updates them, and the work inside it holds the write lock. The cases, the median and the writes per second are in [docs/benchmarks.md](docs/benchmarks.md#many-writers-at-once).
+
 ## Real-time backup to S3
 
 Start the replicator before you open the database, and every commit goes to S3, Cloudflare R2 or MinIO about a second later:
@@ -138,10 +159,10 @@ import (
 	_ "github.com/liustack/sqlite"
 )
 
-db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate")
 ```
 
-The name is a file, `:memory:` or a [SQLite URI](https://sqlite.org/uri.html). `_pragma=name(value)` runs a PRAGMA on every new connection, and `_txlock=immediate` makes `BEGIN` take the write lock at once. A connection waits 5 seconds for a lock unless `busy_timeout` says otherwise. The rest is on [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite).
+The name is a file, `:memory:` or a [SQLite URI](https://sqlite.org/uri.html). `_pragma=name(value)` runs a PRAGMA on every new connection, and `_txlock=immediate` makes `BEGIN` wait its turn for the write lock, so that a transaction that reads before it writes never fails with `database is locked` halfway. Start a transaction that only reads with `db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})`: it takes no write lock. A connection waits 5 seconds for a lock unless `busy_timeout` says otherwise. The rest is on [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite).
 
 Each connection keeps SQLite's page cache, up to 2 MB by default, until it closes, and `database/sql` opens a connection for every query that runs at the same time. Give the pool a size, and let it keep that many idle so that connections are not closed and opened again:
 
