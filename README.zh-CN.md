@@ -129,6 +129,8 @@ db.SetMaxOpenConns(16)
 db.SetMaxIdleConns(16)
 ```
 
+SQLite 靠统计信息决定一条查询怎么执行。统计信息只有 `ANALYZE` 会收集，数据变了它也不会自己更新。交给 `PRAGMA optimize` 维护就行：程序启动时跑一次 `db.Exec("PRAGMA optimize=0x10002")`，之后定期跑 `db.Exec("PRAGMA optimize")`（比如每天一次，以及 `CREATE INDEX` 之后）。它只分析需要的表，每个索引只抽样读一部分，期间占着写锁，所以一个从没有过统计信息的大库，第一次跑可能让写入等上几秒。完整的 `ANALYZE` 统计最准，但要在写锁下读完整个库，适合在没有写入的时候跑。`_pragma=optimize` 会被拒绝，因为它会在每个连接打开时运行。
+
 SQLite 给的错误是 `*sqlite.Error`。用 `errors.As` 取出来，`Code()` 和 `ExtendedCode()` 给出它的[错误码](https://sqlite.org/rescode.html)，比如 `sqlite.BUSY`、`sqlite.CONSTRAINT_UNIQUE`。
 
 Go 写的 SQL 函数、聚合函数、窗口函数、排序规则和虚拟表放在 connector 上，这样连接池里的每个连接都有：
