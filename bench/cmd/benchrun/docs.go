@@ -110,6 +110,10 @@ func cmdDocs(args []string) error {
 	if err != nil {
 		return err
 	}
+	csets, err := loadContention()
+	if err != nil {
+		return err
+	}
 	var stale []string
 	for _, f := range docFiles {
 		old, err := os.ReadFile(f.path)
@@ -126,7 +130,7 @@ func cmdDocs(args []string) error {
 				ferr = fmt.Errorf("%s: <!-- bench:%s --> ends with <!-- /bench:%s -->", f.path, name, sub[2])
 				return m
 			}
-			body, err := renderMarker(name, sets, f.l)
+			body, err := renderMarker(name, sets, csets, f.l)
 			if err != nil {
 				ferr = fmt.Errorf("%s: %w", f.path, err)
 				return m
@@ -136,7 +140,7 @@ func cmdDocs(args []string) error {
 		if ferr != nil {
 			return ferr
 		}
-		if err := complete(f.path, old, found, f.readme, sets); err != nil {
+		if err := complete(f.path, old, found, f.readme, sets, csets); err != nil {
 			return err
 		}
 		if bytes.Equal(old, new) {
@@ -176,7 +180,16 @@ func loadSets() (map[string]*Set, error) {
 	return sets, nil
 }
 
-func renderMarker(name string, sets map[string]*Set, l *lang) (string, error) {
+func renderMarker(name string, sets map[string]*Set, csets map[string]*contentionSet, l *lang) (string, error) {
+	for prefix, readmeTable := range map[string]bool{"readme-contention-": true, "contention-": false} {
+		if r, ok := strings.CutPrefix(name, prefix); ok {
+			s, ok := csets[r]
+			if !ok {
+				return "", fmt.Errorf("no bench/published/contention/%s.json", r)
+			}
+			return renderContention(s, l, readmeTable), nil
+		}
+	}
 	if r, ok := strings.CutPrefix(name, "readme-through-"); ok {
 		set, ok := readmeThrough[r]
 		if !ok {
@@ -594,7 +607,7 @@ func sig3(x float64) string {
 
 // complete checks that a doc has every table it should, once, and no marker
 // without its pair, which would leave a table out of date with no error.
-func complete(path string, doc []byte, found map[string]int, readmeTables bool, sets map[string]*Set) error {
+func complete(path string, doc []byte, found map[string]int, readmeTables bool, sets map[string]*Set, csets map[string]*contentionSet) error {
 	n := 0
 	for _, c := range found {
 		n += c
@@ -610,9 +623,15 @@ func complete(path string, doc []byte, found map[string]int, readmeTables bool, 
 		for name := range readmeThrough {
 			want = append(want, "readme-through-"+name)
 		}
+		for _, name := range readmeContention {
+			want = append(want, "readme-contention-"+name)
+		}
 	} else {
 		for name := range sets {
 			want = append(want, name)
+		}
+		for name := range csets {
+			want = append(want, "contention-"+name)
 		}
 	}
 	slices.Sort(want)

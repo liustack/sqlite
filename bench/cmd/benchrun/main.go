@@ -35,6 +35,8 @@ func main() {
 		err = cmdDocs(os.Args[2:])
 	case "native":
 		err = cmdNative(os.Args[2:])
+	case "contention":
+		err = cmdContention(os.Args[2:])
 	case "latency":
 		err = cmdLatency(os.Args[2:])
 	default:
@@ -47,6 +49,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: benchrun run|native|latency|publish|docs [flags]")
+	fmt.Fprintln(os.Stderr, "usage: benchrun run|native|latency|contention|publish|docs [flags]")
 	os.Exit(2)
 }

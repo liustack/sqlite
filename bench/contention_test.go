@@ -6,7 +6,12 @@
 package bench
 
 import (
+	"bufio"
+	"cmp"
+	"compress/gzip"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -14,7 +19,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -31,6 +35,8 @@ import (
 // transfer that writes first takes the write lock with its first statement,
 // as one started immediate does. hold is work the program does inside the
 // transaction, holding the lock. The sum of the balances never changes.
+// With CONTENTION_DIR set, every write of each case goes to
+// CONTENTION_DIR/<driver>-<case>.csv.gz.
 func TestContention(t *testing.T) {
 	run, err := time.ParseDuration(os.Getenv("CONTENTION"))
 	if err != nil {
@@ -71,15 +77,17 @@ func TestContention(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		var done, locked atomic.Int64
+		key := fmt.Sprintf("%s-%s-%s-g%d-hold%v", c.work, mode(c.work, c.txlock), c.sync, c.g, c.hold)
 		var other sync.Map
-		var latMu sync.Mutex
-		var lat []time.Duration
-		deadline := time.Now().Add(run)
+		var mu sync.Mutex
+		var samples []sample
+		begin := time.Now()
+		deadline := begin.Add(run)
 		var wg sync.WaitGroup
 		for g := range c.g {
 			wg.Go(func() {
 				r := rand.New(rand.NewPCG(uint64(g), 1))
+				var mine []sample
 				for time.Now().Before(deadline) {
 					t0 := time.Now()
 					var err error
@@ -88,18 +96,20 @@ func TestContention(t *testing.T) {
 					} else {
 						err = transfer(db, 1+r.IntN(accounts), 1+r.IntN(accounts), c.hold, c.work == "writefirst")
 					}
+					s := sample{at: t0.Sub(begin), wait: time.Since(t0)}
 					switch {
 					case err == nil:
-						done.Add(1)
-						latMu.Lock()
-						lat = append(lat, time.Since(t0))
-						latMu.Unlock()
 					case isLocked(err):
-						locked.Add(1)
+						s.locked = true
 					default:
 						other.Store(err.Error(), true)
+						continue
 					}
+					mine = append(mine, s)
 				}
+				mu.Lock()
+				samples = append(samples, mine...)
+				mu.Unlock()
 			})
 		}
 		wg.Wait()
@@ -108,32 +118,99 @@ func TestContention(t *testing.T) {
 			t.Fatal(err)
 		}
 		db.Close()
-		mode := "deferred"
-		if c.txlock != "" {
-			mode = c.txlock
+		res := summarize(key, run, samples)
+		b, err := json.Marshal(res)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if c.work == "insert" {
-			mode = "autocommit"
-		}
-		total := done.Load() + locked.Load()
-		slices.Sort(lat)
-		pct := func(p float64) time.Duration {
-			if len(lat) == 0 {
-				return 0
+		t.Logf("%s %s", resultPrefix, b)
+		if dir := os.Getenv("CONTENTION_DIR"); dir != "" {
+			if err := writeSamples(filepath.Join(dir, DriverTag+"-"+key+".csv.gz"), samples); err != nil {
+				t.Fatal(err)
 			}
-			return lat[min(len(lat)-1, int(p*float64(len(lat))))]
 		}
-		t.Logf("%-8s %-10s %-10s %-6s g=%-3d hold=%-4v %8.0f/s done, %6d locked (%5.2f%% of %d), p50 %v p99 %v max %v", DriverTag, c.work, mode, c.sync, c.g, c.hold,
-			float64(done.Load())/run.Seconds(), locked.Load(), 100*float64(locked.Load())/float64(max(total, 1)), total,
-			pct(0.5).Round(time.Microsecond), pct(0.99).Round(time.Microsecond), pct(1).Round(time.Microsecond))
 		other.Range(func(k, _ any) bool {
-			t.Errorf("%s: %v", c.work, k)
+			t.Errorf("%s: %v", key, k)
 			return true
 		})
 		if sum != accounts*start {
-			t.Errorf("%s %s: the balances sum to %d, want %d", c.work, mode, sum, accounts*start)
+			t.Errorf("%s: the balances sum to %d, want %d", key, sum, accounts*start)
 		}
 	}
+}
+
+// resultPrefix starts the line of each result, which benchrun contention
+// reads.
+const resultPrefix = "contention-result"
+
+// A sample is one write: when it started, after the start of the case, how
+// long it took, and whether it failed because the database was locked.
+type sample struct {
+	at, wait time.Duration
+	locked   bool
+}
+
+// A contentionResult is one case on one driver. The waits are of the writes
+// that succeeded, in nanoseconds.
+type contentionResult struct {
+	Case    string  `json:"case"`
+	Driver  string  `json:"driver"`
+	Seconds float64 `json:"seconds"`
+	Done    int     `json:"done"`
+	Locked  int     `json:"locked"`
+	P50     int64   `json:"p50_ns"`
+	P99     int64   `json:"p99_ns"`
+	Max     int64   `json:"max_ns"`
+}
+
+func summarize(key string, run time.Duration, samples []sample) contentionResult {
+	res := contentionResult{Case: key, Driver: DriverTag, Seconds: run.Seconds()}
+	var waits []time.Duration
+	for _, s := range samples {
+		if s.locked {
+			res.Locked++
+			continue
+		}
+		waits = append(waits, s.wait)
+	}
+	res.Done = len(waits)
+	slices.Sort(waits)
+	pct := func(p float64) int64 {
+		if len(waits) == 0 {
+			return 0
+		}
+		return int64(waits[min(len(waits)-1, int(p*float64(len(waits))))])
+	}
+	res.P50, res.P99, res.Max = pct(0.5), pct(0.99), pct(1)
+	return res
+}
+
+// writeSamples writes every write of a case, in the order they started:
+// start_ms,wait_ms,locked.
+func writeSamples(path string, samples []sample) error {
+	slices.SortFunc(samples, func(a, b sample) int { return cmp.Compare(a.at, b.at) })
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	z := gzip.NewWriter(f)
+	w := bufio.NewWriter(z)
+	fmt.Fprintln(w, "start_ms,wait_ms,locked")
+	for _, s := range samples {
+		fmt.Fprintf(w, "%.3f,%.3f,%d\n", float64(s.at)/1e6, float64(s.wait)/1e6, map[bool]int{false: 0, true: 1}[s.locked])
+	}
+	return errors.Join(w.Flush(), z.Close(), f.Close())
+}
+
+// mode is how a case writes: autocommit, or how its transactions begin.
+func mode(work, txlock string) string {
+	switch {
+	case work == "insert":
+		return "autocommit"
+	case txlock != "":
+		return txlock
+	}
+	return "deferred"
 }
 
 // transfer moves an amount from account a to account b in a transaction
