@@ -35,6 +35,7 @@ jobs:
           # amd64 binaries on the arm64 runner, which Rosetta runs
           - { name: darwin/amd64, os: macos-15, goarch: amd64 }
           - { name: windows/amd64, os: windows-2025 }
+          - { name: windows/arm64, os: windows-11-arm }
         # The lowest Go the module supports (the go line of go.mod) and the
         # newest patch release of the newest minor version it supports.
         go: [go.mod, "1.27"]

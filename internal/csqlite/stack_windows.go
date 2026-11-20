@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build windows && amd64
+//go:build windows && (amd64 || arm64)
 
 package csqlite
 

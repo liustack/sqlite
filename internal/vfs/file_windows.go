@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build windows && amd64
+//go:build windows && (amd64 || arm64)
 
 // The files and locks of SQLite on Windows, as os_win.c. Windows locks
 // (LockFileEx) belong to the handle they are taken on, and a lock stops
