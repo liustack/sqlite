@@ -193,13 +193,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 
 ## Talk to us
 
-Issues are welcome any time: [open one](https://github.com/liustack/sqlite/issues/new/choose). Tell us what you built, where it hurt, and what should come next. Follow the liustack WeChat official account, and come find me on X: **[@liustack](https://x.com/liustack)**. What changes in the driver and what comes next are shared on WeChat and X.
-
-The **liustack** WeChat official account: AI startup opportunities, indie-dev insights, and hands-on AI tooling, delivered as they happen. Scan the QR code in WeChat, or search for "liustack":
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/liustack/sqlite/main/assets/wechat-qrcode.png" width="420" alt="liustack WeChat official account" />
-</p>
+Issues are welcome any time: [open one](https://github.com/liustack/sqlite/issues/new/choose). Tell us what you built, where it hurt, and what should come next. What changes in the driver and what comes next are shared on X: **[@liustack](https://x.com/liustack)**.
 
 ## Contributing
 
