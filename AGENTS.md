@@ -18,7 +18,7 @@ Stability and safety first, speed second, memory third. A change that is faster 
 
 ## Current state of the repository
 
-The driver runs on linux, darwin and windows, amd64 and arm64. Group commit merges concurrent autocommit writes.
+The driver runs on linux, darwin and windows, amd64 and arm64. Other targets stop the build (`unsupported.go`). Group commit merges concurrent autocommit writes.
 
 - `engine/`: the C tree. `sqlite3.c` and `sqlite3.h` (SQLite 3.54.1), `sqlite.c` (the compile options), `os.c` and `host.h` (the VFS and mutexes that call the Go host), `flags.sh` (the clang flags, which the generator reads), `vendor.sh`. It has no Go file.
 - `engine/libc/`: the small libc SQLite is compiled against: headers, and musl's string and math functions (`vendor.sh` copies and checks them, and patches musl's `libm.h`). No stdio. The math functions are the ones SQLite calls (its SQL math functions, and `log` in FTS5), built without fused multiply-add so every target gives the same bits.

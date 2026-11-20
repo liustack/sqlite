@@ -220,7 +220,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 - 没有可加载扩展：SQLite 编译时去掉了 `load_extension`。
 - 没有共享缓存：`cache=shared` 会报错。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
 - 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。
-- 其他平台构建不了。
+- 其他平台（freebsd、32 位、riscv64 等）构建不了：构建会报错，错误里写着支持哪些平台。
 
 ## 文档
 
