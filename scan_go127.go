@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build go1.27 && (((linux || darwin) && (amd64 || arm64)) || (windows && amd64))
+//go:build go1.27 && (((linux || darwin) && (amd64 || arm64)) || (windows && (amd64 || arm64)))
 
 // Go 1.27 lets a driver store a column in the destination of Rows.Scan
 // itself (driver.RowsColumnScanner). With an older Go, database/sql takes

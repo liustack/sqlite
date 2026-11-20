@@ -3,7 +3,7 @@
 // Use of this source code is governed by the MIT license in LICENSE at the
 // root of this repository.
 
-//go:build ((linux || darwin) && (amd64 || arm64)) || (windows && amd64)
+//go:build ((linux || darwin) && (amd64 || arm64)) || (windows && (amd64 || arm64))
 
 // The tests that hold on every system. Those of one system are in the
 // files of that system.
