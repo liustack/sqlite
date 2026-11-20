@@ -67,6 +67,27 @@ Time per operation, lower is better, the median of 6 runs. The best of a row is 
 | Insert, 64 goroutines at once | **1.19 µs** | 9.94 µs | 5.67 ms | 85.8 µs |
 <!-- /bench:readme-darwin-arm64 -->
 
+Against SQLite in C on the same machine: SQLite(C) is a C program calling SQLite itself, liustack/sqlite(direct) calls the driver without `database/sql`, and the two `database/sql` columns read and write as a program would. Many writers at once go faster because the driver merges their commits into one.
+
+<!-- bench:readme-through-linux-amd64 -->
+**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `44acf8c`):
+
+**Throughput.** Reads or writes done per second by all threads together, on a file of 100k rows in WAL mode, higher is better:
+
+| Benchmark | SQLite(C) | liustack/sqlite(direct) | liustack/sqlite(database/sql) | mattn(database/sql) |
+| :-- | --: | --: | --: | --: |
+| 1 thread, each reads one row by key | 194k reads/s ±1% | **380k reads/s** ±1% | 290k reads/s ±1% | 103k reads/s ±0% |
+| 8 threads, each reads one row by key | 1154k reads/s ±5% | **1320k reads/s** ±2% | 987k reads/s ±2% | 423k reads/s ±5% |
+| 64 threads, each reads one row by key | 1034k reads/s ±8% | **1325k reads/s** ±1% | 939k reads/s ±3% | 425k reads/s ±3% |
+| 1 thread, each reads one row by key, whole file in cache | 241k reads/s ±2% | **756k reads/s** ±2% | 487k reads/s ±2% | 117k reads/s ±1% |
+| 8 threads, each reads one row by key, whole file in cache | 1499k reads/s ±8% | **2394k reads/s** ±4% | 1463k reads/s ±3% | 455k reads/s ±4% |
+| 64 threads, each reads one row by key, whole file in cache | 1241k reads/s ±5% | **2123k reads/s** ±4% | 1293k reads/s ±5% | 327k reads/s ±8% |
+| 8 threads read as above while 8 others write | 1005k reads/s ±8% | 1021k reads/s ±4% | 615k reads/s ±5% | 167k reads/s ±2% |
+| 8 threads, each inserts one row, while 8 others read | 2796 writes/s ±25% | 19467 writes/s ±11% | **28900 writes/s** ±4% | 15437 writes/s ±2% |
+| 64 threads, each inserts one row, `synchronous=FULL` | 819 writes/s ±6% | 56830 writes/s ±5% | 55212 writes/s ±2% | 845 writes/s ±2% |
+
+<!-- /bench:readme-through-linux-amd64 -->
+
 Where another driver still wins: work that stays inside SQLite (the join), where this driver runs the same C but as Go assembly, and reading large text values. Why reads and many writers are faster, the versions of each driver, and how to run it all again are in [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Real-time backup to S3
