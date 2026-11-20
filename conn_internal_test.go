@@ -11,6 +11,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"io"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -74,5 +76,42 @@ func drain(t *testing.T, r *rows) []driver.Value {
 			t.Fatal(err)
 		}
 		out = append(out, dest[0])
+	}
+}
+
+func TestPragmaName(t *testing.T) {
+	for p, want := range map[string]string{
+		"optimize":           "optimize",
+		"optimize(0x10002)":  "optimize",
+		" OPTIMIZE = 2":      "OPTIMIZE",
+		"main.optimize":      "optimize",
+		"main . optimize(2)": "optimize",
+		`"main"."optimize"`:  "optimize",
+		"[optimize]":         "optimize",
+		"`optimize`(2)":      "optimize",
+		"foreign_keys(1)":    "foreign_keys",
+		"journal_mode = WAL": "journal_mode",
+		"(optimize)":         "",
+		`"optimize`:          "",
+		"":                   "",
+	} {
+		if got := pragmaName(p); got != want {
+			t.Errorf("pragmaName(%q) = %q, want %q", p, got, want)
+		}
+	}
+}
+
+// PRAGMA optimize may write, and a _pragma of the DSN runs as a connection
+// opens, without the write lock (Connector.setUp): the driver refuses it
+// there and says to run it with Exec.
+func TestDSNRefusesOptimize(t *testing.T) {
+	for _, p := range []string{"optimize", "optimize(0x10002)", "main.optimize=2", "OPTIMIZE"} {
+		_, err := NewConnector("file:x.db?_pragma=" + url.QueryEscape(p))
+		if err == nil || !strings.Contains(err.Error(), "Exec") {
+			t.Errorf("_pragma=%s: err %v, want a refusal that says to use Exec", p, err)
+		}
+	}
+	if _, err := NewConnector("file:x.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"); err != nil {
+		t.Fatal(err)
 	}
 }
