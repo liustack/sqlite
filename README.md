@@ -129,6 +129,8 @@ db.SetMaxOpenConns(16)
 db.SetMaxIdleConns(16)
 ```
 
+SQLite picks how to run a query from statistics that only `ANALYZE` gathers, and it does not update them as the data changes. Let `PRAGMA optimize` keep them: run `db.Exec("PRAGMA optimize=0x10002")` once at start, and `db.Exec("PRAGMA optimize")` now and then (once a day, and after `CREATE INDEX`). It analyzes only the tables that need it, from a sample of each index, and holds the write lock while it does, so its first run on a large database that never had statistics can keep writes waiting for seconds. A full `ANALYZE` gives the best statistics and reads the whole database under the write lock: run it when nothing writes. `_pragma=optimize` is refused, as it would run each time a connection opens.
+
 An error from SQLite is a `*sqlite.Error`. `errors.As` gets it, and `Code()` and `ExtendedCode()` give its [result code](https://sqlite.org/rescode.html), as `sqlite.BUSY` or `sqlite.CONSTRAINT_UNIQUE`.
 
 SQL functions, aggregates, window functions, collations and virtual tables written in Go go on the connector, so that every connection of the pool has them:

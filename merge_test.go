@@ -98,7 +98,9 @@ func behind(t *testing.T, holder execBeginner, f func() error) error {
 		default:
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the caller never waited for the lock")
+			// Let the caller go, or the connection never closes.
+			tx.Rollback()
+			t.Fatalf("the caller never waited for the lock (it returned %v)", <-ch)
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -210,6 +212,69 @@ func TestMergeSynchronousDiffers(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("a synchronous=OFF connection committed the write of a synchronous=FULL pool (total_changes %d)", n)
+	}
+}
+
+// PRAGMA optimize that picks one table to analyze runs ANALYZE inside it,
+// and SQLite still says the statement writes nothing
+// (sqlite3_stmt_readonly). It must wait for the write lock as any write
+// does, not start reading and then get SQLITE_BUSY for the write.
+func TestOptimizeWaitsForWriteLock(t *testing.T) {
+	for _, mode := range []string{"wal", "delete"} {
+		t.Run(mode, func(t *testing.T) {
+			db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode("+mode+")")
+			mExec(t, db, schemaH)
+			mExec(t, db, `CREATE TABLE t(x)`)
+			mExec(t, db, `CREATE INDEX tx ON t(x)`)
+			mExec(t, db, `INSERT INTO t VALUES (1), (2), (3)`)
+			ctx := context.Background()
+			holder, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer holder.Close()
+			if err := behind(t, holder, func() error {
+				_, err := db.Exec(`PRAGMA optimize`)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if n := mCount(t, db, `SELECT count(*) FROM sqlite_stat1 WHERE tbl = 't'`); n != 1 {
+				t.Fatalf("sqlite_stat1 has %d rows for t, want 1", n)
+			}
+		})
+	}
+}
+
+// The argument of PRAGMA optimize is a mask for that run, not a setting of
+// the connection: a connection that ran it still merges.
+func TestMergeAfterOptimizeMask(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE t(x)`)
+	ctx := context.Background()
+	holder, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	mExec(t, holder, `PRAGMA optimize=0x10002`)
+	var before, after int
+	if err := holder.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if err := behind(t, holder, func() error {
+		_, err := db.Exec(`INSERT INTO t VALUES (1)`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	// The holder's own row is 1. A merged insert ran on it too.
+	if after-before != 2 {
+		t.Fatalf("the insert did not merge after PRAGMA optimize=0x10002 (total_changes went from %d to %d)", before, after)
 	}
 }
 

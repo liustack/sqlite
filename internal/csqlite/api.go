@@ -260,6 +260,9 @@ const (
 	changesConn = 4
 	// 8 is guarded (replica.go).
 	readsWALAuto = 16 // the statement reads PRAGMA wal_autocheckpoint
+	// mayWrite: the statement may write though sqlite3_stmt_readonly says it
+	// does not (PRAGMA optimize, which runs ANALYZE inside it).
+	mayWrite = 32
 )
 
 // Spent says SQLite ran out of memory, failed to read or write a file or
@@ -424,7 +427,7 @@ func (c *Conn) prepare(sql string) (s *Stmt, tail string, err error) {
 	if p == 0 {
 		return nil, tail, nil
 	}
-	writes := int32(sqlite3_stmt_readonly(a.top, p)) == 0
+	writes := int32(sqlite3_stmt_readonly(a.top, p)) == 0 || kind&mayWrite != 0
 	if int32(sqlite3_stmt_isexplain(a.top, p)) != 0 {
 		// EXPLAIN lists the program of the statement and runs none of it.
 		// goClassify saw the INSERT of an EXPLAIN INSERT, and SQLite counts

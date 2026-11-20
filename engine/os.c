@@ -407,6 +407,13 @@ char *go_strdup(const char *z) { return sqlite3_mprintf("%s", z); }
    steps such a statement with SQLite's own WAL hook in place
    (go_wal_give). */
 #define GO_WAL_AUTO 16
+/* GO_WRITES: the statement may write though sqlite3_stmt_readonly says it
+   does not. PRAGMA optimize runs ANALYZE through OP_SqlExec, which SQLite
+   does not count as a write: when it picks one table, it opens no write
+   transaction of its own first. The host takes the write lock for it as for
+   any write, so that the ANALYZE does not meet a writer of the process
+   after the statement started to read (it would get SQLITE_BUSY at once). */
+#define GO_WRITES 32
 
 static int isMain(const char *db) { return db && strcmp(db, "main") == 0; }
 static int isTemp(const char *db) { return db && strcmp(db, "temp") == 0; }
@@ -524,8 +531,11 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     /* a is the name of the pragma, b its argument. Without an argument a
        pragma reads its setting. */
     *flags |= GO_PRIVATE;
-    if (b && !infoPragma(a)) *flags |= GO_STATE;
+    /* The argument of optimize is a mask for that run, not a setting of
+       the connection. */
+    if (b && !infoPragma(a) && sqlite3_stricmp(a, "optimize") != 0) *flags |= GO_STATE;
     if (!b && sqlite3_stricmp(a, "wal_autocheckpoint") == 0) *flags |= GO_WAL_AUTO;
+    if (sqlite3_stricmp(a, "optimize") == 0) *flags |= GO_WRITES;
     if (w->guard && goGuarded(w->db, a, b, db)) {
       w->flags |= GO_GUARDED;
       return SQLITE_DENY;

@@ -23,7 +23,8 @@
 // driver's and SQLite does not see them:
 //
 //   - _pragma=name(value): a PRAGMA run on every new connection, in order.
-//     It may be given more than once.
+//     It may be given more than once. Not optimize, which may write: run it
+//     with Exec once the database is open.
 //   - _txlock=deferred, immediate or exclusive: how BEGIN starts a
 //     transaction (deferred by default). A read-only transaction always
 //     starts deferred.
@@ -105,6 +106,13 @@ func NewConnector(dsn string, opts ...Option) (*Connector, error) {
 		return nil, fmt.Errorf("sqlite: data source name %q: %w", dsn, err)
 	}
 	for _, p := range q["_pragma"] {
+		if strings.EqualFold(pragmaName(p), "optimize") {
+			// It may run ANALYZE, a write, as the connection opens, which
+			// takes no write lock of the driver (setUp): it would fail with
+			// SQLITE_BUSY, or wait in SQLite's busy handler, while another
+			// connection of the process writes.
+			return nil, errors.New("sqlite: _pragma=optimize: run it once the database is open, db.Exec(\"PRAGMA optimize=0x10002\") at start and db.Exec(\"PRAGMA optimize\") now and then, so that it waits for the write lock as a write does")
+		}
 		c.pragmas = append(c.pragmas, "PRAGMA "+p)
 	}
 	switch l := q.Get("_txlock"); l {
@@ -221,6 +229,36 @@ func (c *Connector) setUp(conn *conn) error {
 		conn.alone = dfk != 0
 	}
 	return nil
+}
+
+// pragmaName is the name of the PRAGMA a _pragma value starts with, without
+// its schema: optimize for "main.optimize(0x10002)". A name in quotes is
+// read without them. "" when the value starts with something else.
+func pragmaName(p string) string {
+	quotes := map[byte]byte{'"': '"', '\'': '\'', '`': '`', '[': ']'}
+	ident := func(s string) (string, string) {
+		s = strings.TrimLeft(s, " \t\r\n")
+		if s == "" {
+			return "", s
+		}
+		if end, ok := quotes[s[0]]; ok {
+			i := strings.IndexByte(s[1:], end)
+			if i < 0 {
+				return "", ""
+			}
+			return s[1 : 1+i], s[2+i:]
+		}
+		i := 0
+		for i < len(s) && (s[i] == '_' || s[i] >= '0' && s[i] <= '9' || s[i] >= 'a' && s[i] <= 'z' || s[i] >= 'A' && s[i] <= 'Z' || s[i] >= 0x80) {
+			i++
+		}
+		return s[:i], s[i:]
+	}
+	name, rest := ident(p)
+	if rest = strings.TrimLeft(rest, " \t\r\n"); strings.HasPrefix(rest, ".") {
+		name, _ = ident(rest[1:])
+	}
+	return name
 }
 
 // pragmaInt reads the value of a PRAGMA that is a number.
