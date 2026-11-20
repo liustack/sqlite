@@ -233,6 +233,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 | [Replication](docs/replication.md) | You want a copy of the database in S3, R2 or MinIO, or to restore one |
 | [When every core is busy](docs/busy-cores.md) | A read or a write waits tens of milliseconds or more now and then, or you run on one core or two |
 | [Upstream](docs/upstream.md) | You want to know which SQLite it is, or how it moves to a new one |
+| [Changelog](CHANGELOG.md) | You want to know what a release changed before you upgrade |
 | [Testing](docs/testing.md), [Commits](docs/commit.md) | You are about to change the code |
 
 ## Talk to us

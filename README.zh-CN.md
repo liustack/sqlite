@@ -233,6 +233,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 | [复制](docs/replication.zh-CN.md) | 想把数据库复制到 S3、R2 或 MinIO，或者从副本恢复 |
 | [所有核都忙的时候](docs/busy-cores.zh-CN.md) | 读或写偶尔要等几十毫秒以上，或者只在一两个核上跑 |
 | [上游](docs/upstream.zh-CN.md) | 想知道用的是哪个 SQLite，或者怎么升级到新版 |
+| [更新记录](CHANGELOG.md)（英文） | 升级前想知道这一版改了什么 |
 | [Testing](docs/testing.md)、[Commits](docs/commit.md)（英文） | 准备改代码 |
 
 ## 联系我们
