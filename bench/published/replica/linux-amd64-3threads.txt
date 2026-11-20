@@ -1,0 +1,33 @@
+== start Fri Nov 20 11:38:14 UTC 2026
+ 11:38:14 up 3 days, 22:19,  1 user,  load average: 1.41, 0.48, 0.17
+goos: linux
+goarch: amd64
+pkg: github.com/liustack/sqlite/replica
+cpu: AMD EPYC 7B13
+BenchmarkGroupCommit/replica=false/g=8-3         	  301611	     12381 ns/op
+BenchmarkGroupCommit/replica=false/g=8-3         	  276700	     12205 ns/op
+BenchmarkGroupCommit/replica=false/g=8-3         	  301929	     11912 ns/op
+BenchmarkGroupCommit/replica=false/g=8-3         	  264912	     12118 ns/op
+BenchmarkGroupCommit/replica=false/g=8-3         	  274644	     12239 ns/op
+BenchmarkGroupCommit/replica=false/g=8-3         	  288554	     12186 ns/op
+BenchmarkGroupCommit/replica=false/g=64-3        	  867814	      4237 ns/op
+BenchmarkGroupCommit/replica=false/g=64-3        	  837068	      4151 ns/op
+BenchmarkGroupCommit/replica=false/g=64-3        	  814696	      4157 ns/op
+BenchmarkGroupCommit/replica=false/g=64-3        	  895062	      4011 ns/op
+BenchmarkGroupCommit/replica=false/g=64-3        	  878120	      4178 ns/op
+BenchmarkGroupCommit/replica=false/g=64-3        	  901490	      3988 ns/op
+BenchmarkGroupCommit/replica=true/g=8-3          	  368977	     12059 ns/op
+BenchmarkGroupCommit/replica=true/g=8-3          	  350436	     12617 ns/op
+BenchmarkGroupCommit/replica=true/g=8-3          	  348165	     12202 ns/op
+BenchmarkGroupCommit/replica=true/g=8-3          	  331299	     12404 ns/op
+BenchmarkGroupCommit/replica=true/g=8-3          	  366583	     12452 ns/op
+BenchmarkGroupCommit/replica=true/g=8-3          	  326270	     12249 ns/op
+BenchmarkGroupCommit/replica=true/g=64-3         	  723866	      4509 ns/op
+BenchmarkGroupCommit/replica=true/g=64-3         	  854365	      4191 ns/op
+BenchmarkGroupCommit/replica=true/g=64-3         	  816432	      3982 ns/op
+BenchmarkGroupCommit/replica=true/g=64-3         	  909646	      4111 ns/op
+BenchmarkGroupCommit/replica=true/g=64-3         	  812030	      4083 ns/op
+BenchmarkGroupCommit/replica=true/g=64-3         	  852423	      4084 ns/op
+PASS
+== end Fri Nov 20 11:40:10 UTC 2026
+ 11:40:10 up 3 days, 22:21,  1 user,  load average: 2.42, 1.12, 0.45
