@@ -32,7 +32,10 @@ func TestInteropShell(t *testing.T) {
 	for _, mode := range []string{"delete", "truncate", "persist", "wal"} {
 		t.Run(mode, func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "interop.db")
-			db, err := sql.Open("sqlite", "file:"+name+"?_pragma=busy_timeout(60000)&_pragma=journal_mode("+mode+")")
+			// The driver's writers wait out most of the shell's run (below):
+			// busy_timeout is far longer than the shell ever writes, so that
+			// a slow runner does not turn that wait into "database is locked".
+			db, err := sql.Open("sqlite", "file:"+name+"?_pragma=busy_timeout(300000)&_pragma=journal_mode("+mode+")")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -41,9 +44,11 @@ func TestInteropShell(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// With the rollback journal a writer that writes without a break
-			// keeps the other out, C or Go: the shell writes for a few
-			// seconds only, less than busy_timeout, even where fsync is slow.
+			// A writer that writes without a break keeps the other out, C or
+			// Go: SQLite's busy handler looks again every 100 ms at most and
+			// seldom finds the lock free between two of its writes. The
+			// driver gets a few turns, and its writers wait for the rest of
+			// the shell's run: 5 to 18 s on windows, once over 60 s.
 			rows, workers := 3000, 4
 			if mode != "wal" {
 				rows = 300
@@ -53,13 +58,14 @@ func TestInteropShell(t *testing.T) {
 			for i := range rows {
 				fmt.Fprintf(&script, "INSERT INTO t VALUES('shell', %d);\n", i)
 				if i%50 == 0 {
-					script.WriteString("SELECT count(*) FROM t;\n")
+					script.WriteString("SELECT count(*), strftime('%H:%M:%f', 'now') FROM t;\n")
 				}
 			}
 			var out bytes.Buffer
 			cmd := exec.Command(shell, "-bail", name)
 			cmd.Stdin = strings.NewReader(script.String())
 			cmd.Stdout, cmd.Stderr = &out, &out
+			began := time.Now()
 			if err := cmd.Start(); err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +109,7 @@ func TestInteropShell(t *testing.T) {
 						}
 						start := time.Now()
 						if _, err := db.Exec(`INSERT INTO t VALUES('go', ?)`, written[w]); err != nil {
-							errs <- err
+							errs <- fmt.Errorf("write %d of worker %d, %v into the test, after %v: %w", written[w], w, time.Since(began).Round(time.Millisecond), time.Since(start).Round(time.Millisecond), err)
 							return
 						}
 						written[w]++
@@ -120,11 +126,18 @@ func TestInteropShell(t *testing.T) {
 				}()
 			}
 			serr := <-shellDone
+			shellTook := time.Since(began)
 			close(stop)
 			wg.Wait()
 			close(errs)
+			failed := false
 			for err := range errs {
 				t.Error(err)
+				failed = true
+			}
+			if failed {
+				// The shell prints the time every 50 rows.
+				t.Logf("the shell wrote for %v:\n%s", shellTook.Round(time.Millisecond), out.String())
 			}
 			if serr != nil {
 				t.Fatalf("shell: %v\n%s", serr, out.String())
@@ -133,7 +146,7 @@ func TestInteropShell(t *testing.T) {
 			for _, n := range written {
 				goRows += n
 			}
-			t.Logf("the driver wrote %d rows while the shell wrote %d", goRows, rows)
+			t.Logf("the driver wrote %d rows while the shell wrote %d in %v", goRows, rows, shellTook.Round(time.Millisecond))
 			if goRows == 0 {
 				t.Fatal("the driver wrote nothing while the shell wrote")
 			}
