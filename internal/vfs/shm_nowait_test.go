@@ -119,6 +119,33 @@ func TestShmWriterTakesNoMutex(t *testing.T) {
 	}
 }
 
+// A region that is mapped already is found with no mutex, as a connection
+// finds it each time it looks up a frame in a part of the index it has not
+// used yet.
+func TestShmMapMappedTakesNoMutex(t *testing.T) {
+	a, b, _ := twoFiles(t)
+	a0, a1 := shmMapT(t, a, 0, true), shmMapT(t, a, 1, true)
+	shmMapT(t, b, 0, false)
+	t.Cleanup(func() { a.ShmUnmap(false); b.ShmUnmap(false) })
+
+	type got struct {
+		addr uintptr
+		rc   int
+	}
+	var res [3]got
+	nodeHeld(t, a.shm.node, "a region mapped already", func() {
+		for i, c := range []struct {
+			f *File
+			n int
+		}{{b, 0}, {b, 1}, {a, 1}} {
+			res[i].addr, res[i].rc = c.f.ShmMap(c.n, shmRegionSize, false)
+		}
+	})
+	if want := [3]got{{a0, OK}, {a1, OK}, {a1, OK}}; res != want {
+		t.Fatalf("ShmMap of regions 0 and 1 = %v, want %v", res, want)
+	}
+}
+
 // learn (wal_unix.go) holds the mutex of the node while it looks at who has
 // the checkpoint slot: a connection takes that slot under the mutex.
 func TestShmCheckpointSlotTakesMutex(t *testing.T) {

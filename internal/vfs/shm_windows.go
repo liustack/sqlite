@@ -39,8 +39,12 @@ type shmNode struct {
 	left     []slotRange  // ranges whose unlock failed, on any handle of the node
 	leftN    atomic.Int32 // len(left), read without mu
 	regions  []uintptr    // address of each region
-	maps     []shmMapping
-	ov       windows.Overlapped
+	// mapped is regions as ShmMap may read it without mu: a copy of the
+	// slice, stored under mu each time regions grows. Regions are only
+	// added, and unmapped when the last File goes.
+	mapped atomic.Pointer[[]uintptr]
+	maps   []shmMapping
+	ov     windows.Overlapped
 }
 
 type shmMapping struct {
@@ -273,6 +277,14 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 		}
 	}
 	node := f.shm.node
+	// A region mapped already is found without the mutex (docs/busy-cores.md
+	// section 7). Regions are mapped after the DMS lock is taken, which then
+	// stays. A read-only -shm goes the long way for its result.
+	if !node.readOnly {
+		if r := node.mapped.Load(); r != nil && n < len(*r) {
+			return (*r)[n], OK
+		}
+	}
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	if node.unlocked {
@@ -298,6 +310,10 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 // larger first when extend is set. Each region has a view of its own,
 // started on the allocation granularity. node.mu is held.
 func (node *shmNode) mapRegions(want, size int, extend bool) int {
+	defer func() {
+		r := node.regions[:len(node.regions):len(node.regions)]
+		node.mapped.Store(&r)
+	}()
 	need := int64(want) * int64(size)
 	var info windows.ByHandleFileInformation
 	if windows.GetFileInformationByHandle(node.h, &info) != nil {

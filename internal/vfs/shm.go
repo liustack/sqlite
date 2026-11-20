@@ -44,11 +44,15 @@ type shmNode struct {
 	slots    [ShmNLock]shmSlot // who holds each slot, in the process and in the kernel
 	others   atomic.Bool       // another process had the -shm open when last looked: no idle slots
 	regions  []uintptr         // address of each region mapped
-	maps     []mapping         // what to unmap
-	fl       unix.Flock_t      // space for the fcntl argument, for the DMS byte
-	timer    *time.Timer       // releases the idle slots
-	armed    atomic.Bool       // timer is set to run
-	closed   bool              // the descriptor is closed: the timer does nothing
+	// mapped is regions as ShmMap may read it without mu: a copy of the
+	// slice, stored under mu each time regions grows. Regions are only
+	// added, and unmapped when the last File goes.
+	mapped atomic.Pointer[[]uintptr]
+	maps   []mapping    // what to unmap
+	fl     unix.Flock_t // space for the fcntl argument, for the DMS byte
+	timer  *time.Timer  // releases the idle slots
+	armed  atomic.Bool  // timer is set to run
+	closed bool         // the descriptor is closed: the timer does nothing
 	// alone says the process took the DMS lock for writing after a sync of
 	// the WAL failed, and keeps it: see wal_unix.go. The -shm is emptied as
 	// the node closes.
@@ -219,6 +223,24 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 		}
 	}
 	node := f.shm.node
+	// With pages larger than a region, map whole pages.
+	perMap := os.Getpagesize() / size
+	if perMap < 1 {
+		perMap = 1
+	}
+	want := (n + perMap) / perMap * perMap
+
+	// A region mapped already is found without the mutex (docs/busy-cores.md
+	// section 7): connections ask for one each time they look up a frame in a
+	// part of the index they have not used yet. A read-only -shm (its DMS
+	// lock, its result) and a File that holds EXCLUSIVE (node.excl) go the
+	// long way.
+	if !node.readOnly && f.lock < LockExclusive {
+		if r := node.mapped.Load(); r != nil && len(*r) >= want {
+			return (*r)[n], OK
+		}
+	}
+
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	if node.unlocked {
@@ -227,13 +249,6 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 		}
 		node.unlocked = false
 	}
-
-	// With pages larger than a region, map whole pages.
-	perMap := os.Getpagesize() / size
-	if perMap < 1 {
-		perMap = 1
-	}
-	want := (n + perMap) / perMap * perMap
 
 	rc := OK
 	if len(node.regions) < want {
@@ -258,6 +273,7 @@ func (f *File) ShmMap(n, size int, extend bool) (uintptr, int) {
 // mapRegions maps regions until there are want of them, making the file
 // larger first when extend is set. node.mu is held.
 func (node *shmNode) mapRegions(want, size, perMap int, extend bool) int {
+	defer node.publish()
 	var st unix.Stat_t
 	if err := unix.Fstat(node.fd, &st); err != nil {
 		return IOErrShmSize
@@ -301,6 +317,12 @@ func (node *shmNode) mapRegions(want, size, perMap int, extend bool) int {
 		}
 	}
 	return OK
+}
+
+// publish stores a copy of regions in mapped. node.mu is held.
+func (node *shmNode) publish() {
+	r := node.regions[:len(node.regions):len(node.regions)]
+	node.mapped.Store(&r)
 }
 
 // openShm attaches the File to the node of its database, as os_unix's
