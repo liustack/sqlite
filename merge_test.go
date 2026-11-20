@@ -244,6 +244,38 @@ func TestOptimizeWaitsForWriteLock(t *testing.T) {
 	}
 }
 
+// The argument of PRAGMA optimize is a mask for that run, not a setting of
+// the connection: a connection that ran it still merges.
+func TestMergeAfterOptimizeMask(t *testing.T) {
+	db := mOpen(t, "file:"+mPath(t)+"?_pragma=journal_mode(WAL)")
+	mExec(t, db, schemaH)
+	mExec(t, db, `CREATE TABLE t(x)`)
+	ctx := context.Background()
+	holder, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	mExec(t, holder, `PRAGMA optimize=0x10002`)
+	var before, after int
+	if err := holder.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if err := behind(t, holder, func() error {
+		_, err := db.Exec(`INSERT INTO t VALUES (1)`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	// The holder's own row is 1. A merged insert ran on it too.
+	if after-before != 2 {
+		t.Fatalf("the insert did not merge after PRAGMA optimize=0x10002 (total_changes went from %d to %d)", before, after)
+	}
+}
+
 func TestMergeTempShadow(t *testing.T) {
 	p := mPath(t)
 	db := mOpen(t, "file:"+p+"?_pragma=journal_mode(WAL)")

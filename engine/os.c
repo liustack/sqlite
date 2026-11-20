@@ -531,7 +531,9 @@ static int goClassify(void *p, int op, const char *a, const char *b, const char 
     /* a is the name of the pragma, b its argument. Without an argument a
        pragma reads its setting. */
     *flags |= GO_PRIVATE;
-    if (b && !infoPragma(a)) *flags |= GO_STATE;
+    /* The argument of optimize is a mask for that run, not a setting of
+       the connection. */
+    if (b && !infoPragma(a) && sqlite3_stricmp(a, "optimize") != 0) *flags |= GO_STATE;
     if (!b && sqlite3_stricmp(a, "wal_autocheckpoint") == 0) *flags |= GO_WAL_AUTO;
     if (sqlite3_stricmp(a, "optimize") == 0) *flags |= GO_WRITES;
     if (w->guard && goGuarded(w->db, a, b, db)) {
