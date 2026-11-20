@@ -12,7 +12,7 @@ Compares SQLite drivers for Go's `database/sql` on the same workloads and the sa
 
 Several of these register the driver name `sqlite` or `sqlite3`, so only one can be linked into a binary. A build tag picks the driver (`driver_<tag>.go`). Each file gives `DriverName`, `DriverTag` and `DSN(path, synchronous)`. To add a driver, add a file with the same three things.
 
-`turso` runs only when `-drivers` names it, and the tables of [docs/benchmarks.md](../docs/benchmarks.md) leave it out, since it is not SQLite. Its DSN takes no PRAGMA, so `driver_turso.go` registers a driver that runs the same settings on each connection it opens. tursogo prepares a statement again on each call (its `Prepare` only counts the parameters), so its numbers are those of Turso as Go programs use it, not of its engine alone.
+`turso` runs only when `-drivers` names it, so the tables of [docs/benchmarks.md](../docs/benchmarks.md) compare the SQLite drivers only. Its DSN takes no PRAGMA, so `driver_turso.go` registers a driver that runs the same settings on each connection it opens. Turso accepts an unknown PRAGMA or value without an error, and most of these settings are its defaults anyway: `synchronous` is the one `TestPragmas` would catch. tursogo prepares a statement again on each call (its `Prepare` only counts the parameters), so its numbers are those of Turso as Go programs use it, not of its engine alone. Turso opens a file for one process only (`PRAGMA locking_mode` says `exclusive`), so it skips the locks a WAL transaction of SQLite takes for other processes.
 
 ## Run
 
