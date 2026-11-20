@@ -56,9 +56,7 @@ func TestWALStopped(t *testing.T) {
 	c := open(t, name, testOptions(t))
 	db := openApp(t, "file:"+name+"?_pragma=synchronous(NORMAL)")
 	run(t, db, "CREATE TABLE t(x)")
-	c.mu.Lock()
 	err := c.checkpoint(ctx)
-	c.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,9 +71,7 @@ func TestWALStopped(t *testing.T) {
 	}
 	copies := c.FullCopies()
 
-	c.mu.Lock()
 	err = c.checkpoint(ctx)
-	c.mu.Unlock()
 	if err == nil || !failed.Load() {
 		t.Fatalf("checkpoint: %v, sync failed %v", err, failed.Load())
 	}

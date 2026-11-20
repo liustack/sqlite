@@ -105,33 +105,53 @@ func (c *Capturer) Snapshot(ctx context.Context) (snap string, _ ltx.TXID, err e
 	return name, txid, nil
 }
 
-// pin stages the WAL to its end under the driver's write lock and opens a
-// read transaction there on c.snap. It returns the TXID staged and the
-// checksum of the database there.
-func (c *Capturer) pin(ctx context.Context) (ltx.TXID, ltx.Checksum, error) {
+// prepare opens c.snap and, after a stop at the limit, stages the full copy
+// that goes first, outside the driver's write lock. Should staging stop
+// again before pin takes the lock, pin finds the WAL lost and fails.
+func (c *Capturer) prepare(ctx context.Context) error {
 	if err := c.mu.LockCtx(ctx); err != nil {
-		return 0, 0, err
+		return err
 	}
 	defer c.mu.Unlock()
 	if c.closed {
-		return 0, 0, errors.New("capture: closed")
+		return errors.New("capture: closed")
 	}
 	if c.snap == nil {
 		conn, err := csqlite.Open(c.path, csqlite.OpenReadOnly|csqlite.OpenNoMutex, "")
 		if err != nil {
-			return 0, 0, err
+			return err
 		}
 		c.snap = conn
 	}
-	// After a stop at the limit, the full copy goes first.
-	if err := c.goOn(); err != nil {
-		return 0, 0, err
-	}
-	unlock, err := replhook.Lock(ctx, c.path)
-	if err != nil {
-		return 0, 0, err
+	return c.goOn()
+}
+
+// pin stages the WAL to its end under the driver's write lock and opens a
+// read transaction there on c.snap. It returns the TXID staged and the
+// checksum of the database there.
+func (c *Capturer) pin(ctx context.Context) (ltx.TXID, ltx.Checksum, error) {
+	// The write lock comes before mu (Capturer.mu). Holding it, pin does
+	// not wait for mu, which a full copy may hold: the writers would wait
+	// as long. It gives the lock back and waits for mu without it.
+	var unlock func()
+	for {
+		if err := c.prepare(ctx); err != nil {
+			return 0, 0, err
+		}
+		var err error
+		if unlock, err = replhook.Lock(ctx, c.path); err != nil {
+			return 0, 0, err
+		}
+		if c.mu.TryLock() {
+			break
+		}
+		unlock()
 	}
 	defer unlock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return 0, 0, errors.New("capture: closed")
+	}
 	if _, err := c.capture(); err != nil {
 		return 0, 0, err
 	}
