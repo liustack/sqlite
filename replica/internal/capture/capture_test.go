@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -509,12 +510,13 @@ func TestOtherProcess(t *testing.T) {
 	db := openApp(t, name)
 	run(t, db, "CREATE TABLE t(x)", "INSERT INTO t VALUES (1)")
 	step(t, c)
-	cli := func(sql string) {
+	cli := func(sql string) string {
 		t.Helper()
 		out, err := exec.Command(shell, name, sql).CombinedOutput()
 		if err != nil {
 			t.Fatalf("sqlite3: %v: %s", err, out)
 		}
+		return string(out)
 	}
 	cli("INSERT INTO t VALUES (randomblob(3000)); INSERT INTO t VALUES (randomblob(3000));")
 	run(t, db, "INSERT INTO t VALUES (2)")
@@ -523,7 +525,13 @@ func TestOtherProcess(t *testing.T) {
 	if c.FullCopies() != 0 {
 		t.Fatalf("%d full copies for frames another process appended", c.FullCopies())
 	}
-	cli("INSERT INTO t VALUES (randomblob(3000)); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (3);")
+	// A read slot this process locked a moment ago may still be locked: the
+	// checkpoint waits for it, as a checkpoint waits for a reader, and
+	// returns busy only if it never goes.
+	out := cli("PRAGMA busy_timeout=5000; INSERT INTO t VALUES (randomblob(3000)); PRAGMA wal_checkpoint(TRUNCATE); INSERT INTO t VALUES (3);")
+	if !slices.Contains(strings.Fields(out), "0|0|0") {
+		t.Fatalf("the checkpoint of the other process did not start the WAL over: %q", out)
+	}
 	run(t, db, "INSERT INTO t VALUES (4)")
 	step(t, c)
 	if c.FullCopies() != 1 {
