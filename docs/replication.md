@@ -1,9 +1,9 @@
 ---
-summary: 'How to keep a copy of a database in S3-compatible storage with the replica package, restore it, what a lost machine costs and what the store costs, what replication changes for the program, and its limits'
+summary: 'How to keep a copy of a database in S3-compatible storage with the replica package, restore it, what happens when the machine is lost and what the store costs, what replication changes for the program, and its limits'
 read_when:
   - Setting up replication of a database, or restoring one
   - Asked what the replicator guarantees, or what happens while the store is down
-  - Asked how many writes a lost machine costs, or what replication costs on R2
+  - Asked what a lost machine means for the data, or what replication costs on R2
   - Moving a replicated database to another machine
   - Changing the user-facing behavior of replica
 ---
@@ -64,9 +64,9 @@ With the store up and nothing waiting, the copy is usually `SyncInterval` plus o
 
 `r.Status()` says where replication is: the last TXID staged, the last TXID in the store, the bytes waiting, and the error of the last upload. A TXID numbers the files of the replica, as Litestream counts them: each copy into the staging folder is one TXID, and holds every commit since the copy before. A restore point is the end of a file, not each commit.
 
-## What a lost machine costs
+## When the machine is lost
 
-No setup loses nothing in every case. A disk that fails is covered by the RAID or the replicated volume under your VPS. What the replica is for is the rarer case: the whole machine gone, its disks with it. Then you lose the commits that were not uploaded yet, about the last second of writes, and only if there were any in that second.
+A failed disk is covered by the RAID or the replicated volume under your VPS. The replica is for the rarer case, the whole machine gone with its disks: a new machine restores the database from it, with every commit up to about the last second. The commits of that last second, if there were any, are the ones not uploaded yet.
 
 Measured with `TestLostOnKill` (see [bench/README.md](../bench/README.md)): a process replicates to Cloudflare R2 with the default settings while goroutines insert, and is killed with SIGKILL, which stops its uploads at the moment a lost machine would. The replica is then restored on the same machine and compared with what the process had acknowledged. Apple M4, a home connection to R2, 10 s of writes before each kill:
 
