@@ -139,3 +139,5 @@ cd .. && make bench-docs
 ```
 
 `-samples` also writes every write of each case, when it started and how long it took, to `samples/<driver>-<case>.csv.gz`. `-build-only` and `-no-build` work as for `run`.
+
+On Windows the workflow `bench-windows` ([.github/workflows/bench-windows.yml](../.github/workflows/bench-windows.yml)) runs it on the `windows-2025` (x64) and `windows-11-arm` runners, every driver on one runner per architecture. Start it with `gh workflow run bench-windows.yml --ref <branch>`, and copy `contention.json` from the artifact of each job to `published/contention/windows-amd64.json` and `windows-arm64.json`. On Arm, mattn's cgo is built with llvm-mingw, because the runner's gcc builds only x86-64.

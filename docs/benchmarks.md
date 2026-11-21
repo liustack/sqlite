@@ -1,5 +1,5 @@
 ---
-summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, how many writes get database is locked when many write at once, against SQLite in C, what replication costs, and how the numbers were taken'
+summary: 'How fast the driver is against mattn/go-sqlite3 (cgo), modernc.org/sqlite and ncruces/go-sqlite3, on linux/amd64 and darwin/arm64, how many writes get database is locked when many write at once (on linux and on Windows x64 and Arm), against SQLite in C, what replication costs, and how the numbers were taken'
 read_when:
   - Asked how fast the driver is, or how it compares with other drivers
   - Changing something on the path of a query or a commit, to measure it again
@@ -254,6 +254,72 @@ Commit `e5fe295`, Go 1.27.4, AMD EPYC 7B13, Linux 7.0.0-1017-gcp x86_64, GOMAXPR
 - **With `_txlock=immediate`, or a first statement that writes,** no write of this driver got `database is locked`, and the slowest took 23 to 329 ms. Writers of one process wait for each other in a queue, in the order they came, so a write waits for the writes ahead of it and no more. With the other drivers they race for SQLite's lock and sleep longer and longer between tries: most writes get through fast, and a few lose again and again until the busy timeout. mattn had writes fail that way in every such case, modernc in all but one and ncruces in one, while most writes waited a few milliseconds.
 - **The waits are spread evenly**, so the median is longer with this driver where writers queue: with 2 ms of work in each transaction, 149 ms against 7 ms with mattn and modernc, and the 99th percentile 166 ms against 2.8 to 3.0 s.
 - **Writes per second** are 25 to 36% higher than mattn's in transactions, 3.4 times with `synchronous=FULL`, and 5 times for autocommit inserts, which group commit merges.
+
+### On Windows
+
+The same test on GitHub's Windows runners, `windows-2025` (x64) and `windows-11-arm` (Arm), every driver on one runner per architecture, run by the `bench-windows` workflow (see [bench/README.md](../bench/README.md)). mattn's cgo is built with the runner's MinGW gcc on x64 and with llvm-mingw on Arm, because the gcc of the Arm runner builds only x86-64. These runners are shared virtual machines, so their times move more from run to run than those of the linux machine above. The counts of `database is locked` are the part to read.
+
+<!-- bench:contention-windows-amd64 -->
+Commit `9b06a41`, Go 1.27.4, cgo with gcc (x86_64-posix-seh-rev1, Built by MinGW-Builds project) 15.2.0, AMD EPYC 9V45 96-Core Processor, Windows 10.0.26100.33828 amd64, GOMAXPROCS 4 of 4 threads, 2026-11-21.
+
+**The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 1.06 s | 42.3 s, 197 locked | 31.6 s, 139 locked | 851 ms |
+| Transactions, 64 goroutines, deferred | 1.37 s, 6240772 locked | 2.03 s, 3657227 locked | 3.73 s, 1795547 locked | 1.80 s, 3920556 locked |
+| Transactions, 64 goroutines, `_txlock=immediate` | 192 ms | 5.51 s, 139 locked | 5.07 s, 89 locked | 2.23 s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 471 ms | 5.49 s, 289 locked | 5.03 s, 84 locked | 2.74 s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 399 ms | 5.51 s, 261 locked | 5.03 s, 88 locked | 2.55 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 279 ms | 5.52 s, 291 locked | 5.02 s, 314 locked | 3.75 s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 1.02 s | 5.60 s, 1150 locked | 5.04 s, 654 locked | 4.85 s, 3 locked |
+
+**Writes done per second**, all goroutines together:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 79446 writes/s | 58649 writes/s | 24843 writes/s | 21223 writes/s |
+| Transactions, 64 goroutines, deferred | 1325 writes/s | 6731 writes/s | 790 writes/s | 1441 writes/s |
+| Transactions, 64 goroutines, `_txlock=immediate` | 5503 writes/s | 16346 writes/s | 5742 writes/s | 5151 writes/s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 354 writes/s | 390 writes/s | 324 writes/s | 378 writes/s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 340 writes/s | 379 writes/s | 351 writes/s | 371 writes/s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 340 writes/s | 372 writes/s | 319 writes/s | 242 writes/s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 459 writes/s | 409 writes/s | 552 writes/s | 557 writes/s |
+
+<!-- /bench:contention-windows-amd64 -->
+
+<!-- bench:contention-windows-arm64 -->
+Commit `9b06a41`, Go 1.27.4, cgo with clang version 23.1.5 (https://github.com/llvm/llvm-project.git 392dfff97d29b59d77e5cac6d4b6ef2585fe7117), Cobalt 100, Windows 10.0.26200.9974 arm64, GOMAXPROCS 4 of 4 threads, 2026-11-21.
+
+**The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 416 ms | 19.8 s, 2 locked | 5.02 s, 66 locked | 413 ms |
+| Transactions, 64 goroutines, deferred | 1.83 s, 4246078 locked | 1.98 s, 2154308 locked | 451 ms, 390655 locked | 2.18 s, 3113389 locked |
+| Transactions, 64 goroutines, `_txlock=immediate` | 142 ms | 5.53 s, 144 locked | 5.05 s, 53 locked | 1.02 s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 397 ms | 5.46 s, 138 locked | 5.02 s, 41 locked | 2.70 s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 385 ms | 5.46 s, 143 locked | 5.03 s, 54 locked | 2.75 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 573 ms | 5.50 s, 296 locked | 5.03 s, 189 locked | 3.53 s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 721 ms | 5.59 s, 852 locked | 5.06 s, 597 locked | 4.77 s, 9 locked |
+
+**Writes done per second**, all goroutines together:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 167k writes/s | 34905 writes/s | 11372 writes/s | 10092 writes/s |
+| Transactions, 64 goroutines, deferred | 1333 writes/s | 3489 writes/s | 871 writes/s | 1054 writes/s |
+| Transactions, 64 goroutines, `_txlock=immediate` | 5692 writes/s | 9614 writes/s | 2549 writes/s | 2320 writes/s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 384 writes/s | 387 writes/s | 381 writes/s | 393 writes/s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 349 writes/s | 380 writes/s | 379 writes/s | 388 writes/s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 214 writes/s | 270 writes/s | 210 writes/s | 191 writes/s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 546 writes/s | 631 writes/s | 552 writes/s | 476 writes/s |
+
+<!-- /bench:contention-windows-arm64 -->
+
+- **With `_txlock=immediate`, or a first statement that writes,** no write of this driver got `database is locked` on x64 or on Arm, and the slowest took 142 ms to 1.02 s. mattn and modernc had writes fail that way in every such case, ncruces with 256 goroutines only (3 on x64, 9 on Arm).
+- **Short transactions are slower on Windows.** With `_txlock=immediate` and nothing done inside, this driver does 5503 a second on x64 and 5692 on Arm, mattn 16346 and 9614, where on linux this driver does more than mattn (14148 against 11267). The cause is not found yet. With 1 or 2 ms of work in each transaction the drivers are close: 340 to 459 writes a second for this driver against 379 to 409 for mattn on x64, and 349 to 546 against 380 to 631 on Arm.
+- **Autocommit inserts**, which group commit merges, are still the most: 79446 a second on x64 and 167k on Arm, against 58649 and 34905 for mattn.
 
 ## Replication
 
