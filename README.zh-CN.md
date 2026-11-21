@@ -96,17 +96,17 @@
 同一个进程里的写者按到达顺序排队，不去抢 SQLite 的锁。用 `_txlock=immediate` 打开数据库，一个写事务只有在排在它前面的事务加起来超过 busy timeout（默认 5 秒）时才会报 `database is locked`，也就是写入速度真的超过了磁盘能提交的速度。别的驱动里，抢锁一直输的写者会等上好几秒然后超时，而同样的负载下其他写者只等几毫秒。
 
 <!-- bench:readme-contention-linux-amd64 -->
-**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `e5fe295`）：
+**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `10d5df4`）：
 
 **最慢的一次写**（一个事务，或一条自动提交的语句），以及每项 30 秒里有多少次写报 `database is locked`：
 
 | 负载 | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| 64 个 goroutine 同时各插入一行 | 23.9 ms | 3.93 s | 3.63 s | 86.4 ms |
-| 事务，64 个 goroutine，`_txlock=immediate` | 22.6 ms | 4.83 s，3 次锁错误 | 3.84 s | 252 ms |
-| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 173 ms | 5.01 s，70 次锁错误 | 5.06 s，18 次锁错误 | 2.22 s |
-| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 215 ms | 5.01 s，77 次锁错误 | 5.04 s，125 次锁错误 | 1.41 s |
-| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 329 ms | 5.01 s，273 次锁错误 | 5.11 s，232 次锁错误 | 5.01 s，7 次锁错误 |
+| 64 个 goroutine 同时各插入一行 | 16.3 ms | 4.43 s | 2.93 s | 83.1 ms |
+| 事务，64 个 goroutine，`_txlock=immediate` | 28.5 ms | 5.01 s | 4.13 s | 165 ms |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 165 ms | 5.01 s，45 次锁错误 | 4.94 s，35 次锁错误 | 1.78 s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 96.2 ms | 5.01 s，256 次锁错误 | 5.01 s，241 次锁错误 | 4.63 s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 326 ms | 5.01 s，283 次锁错误 | 5.06 s，216 次锁错误 | 4.45 s |
 
 <!-- /bench:readme-contention-linux-amd64 -->
 

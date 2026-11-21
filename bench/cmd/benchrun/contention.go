@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +22,8 @@ import (
 
 // A contentionResult is one case of TestContention (contention_test.go) on
 // one driver: the writes that succeeded, those that got "database is
-// locked", and how long the ones that succeeded took, in nanoseconds.
+// locked", how long the ones that succeeded took, in nanoseconds, and the
+// largest the WAL got, in bytes (0 in runs that did not record it).
 type contentionResult struct {
 	Case    string  `json:"case"`
 	Driver  string  `json:"driver"`
@@ -31,6 +33,7 @@ type contentionResult struct {
 	P50     int64   `json:"p50_ns"`
 	P99     int64   `json:"p99_ns"`
 	Max     int64   `json:"max_ns"`
+	MaxWAL  int64   `json:"max_wal_bytes,omitempty"`
 }
 
 // A contentionSet is one run of TestContention on every driver:
@@ -259,8 +262,23 @@ func renderContention(s *contentionSet, l *lang, readmeTable bool) string {
 	table(waitIntro, wait, !readmeTable)
 	if !readmeTable {
 		table(rateIntro, func(r contentionResult) string { return value(float64(r.Done)/r.Seconds, "writes/s") }, true)
+		if slices.ContainsFunc(s.Results, func(r contentionResult) bool { return r.MaxWAL > 0 }) {
+			walIntro := "**The largest WAL** while the case ran. A WAL that keeps growing means the checkpoints copied less than was written, and the writes have not paid for the rest yet:"
+			if l.zh {
+				walIntro = "**WAL 最大到多大**。WAL 一直涨，说明检查点拷回去的比写进来的少，剩下那部分写入还没付出代价："
+			}
+			table(walIntro, func(r contentionResult) string { return walSize(r.MaxWAL) }, true)
+		}
 	}
 	return b.String()
+}
+
+// walSize is a size of the WAL in MiB, or in GiB from 1 GiB.
+func walSize(n int64) string {
+	if n >= 1<<30 {
+		return sig3(float64(n)/(1<<30)) + " GiB"
+	}
+	return sig3(float64(n)/(1<<20)) + " MiB"
 }
 
 // readmeContention lists the runs of TestContention with a README table

@@ -7,7 +7,7 @@
     },
     {
       "k": "commit",
-      "v": "9b06a41"
+      "v": "10d5df4"
     },
     {
       "k": "go",
@@ -19,7 +19,7 @@
     },
     {
       "k": "cpu",
-      "v": "AMD EPYC 9V45 96-Core Processor"
+      "v": "INTEL(R) XEON(R) PLATINUM 8573C"
     },
     {
       "k": "threads",
@@ -61,281 +61,309 @@
       "case": "insert-autocommit-NORMAL-g64-hold0s",
       "driver": "liustack",
       "seconds": 30,
-      "done": 2383366,
+      "done": 2556315,
       "locked": 0,
       "p50_ns": 0,
-      "p99_ns": 1210700,
-      "max_ns": 1059473900
+      "p99_ns": 2013400,
+      "max_ns": 252784000,
+      "max_wal_bytes": 4148872
     },
     {
       "case": "transfer-deferred-NORMAL-g64-hold0s",
       "driver": "liustack",
       "seconds": 30,
-      "done": 39735,
-      "locked": 6240772,
+      "done": 31162,
+      "locked": 3572600,
       "p50_ns": 0,
-      "p99_ns": 1573000,
-      "max_ns": 1369929200
+      "p99_ns": 2025500,
+      "max_ns": 1224776400,
+      "max_wal_bytes": 208476152
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold0s",
       "driver": "liustack",
       "seconds": 30,
-      "done": 165094,
+      "done": 97060,
       "locked": 0,
-      "p50_ns": 2146800,
-      "p99_ns": 106438800,
-      "max_ns": 191631700
+      "p50_ns": 5347000,
+      "p99_ns": 153207100,
+      "max_ns": 201413600,
+      "max_wal_bytes": 4124152
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold2ms",
       "driver": "liustack",
       "seconds": 30,
-      "done": 10632,
+      "done": 11046,
       "locked": 0,
-      "p50_ns": 160528900,
-      "p99_ns": 436431400,
-      "max_ns": 471217000
+      "p50_ns": 161503200,
+      "p99_ns": 320792400,
+      "max_ns": 331031300,
+      "max_wal_bytes": 4124152
     },
     {
       "case": "writefirst-deferred-NORMAL-g64-hold2ms",
       "driver": "liustack",
       "seconds": 30,
-      "done": 10207,
+      "done": 10057,
       "locked": 0,
-      "p50_ns": 160745200,
-      "p99_ns": 395460300,
-      "max_ns": 398778100
+      "p50_ns": 162477200,
+      "p99_ns": 358382700,
+      "max_ns": 362536200,
+      "max_wal_bytes": 4128272
     },
     {
       "case": "transfer-immediate-FULL-g64-hold0s",
       "driver": "liustack",
       "seconds": 30,
-      "done": 10188,
+      "done": 8541,
       "locked": 0,
-      "p50_ns": 185292300,
-      "p99_ns": 261102800,
-      "max_ns": 279404700
+      "p50_ns": 219873600,
+      "p99_ns": 324102400,
+      "max_ns": 628470800,
+      "max_wal_bytes": 4124152
     },
     {
       "case": "transfer-immediate-NORMAL-g256-hold1ms",
       "driver": "liustack",
       "seconds": 30,
-      "done": 13781,
+      "done": 14564,
       "locked": 0,
-      "p50_ns": 393420800,
-      "p99_ns": 1020707900,
-      "max_ns": 1023571200
+      "p50_ns": 403386900,
+      "p99_ns": 796252700,
+      "max_ns": 798224300,
+      "max_wal_bytes": 4124152
     },
     {
       "case": "insert-autocommit-NORMAL-g64-hold0s",
       "driver": "mattn",
       "seconds": 30,
-      "done": 1759484,
-      "locked": 197,
+      "done": 430636,
+      "locked": 104,
       "p50_ns": 0,
-      "p99_ns": 530700,
-      "max_ns": 42296420600
+      "p99_ns": 1025000,
+      "max_ns": 6246860500,
+      "max_wal_bytes": 189202792
     },
     {
       "case": "transfer-deferred-NORMAL-g64-hold0s",
       "driver": "mattn",
       "seconds": 30,
-      "done": 201928,
-      "locked": 3657227,
+      "done": 89374,
+      "locked": 1351837,
       "p50_ns": 0,
-      "p99_ns": 1568000,
-      "max_ns": 2030139600
+      "p99_ns": 2026900,
+      "max_ns": 3627819700,
+      "max_wal_bytes": 565659552
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold0s",
       "driver": "mattn",
       "seconds": 30,
-      "done": 490367,
-      "locked": 139,
+      "done": 215956,
+      "locked": 98,
       "p50_ns": 0,
-      "p99_ns": 718100,
-      "max_ns": 5506995500
+      "p99_ns": 6042100,
+      "max_ns": 5529151100,
+      "max_wal_bytes": 9294752
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold2ms",
       "driver": "mattn",
       "seconds": 30,
-      "done": 11700,
-      "locked": 289,
-      "p50_ns": 2564300,
-      "p99_ns": 91483100,
-      "max_ns": 5487993500
+      "done": 10750,
+      "locked": 267,
+      "p50_ns": 2620500,
+      "p99_ns": 2005318900,
+      "max_ns": 5524606400,
+      "max_wal_bytes": 5821592
     },
     {
       "case": "writefirst-deferred-NORMAL-g64-hold2ms",
       "driver": "mattn",
       "seconds": 30,
-      "done": 11375,
-      "locked": 261,
-      "p50_ns": 2565000,
-      "p99_ns": 2164669600,
-      "max_ns": 5510331300
+      "done": 8161,
+      "locked": 190,
+      "p50_ns": 2622300,
+      "p99_ns": 3887388800,
+      "max_ns": 14613975600,
+      "max_wal_bytes": 6035832
     },
     {
       "case": "transfer-immediate-FULL-g64-hold0s",
       "driver": "mattn",
       "seconds": 30,
-      "done": 11174,
-      "locked": 291,
-      "p50_ns": 2506600,
-      "p99_ns": 66204500,
-      "max_ns": 5516049700
+      "done": 2728,
+      "locked": 299,
+      "p50_ns": 3300600,
+      "p99_ns": 2566469100,
+      "max_ns": 5674723100,
+      "max_wal_bytes": 4169472
     },
     {
       "case": "transfer-immediate-NORMAL-g256-hold1ms",
       "driver": "mattn",
       "seconds": 30,
-      "done": 12278,
-      "locked": 1150,
-      "p50_ns": 1577400,
-      "p99_ns": 4739578900,
-      "max_ns": 5595436800
+      "done": 16864,
+      "locked": 1183,
+      "p50_ns": 1616200,
+      "p99_ns": 3947528700,
+      "max_ns": 5627726600,
+      "max_wal_bytes": 4536152
     },
     {
       "case": "insert-autocommit-NORMAL-g64-hold0s",
       "driver": "modernc",
       "seconds": 30,
-      "done": 745298,
-      "locked": 139,
+      "done": 299388,
+      "locked": 86,
       "p50_ns": 0,
-      "p99_ns": 613900,
-      "max_ns": 31591907500
+      "p99_ns": 6578800,
+      "max_ns": 5031147400,
+      "max_wal_bytes": 1244314192
     },
     {
       "case": "transfer-deferred-NORMAL-g64-hold0s",
       "driver": "modernc",
       "seconds": 30,
-      "done": 23696,
-      "locked": 1795547,
+      "done": 21503,
+      "locked": 345994,
       "p50_ns": 0,
-      "p99_ns": 22346800,
-      "max_ns": 3730256400
+      "p99_ns": 17721900,
+      "max_ns": 67269300,
+      "max_wal_bytes": 138135392
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold0s",
       "driver": "modernc",
       "seconds": 30,
-      "done": 172267,
-      "locked": 89,
+      "done": 77188,
+      "locked": 80,
       "p50_ns": 0,
-      "p99_ns": 39667400,
-      "max_ns": 5074157700
+      "p99_ns": 435747500,
+      "max_ns": 5104386200,
+      "max_wal_bytes": 522885712
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold2ms",
       "driver": "modernc",
       "seconds": 30,
-      "done": 9728,
-      "locked": 84,
-      "p50_ns": 6766700,
-      "p99_ns": 3066716700,
-      "max_ns": 5027137900
+      "done": 10685,
+      "locked": 47,
+      "p50_ns": 6428600,
+      "p99_ns": 3046032500,
+      "max_ns": 5029435900,
+      "max_wal_bytes": 72301912
     },
     {
       "case": "writefirst-deferred-NORMAL-g64-hold2ms",
       "driver": "modernc",
       "seconds": 30,
-      "done": 10540,
-      "locked": 88,
-      "p50_ns": 5770500,
-      "p99_ns": 3042454700,
-      "max_ns": 5026124400
+      "done": 10533,
+      "locked": 94,
+      "p50_ns": 5978000,
+      "p99_ns": 3346006300,
+      "max_ns": 5025705400,
+      "max_wal_bytes": 114144632
     },
     {
       "case": "transfer-immediate-FULL-g64-hold0s",
       "driver": "modernc",
       "seconds": 30,
-      "done": 9571,
-      "locked": 314,
-      "p50_ns": 2687700,
-      "p99_ns": 1142323000,
-      "max_ns": 5023327600
+      "done": 8454,
+      "locked": 237,
+      "p50_ns": 3140800,
+      "p99_ns": 3348550900,
+      "max_ns": 5026470100,
+      "max_wal_bytes": 4857512
     },
     {
       "case": "transfer-immediate-NORMAL-g256-hold1ms",
       "driver": "modernc",
       "seconds": 30,
-      "done": 16558,
-      "locked": 654,
-      "p50_ns": 4316400,
-      "p99_ns": 4247761500,
-      "max_ns": 5041879500
+      "done": 14789,
+      "locked": 594,
+      "p50_ns": 4968600,
+      "p99_ns": 4450331700,
+      "max_ns": 5152565800,
+      "max_wal_bytes": 99551592
     },
     {
       "case": "insert-autocommit-NORMAL-g64-hold0s",
       "driver": "ncruces",
       "seconds": 30,
-      "done": 636697,
+      "done": 305824,
       "locked": 0,
       "p50_ns": 0,
-      "p99_ns": 78819900,
-      "max_ns": 850742500
+      "p99_ns": 106138900,
+      "max_ns": 368234200,
+      "max_wal_bytes": 1271201312
     },
     {
       "case": "transfer-deferred-NORMAL-g64-hold0s",
       "driver": "ncruces",
       "seconds": 30,
-      "done": 43241,
-      "locked": 3920556,
+      "done": 38009,
+      "locked": 1971729,
       "p50_ns": 0,
-      "p99_ns": 2009800,
-      "max_ns": 1795419500
+      "p99_ns": 2029200,
+      "max_ns": 1051783800,
+      "max_wal_bytes": 244991712
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold0s",
       "driver": "ncruces",
       "seconds": 30,
-      "done": 154541,
+      "done": 71209,
       "locked": 0,
       "p50_ns": 0,
-      "p99_ns": 358245600,
-      "max_ns": 2232537300
+      "p99_ns": 474569200,
+      "max_ns": 1748346100,
+      "max_wal_bytes": 483432592
     },
     {
       "case": "transfer-immediate-NORMAL-g64-hold2ms",
       "driver": "ncruces",
       "seconds": 30,
-      "done": 11336,
+      "done": 11195,
       "locked": 0,
-      "p50_ns": 9781300,
-      "p99_ns": 1387994300,
-      "max_ns": 2738669600
+      "p50_ns": 26149000,
+      "p99_ns": 1278896600,
+      "max_ns": 2560471700,
+      "max_wal_bytes": 75478432
     },
     {
       "case": "writefirst-deferred-NORMAL-g64-hold2ms",
       "driver": "ncruces",
       "seconds": 30,
-      "done": 11137,
+      "done": 10672,
       "locked": 0,
-      "p50_ns": 27209700,
-      "p99_ns": 1294880100,
-      "max_ns": 2554871600
+      "p50_ns": 31107400,
+      "p99_ns": 1363900200,
+      "max_ns": 2805323800,
+      "max_wal_bytes": 116493032
     },
     {
       "case": "transfer-immediate-FULL-g64-hold0s",
       "driver": "ncruces",
       "seconds": 30,
-      "done": 7258,
+      "done": 5832,
       "locked": 0,
-      "p50_ns": 152803700,
-      "p99_ns": 1547087800,
-      "max_ns": 3749611700
+      "p50_ns": 204207400,
+      "p99_ns": 1791142800,
+      "max_ns": 2734109300,
+      "max_wal_bytes": 38999952
     },
     {
       "case": "transfer-immediate-NORMAL-g256-hold1ms",
       "driver": "ncruces",
       "seconds": 30,
-      "done": 16724,
-      "locked": 3,
-      "p50_ns": 224025600,
-      "p99_ns": 2777687000,
-      "max_ns": 4852513600
+      "done": 13434,
+      "locked": 4,
+      "p50_ns": 346227500,
+      "p99_ns": 3079238700,
+      "max_ns": 4815867300,
+      "max_wal_bytes": 90508192
     }
   ]
 }

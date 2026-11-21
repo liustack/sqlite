@@ -222,104 +222,142 @@ Allocations per op, lower is better:
 `TestContention` in `bench/contention_test.go` has 64 or 256 goroutines write at once, 30 s for each case on each driver, with `busy_timeout` 5 s for every driver, and counts the writes that got `database is locked`. A transfer is a transaction that reads two rows and updates them. Work inside a transaction is time the program spends there holding the write lock, as a program that computes something between its statements does. Each case checks that the balances still add up. `benchrun contention` runs it on every driver (see [bench/README.md](../bench/README.md)).
 
 <!-- bench:contention-linux-amd64 -->
-Commit `e5fe295`, Go 1.27.4, AMD EPYC 7B13, Linux 7.0.0-1017-gcp x86_64, GOMAXPROCS 4 of 4 threads, 2026-11-20. Load average (1, 5, 15 minutes) before: 0.07 0.32 0.80, after: 3.27 2.55 1.80.
+Commit `10d5df4`, Go 1.27.4, AMD EPYC 7B13, Linux 7.0.0-1017-gcp x86_64, GOMAXPROCS 4 of 4 threads, 2026-11-21. Load average (1, 5, 15 minutes) before: 0.00 0.00 0.10, after: 3.12 2.35 1.43.
 
 **The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
 
 | Workload | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert one row, 64 goroutines at once | 23.9 ms | 3.93 s | 3.63 s | 86.4 ms |
-| Transactions, 64 goroutines, deferred | 610 ms, 5289455 locked | 1.78 s, 3034824 locked | 39.6 ms, 935625 locked | 1.34 s, 1663455 locked |
-| Transactions, 64 goroutines, `_txlock=immediate` | 22.6 ms | 4.83 s, 3 locked | 3.84 s | 252 ms |
-| Transactions, 64 goroutines, immediate, 2 ms of work in each | 173 ms | 5.01 s, 70 locked | 5.06 s, 18 locked | 2.22 s |
-| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 172 ms | 5.02 s, 18 locked | 5.02 s, 37 locked | 2.06 s |
-| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 215 ms | 5.01 s, 77 locked | 5.04 s, 125 locked | 1.41 s |
-| Transactions, 256 goroutines, immediate, 1 ms of work in each | 329 ms | 5.01 s, 273 locked | 5.11 s, 232 locked | 5.01 s, 7 locked |
+| Insert one row, 64 goroutines at once | 16.3 ms | 4.43 s | 2.93 s | 83.1 ms |
+| Transactions, 64 goroutines, deferred | 1.47 s, 6657740 locked | 2.12 s, 3648767 locked | 52.9 ms, 1865060 locked | 1.38 s, 2502345 locked |
+| Transactions, 64 goroutines, `_txlock=immediate` | 28.5 ms | 5.01 s | 4.13 s | 165 ms |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 165 ms | 5.01 s, 45 locked | 4.94 s, 35 locked | 1.78 s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 162 ms | 5.01 s, 24 locked | 5.01 s, 13 locked | 1.78 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 96.2 ms | 5.01 s, 256 locked | 5.01 s, 241 locked | 4.63 s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 326 ms | 5.01 s, 283 locked | 5.06 s, 216 locked | 4.45 s |
 
 **Writes done per second**, all goroutines together:
 
 | Workload | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert one row, 64 goroutines at once | 240k writes/s | 46957 writes/s | 20563 writes/s | 14560 writes/s |
-| Transactions, 64 goroutines, deferred | 3668 writes/s | 2739 writes/s | 1061 writes/s | 1007 writes/s |
-| Transactions, 64 goroutines, `_txlock=immediate` | 14148 writes/s | 11267 writes/s | 6030 writes/s | 5787 writes/s |
-| Transactions, 64 goroutines, immediate, 2 ms of work in each | 426 writes/s | 330 writes/s | 325 writes/s | 338 writes/s |
-| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 423 writes/s | 314 writes/s | 315 writes/s | 330 writes/s |
-| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 1610 writes/s | 480 writes/s | 486 writes/s | 1109 writes/s |
-| Transactions, 256 goroutines, immediate, 1 ms of work in each | 831 writes/s | 610 writes/s | 528 writes/s | 354 writes/s |
+| Insert one row, 64 goroutines at once | 296k writes/s | 47307 writes/s | 32959 writes/s | 29303 writes/s |
+| Transactions, 64 goroutines, deferred | 3056 writes/s | 2152 writes/s | 1684 writes/s | 1244 writes/s |
+| Transactions, 64 goroutines, `_txlock=immediate` | 16040 writes/s | 13349 writes/s | 9333 writes/s | 9139 writes/s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 435 writes/s | 378 writes/s | 373 writes/s | 357 writes/s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 431 writes/s | 375 writes/s | 363 writes/s | 346 writes/s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 1781 writes/s | 753 writes/s | 746 writes/s | 1759 writes/s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 850 writes/s | 693 writes/s | 717 writes/s | 606 writes/s |
+
+**The largest WAL** while the case ran. A WAL that keeps growing means the checkpoints copied less than was written, and the writes have not paid for the rest yet:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 3.95 MiB | 5.49 GiB | 3.83 GiB | 3.40 GiB |
+| Transactions, 64 goroutines, deferred | 144 MiB | 409 MiB | 321 MiB | 229 MiB |
+| Transactions, 64 goroutines, `_txlock=immediate` | 3.93 MiB | 2.48 GiB | 1.74 GiB | 1.70 GiB |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 3.93 MiB | 26.9 MiB | 39.6 MiB | 68.9 MiB |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 3.94 MiB | 69.6 MiB | 65.0 MiB | 108 MiB |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 3.93 MiB | 5.52 MiB | 4.47 MiB | 4.00 MiB |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 3.93 MiB | 134 MiB | 138 MiB | 117 MiB |
 
 <!-- /bench:contention-linux-amd64 -->
 
 - **Deferred transactions that read before they write** fail most of the time with every driver. In WAL mode such a transaction cannot wait for the write lock: once another writer commits, the snapshot it read is old. Start them with `_txlock=immediate`.
-- **With `_txlock=immediate`, or a first statement that writes,** no write of this driver got `database is locked`, and the slowest took 23 to 329 ms. Writers of one process wait for each other in a queue, in the order they came, so a write waits for the writes ahead of it and no more. With the other drivers they race for SQLite's lock and sleep longer and longer between tries: most writes get through fast, and a few lose again and again until the busy timeout. mattn had writes fail that way in every such case, modernc in all but one and ncruces in one, while most writes waited a few milliseconds.
-- **The waits are spread evenly**, so the median is longer with this driver where writers queue: with 2 ms of work in each transaction, 149 ms against 7 ms with mattn and modernc, and the 99th percentile 166 ms against 2.8 to 3.0 s.
-- **Writes per second** are 25 to 36% higher than mattn's in transactions, 3.4 times with `synchronous=FULL`, and 5 times for autocommit inserts, which group commit merges.
+- **With `_txlock=immediate`, or a first statement that writes,** no write of this driver got `database is locked`, and the slowest took 29 to 326 ms. Writers of one process wait for each other in a queue, in the order they came, so a write waits for the writes ahead of it and no more. With the other drivers they race for SQLite's lock and sleep longer and longer between tries: most writes get through fast, and a few lose again and again until the busy timeout. mattn and modernc had writes fail that way in all but one such case, while most writes waited a few milliseconds. ncruces had none in this run.
+- **The waits are spread evenly**, so the median is longer with this driver where writers queue: with 2 ms of work in each transaction, 147 ms against 6 ms with mattn and modernc, and the 99th percentile 163 ms against 2.9 to 3.1 s.
+- **Writes per second** are 15 to 23% higher than mattn's in transactions, 2.4 times with `synchronous=FULL`, and 6.3 times for autocommit inserts, which group commit merges.
+- **The WAL of the other drivers grew to gigabytes** in 30 s on this machine: 5.49 GiB for mattn with autocommit inserts and 2.48 GiB with `_txlock=immediate`, 1.70 to 3.83 GiB for modernc and ncruces. SQLite starts the WAL over only at a moment when no connection reads it, and their 64 writers are all inside SQLite, in a transaction or retrying in the busy handler, so that moment does not come. Nothing is lost, but the file keeps its disk space after the load stops. After 30 s of such inserts and a crash, the first read of mattn's database took 2.2 s with the WAL in the page cache and 33 s without, modernc's 1.7 s and 19 s, against 2.3 ms and 63 ms for this driver (`TestReopenAfterCrash`, see [bench/README.md](../bench/README.md)). This driver queues its writers before they enter SQLite and starts the WAL over each 1000 frames: it stayed under 4 MiB, and reached 144 MiB with deferred transactions, whose reads hold the WAL past the 64 MiB limit. On an Apple M4 with 10 cores mattn's WAL stayed at 12 MiB, so how far it grows depends on the machine.
 
 ### On Windows
 
 The same test on GitHub's Windows runners, `windows-2025` (x64) and `windows-11-arm` (Arm), every driver on one runner per architecture, run by the `bench-windows` workflow (see [bench/README.md](../bench/README.md)). mattn's cgo is built with the runner's MinGW gcc on x64 and with llvm-mingw on Arm, because the gcc of the Arm runner builds only x86-64. These runners are shared virtual machines, so their times move more from run to run than those of the linux machine above. The counts of `database is locked` are the part to read.
 
 <!-- bench:contention-windows-amd64 -->
-Commit `9b06a41`, Go 1.27.4, cgo with gcc (x86_64-posix-seh-rev1, Built by MinGW-Builds project) 15.2.0, AMD EPYC 9V45 96-Core Processor, Windows 10.0.26100.33828 amd64, GOMAXPROCS 4 of 4 threads, 2026-11-21.
+Commit `10d5df4`, Go 1.27.4, cgo with gcc (x86_64-posix-seh-rev1, Built by MinGW-Builds project) 15.2.0, INTEL(R) XEON(R) PLATINUM 8573C, Windows 10.0.26100.33828 amd64, GOMAXPROCS 4 of 4 threads, 2026-11-21.
 
 **The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
 
 | Workload | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert one row, 64 goroutines at once | 1.06 s | 42.3 s, 197 locked | 31.6 s, 139 locked | 851 ms |
-| Transactions, 64 goroutines, deferred | 1.37 s, 6240772 locked | 2.03 s, 3657227 locked | 3.73 s, 1795547 locked | 1.80 s, 3920556 locked |
-| Transactions, 64 goroutines, `_txlock=immediate` | 192 ms | 5.51 s, 139 locked | 5.07 s, 89 locked | 2.23 s |
-| Transactions, 64 goroutines, immediate, 2 ms of work in each | 471 ms | 5.49 s, 289 locked | 5.03 s, 84 locked | 2.74 s |
-| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 399 ms | 5.51 s, 261 locked | 5.03 s, 88 locked | 2.55 s |
-| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 279 ms | 5.52 s, 291 locked | 5.02 s, 314 locked | 3.75 s |
-| Transactions, 256 goroutines, immediate, 1 ms of work in each | 1.02 s | 5.60 s, 1150 locked | 5.04 s, 654 locked | 4.85 s, 3 locked |
+| Insert one row, 64 goroutines at once | 253 ms | 6.25 s, 104 locked | 5.03 s, 86 locked | 368 ms |
+| Transactions, 64 goroutines, deferred | 1.22 s, 3572600 locked | 3.63 s, 1351837 locked | 67.3 ms, 345994 locked | 1.05 s, 1971729 locked |
+| Transactions, 64 goroutines, `_txlock=immediate` | 201 ms | 5.53 s, 98 locked | 5.10 s, 80 locked | 1.75 s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 331 ms | 5.52 s, 267 locked | 5.03 s, 47 locked | 2.56 s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 363 ms | 14.6 s, 190 locked | 5.03 s, 94 locked | 2.81 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 628 ms | 5.67 s, 299 locked | 5.03 s, 237 locked | 2.73 s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 798 ms | 5.63 s, 1183 locked | 5.15 s, 594 locked | 4.82 s, 4 locked |
 
 **Writes done per second**, all goroutines together:
 
 | Workload | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert one row, 64 goroutines at once | 79446 writes/s | 58649 writes/s | 24843 writes/s | 21223 writes/s |
-| Transactions, 64 goroutines, deferred | 1325 writes/s | 6731 writes/s | 790 writes/s | 1441 writes/s |
-| Transactions, 64 goroutines, `_txlock=immediate` | 5503 writes/s | 16346 writes/s | 5742 writes/s | 5151 writes/s |
-| Transactions, 64 goroutines, immediate, 2 ms of work in each | 354 writes/s | 390 writes/s | 324 writes/s | 378 writes/s |
-| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 340 writes/s | 379 writes/s | 351 writes/s | 371 writes/s |
-| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 340 writes/s | 372 writes/s | 319 writes/s | 242 writes/s |
-| Transactions, 256 goroutines, immediate, 1 ms of work in each | 459 writes/s | 409 writes/s | 552 writes/s | 557 writes/s |
+| Insert one row, 64 goroutines at once | 85211 writes/s | 14355 writes/s | 9980 writes/s | 10194 writes/s |
+| Transactions, 64 goroutines, deferred | 1039 writes/s | 2979 writes/s | 717 writes/s | 1267 writes/s |
+| Transactions, 64 goroutines, `_txlock=immediate` | 3235 writes/s | 7199 writes/s | 2573 writes/s | 2374 writes/s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 368 writes/s | 358 writes/s | 356 writes/s | 373 writes/s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 335 writes/s | 272 writes/s | 351 writes/s | 356 writes/s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 285 writes/s | 90.9 writes/s | 282 writes/s | 194 writes/s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 485 writes/s | 562 writes/s | 493 writes/s | 448 writes/s |
+
+**The largest WAL** while the case ran. A WAL that keeps growing means the checkpoints copied less than was written, and the writes have not paid for the rest yet:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 3.96 MiB | 180 MiB | 1.16 GiB | 1.18 GiB |
+| Transactions, 64 goroutines, deferred | 199 MiB | 539 MiB | 132 MiB | 234 MiB |
+| Transactions, 64 goroutines, `_txlock=immediate` | 3.93 MiB | 8.86 MiB | 499 MiB | 461 MiB |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 3.93 MiB | 5.55 MiB | 69.0 MiB | 72.0 MiB |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 3.94 MiB | 5.76 MiB | 109 MiB | 111 MiB |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 3.93 MiB | 3.98 MiB | 4.63 MiB | 37.2 MiB |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 3.93 MiB | 4.33 MiB | 94.9 MiB | 86.3 MiB |
 
 <!-- /bench:contention-windows-amd64 -->
 
 <!-- bench:contention-windows-arm64 -->
-Commit `9b06a41`, Go 1.27.4, cgo with clang version 23.1.5 (https://github.com/llvm/llvm-project.git 392dfff97d29b59d77e5cac6d4b6ef2585fe7117), Cobalt 100, Windows 10.0.26200.9974 arm64, GOMAXPROCS 4 of 4 threads, 2026-11-21.
+Commit `10d5df4`, Go 1.27.4, cgo with clang version 23.1.5 (https://github.com/llvm/llvm-project.git 392dfff97d29b59d77e5cac6d4b6ef2585fe7117), Cobalt 100, Windows 10.0.26200.9974 arm64, GOMAXPROCS 4 of 4 threads, 2026-11-21.
 
 **The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
 
 | Workload | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert one row, 64 goroutines at once | 416 ms | 19.8 s, 2 locked | 5.02 s, 66 locked | 413 ms |
-| Transactions, 64 goroutines, deferred | 1.83 s, 4246078 locked | 1.98 s, 2154308 locked | 451 ms, 390655 locked | 2.18 s, 3113389 locked |
-| Transactions, 64 goroutines, `_txlock=immediate` | 142 ms | 5.53 s, 144 locked | 5.05 s, 53 locked | 1.02 s |
-| Transactions, 64 goroutines, immediate, 2 ms of work in each | 397 ms | 5.46 s, 138 locked | 5.02 s, 41 locked | 2.70 s |
-| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 385 ms | 5.46 s, 143 locked | 5.03 s, 54 locked | 2.75 s |
-| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 573 ms | 5.50 s, 296 locked | 5.03 s, 189 locked | 3.53 s |
-| Transactions, 256 goroutines, immediate, 1 ms of work in each | 721 ms | 5.59 s, 852 locked | 5.06 s, 597 locked | 4.77 s, 9 locked |
+| Insert one row, 64 goroutines at once | 349 ms | 5.87 s, 41 locked | 5.31 s, 103 locked | 676 ms |
+| Transactions, 64 goroutines, deferred | 860 ms, 3928265 locked | 2.27 s, 2044778 locked | 46.0 ms, 285034 locked | 1.92 s, 3064735 locked |
+| Transactions, 64 goroutines, `_txlock=immediate` | 160 ms | 5.56 s, 155 locked | 5.03 s, 108 locked | 1.38 s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 501 ms | 5.58 s, 221 locked | 5.05 s, 62 locked | 4.12 s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 303 ms | 6.51 s, 233 locked | 5.02 s, 87 locked | 3.56 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 708 ms | 5.56 s, 322 locked | 5.03 s, 309 locked | 4.51 s, 2 locked |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 976 ms | 5.66 s, 1226 locked | 5.12 s, 843 locked | 5.00 s, 40 locked |
 
 **Writes done per second**, all goroutines together:
 
 | Workload | liustack/sqlite | mattn | modernc | ncruces |
 | :-- | --: | --: | --: | --: |
-| Insert one row, 64 goroutines at once | 167k writes/s | 34905 writes/s | 11372 writes/s | 10092 writes/s |
-| Transactions, 64 goroutines, deferred | 1333 writes/s | 3489 writes/s | 871 writes/s | 1054 writes/s |
-| Transactions, 64 goroutines, `_txlock=immediate` | 5692 writes/s | 9614 writes/s | 2549 writes/s | 2320 writes/s |
-| Transactions, 64 goroutines, immediate, 2 ms of work in each | 384 writes/s | 387 writes/s | 381 writes/s | 393 writes/s |
-| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 349 writes/s | 380 writes/s | 379 writes/s | 388 writes/s |
-| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 214 writes/s | 270 writes/s | 210 writes/s | 191 writes/s |
-| Transactions, 256 goroutines, immediate, 1 ms of work in each | 546 writes/s | 631 writes/s | 552 writes/s | 476 writes/s |
+| Insert one row, 64 goroutines at once | 127k writes/s | 18149 writes/s | 10932 writes/s | 9679 writes/s |
+| Transactions, 64 goroutines, deferred | 1535 writes/s | 2851 writes/s | 509 writes/s | 863 writes/s |
+| Transactions, 64 goroutines, `_txlock=immediate` | 4948 writes/s | 4924 writes/s | 2514 writes/s | 2137 writes/s |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 370 writes/s | 377 writes/s | 307 writes/s | 299 writes/s |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 368 writes/s | 286 writes/s | 305 writes/s | 286 writes/s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 173 writes/s | 177 writes/s | 170 writes/s | 121 writes/s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 460 writes/s | 546 writes/s | 420 writes/s | 367 writes/s |
+
+**The largest WAL** while the case ran. A WAL that keeps growing means the checkpoints copied less than was written, and the writes have not paid for the rest yet:
+
+| Workload | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| Insert one row, 64 goroutines at once | 3.96 MiB | 1.62 GiB | 1.27 GiB | 1.12 GiB |
+| Transactions, 64 goroutines, deferred | 272 MiB | 522 MiB | 89.3 MiB | 156 MiB |
+| Transactions, 64 goroutines, `_txlock=immediate` | 3.93 MiB | 31.1 MiB | 488 MiB | 415 MiB |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 3.93 MiB | 4.71 MiB | 59.2 MiB | 57.5 MiB |
+| Transactions, 64 goroutines, deferred, a write first, 2 ms of work in each | 3.94 MiB | 6.66 MiB | 94.8 MiB | 89.1 MiB |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 3.93 MiB | 3.94 MiB | 5.04 MiB | 22.7 MiB |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 3.93 MiB | 4.01 MiB | 81.1 MiB | 70.6 MiB |
 
 <!-- /bench:contention-windows-arm64 -->
 
-- **With `_txlock=immediate`, or a first statement that writes,** no write of this driver got `database is locked` on x64 or on Arm, and the slowest took 142 ms to 1.02 s. mattn and modernc had writes fail that way in every such case, ncruces with 256 goroutines only (3 on x64, 9 on Arm).
-- **Short transactions are slower on Windows.** With `_txlock=immediate` and nothing done inside, this driver does 5503 a second on x64 and 5692 on Arm, mattn 16346 and 9614, where on linux this driver does more than mattn (14148 against 11267). The cause is not found yet. With 1 or 2 ms of work in each transaction the drivers are close: 340 to 459 writes a second for this driver against 379 to 409 for mattn on x64, and 349 to 546 against 380 to 631 on Arm.
-- **Autocommit inserts**, which group commit merges, are still the most: 79446 a second on x64 and 167k on Arm, against 58649 and 34905 for mattn.
+- **With `_txlock=immediate`, or a first statement that writes,** no write of this driver got `database is locked` on x64 or on Arm, and the slowest took 160 to 976 ms. mattn and modernc had writes fail that way in every such case, ncruces with 256 goroutines (4 on x64, 40 on Arm) and with `synchronous=FULL` on Arm (2).
+- **Short transactions are slower on Windows x64.** With `_txlock=immediate` and nothing done inside, this driver does 3235 a second on x64 and 4947 on Arm, mattn 7198 and 4923, where on linux this driver does more than mattn (16039 against 13348). The driver runs its automatic checkpoint before it hands the write lock on, and a flush on the x64 runner's disk is slow (about 67 ms for 1000 frames), so the writers behind it wait. SQLite's own checkpoint, which the other drivers use, runs after the lock is free, at the cost of a WAL that can grow without end. With 1 or 2 ms of work in each transaction the drivers are close: 335 to 485 writes a second for this driver against 272 to 562 for mattn on x64, and 367 to 459 against 286 to 545 on Arm.
+- **Autocommit inserts**, which group commit merges, are still the most: 85210 a second on x64 and 127k on Arm, against 14354 and 18148 for mattn.
+- **The WAL of the other drivers** reached 1.12 to 1.62 GiB in the insert case (mattn on x64 180 MiB), against 4 MiB for this driver.
 
 ## Replication
 

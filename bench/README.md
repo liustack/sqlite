@@ -130,7 +130,7 @@ Every driver gets the same load, so the times compare. A driver that answers few
 
 ## Many writers at once
 
-`TestContention` (`contention_test.go`) has many goroutines write at once and counts the writes that get `database is locked`, with the time each write that succeeds takes. It skips unless `CONTENTION` says how long each case runs. `benchrun contention` builds the test binary of every driver, runs it on each in turn and writes `results/<goos>-<goarch>/contention/contention.json`, which goes to `published/contention/<name>.json` for the tables of [docs/benchmarks.md](../docs/benchmarks.md#many-writers-at-once) and the READMEs:
+`TestContention` (`contention_test.go`) has many goroutines write at once and counts the writes that get `database is locked`, with the time each write that succeeds takes and the largest the WAL gets (its size is looked at every 10 ms). A driver whose checkpoints fall behind lets its WAL grow, and the size shows it. It skips unless `CONTENTION` says how long each case runs. `benchrun contention` builds the test binary of every driver, runs it on each in turn and writes `results/<goos>-<goarch>/contention/contention.json`, which goes to `published/contention/<name>.json` for the tables of [docs/benchmarks.md](../docs/benchmarks.md#many-writers-at-once) and the READMEs:
 
 ```sh
 go run ./cmd/benchrun contention -time 30s -name linux-amd64
@@ -141,3 +141,12 @@ cd .. && make bench-docs
 `-samples` also writes every write of each case, when it started and how long it took, to `samples/<driver>-<case>.csv.gz`. `-build-only` and `-no-build` work as for `run`.
 
 On Windows the workflow `bench-windows` ([.github/workflows/bench-windows.yml](../.github/workflows/bench-windows.yml)) runs it on the `windows-2025` (x64) and `windows-11-arm` runners, every driver on one runner per architecture. Start it with `gh workflow run bench-windows.yml --ref <branch>`, and copy `contention.json` from the artifact of each job to `published/contention/windows-amd64.json` and `windows-arm64.json`. On Arm, mattn's cgo is built with llvm-mingw, because the runner's gcc builds only x86-64.
+
+## Opening again after a crash
+
+`TestReopenAfterCrash` (`reopen_test.go`) has 64 goroutines insert for `REOPEN`, in a process of its own that then ends without closing the database, as a crash would. It then opens the database again and times the first read, which waits for SQLite to read the WAL back, and checks that every committed row is there. It prints the size of the WAL as the inserts stopped and after one more insert 2 s later. `REOPEN_COLD=1` empties the page cache first (linux, with `sudo`), as a restart of the machine would:
+
+```sh
+REOPEN=30s go test -tags mattn -run '^TestReopenAfterCrash$' -v
+REOPEN=30s REOPEN_COLD=1 go test -tags mattn -run '^TestReopenAfterCrash$' -v
+```
