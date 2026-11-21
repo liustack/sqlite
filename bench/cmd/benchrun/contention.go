@@ -96,7 +96,9 @@ func cmdContention(args []string) error {
 		if cgo[t] {
 			// The C compiler cgo built mattn with, as `go env CC` names it.
 			cc := strings.TrimSpace(output("go", "env", "CC"))
-			set.Meta.Set("cc", "cgo with "+strings.TrimSpace(strings.SplitN(output(cc, "--version"), "\n", 2)[0]))
+			if v := strings.TrimSpace(strings.SplitN(output(cc, "--version"), "\n", 2)[0]); v != "" {
+				set.Meta.Set("cc", "cgo with "+v)
+			}
 			break
 		}
 	}
