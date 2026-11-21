@@ -11,8 +11,6 @@ name: bench-windows
 
 on:
   workflow_dispatch:
-  push:
-    branches: [bench-windows]
 
 permissions:
   contents: read
