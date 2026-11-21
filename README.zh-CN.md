@@ -5,7 +5,8 @@
 <p align="center">
   <a href="README.md">English</a> · 简体中文 ·
   <a href="docs/benchmarks.zh-CN.md">基准测试</a> ·
-  <a href="docs/architecture.zh-CN.md">工作原理</a>
+  <a href="docs/architecture.zh-CN.md">工作原理</a> ·
+  <a href="docs/principles.zh-CN.md">原则</a>
 </p>
 
 <p align="center">
@@ -226,6 +227,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 
 | 文档 | 什么时候读 |
 | :-- | :-- |
+| [原则](docs/principles.zh-CN.md) | 想知道驱动保证什么、保证不了什么、哪些东西不拿来换速度 |
 | [基准测试](docs/benchmarks.zh-CN.md) | 想看完整数据，或者在自己机器上跑一遍 |
 | [架构](docs/architecture.zh-CN.md) | 想知道 C 怎么变成 Go 汇编，或者合并提交怎么工作 |
 | [合并提交](docs/group-commit.zh-CN.md) | 想知道并发写入哪些会合并、失败时各自拿到什么错误 |

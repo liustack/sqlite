@@ -52,8 +52,9 @@ The driver runs on linux, darwin and windows, amd64 and arm64. Other targets sto
    - [docs/benchmarks.md](docs/benchmarks.md): how fast the driver is against the other drivers, on linux/amd64 and darwin/arm64
    - [docs/replication.md](docs/replication.md): how to replicate a database to S3 and restore it, what it changes for the program, and its limits
    - [docs/busy-cores.md](docs/busy-cores.md): how long a call waits when goroutines outnumber cores, what the driver does about it, what a program can do, and what a change to a lock or a wake must keep
+   - [docs/principles.md](docs/principles.md): what the driver promises a program, what it cannot, the order it chooses in, what it will not do even when faster, and how a change is judged
 4. Docs are written for readers: conclusions and how to do things, not reasoning or work logs. The README is a landing page and only links to the docs.
-5. Docs are written in English. README.md, docs/architecture.md, docs/benchmarks.md, docs/busy-cores.md, docs/group-commit.md, docs/query-cache.md, docs/replication.md and docs/upstream.md also have a `*.zh-CN.md` Chinese version, linked from the top of each side: when you change one side, change the other to match. `scripts/docs-list.sh` skips `*.zh-CN.md` files.
+5. Docs are written in English. README.md, docs/architecture.md, docs/benchmarks.md, docs/busy-cores.md, docs/group-commit.md, docs/principles.md, docs/query-cache.md, docs/replication.md and docs/upstream.md also have a `*.zh-CN.md` Chinese version, linked from the top of each side: when you change one side, change the other to match. `scripts/docs-list.sh` skips `*.zh-CN.md` files.
 6. English: keep it short and direct, use everyday words, and do not invent terms. Both languages: do not use semicolons, and do not use dashes as punctuation.
 
 ## License headers
