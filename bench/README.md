@@ -130,7 +130,7 @@ Every driver gets the same load, so the times compare. A driver that answers few
 
 ## Many writers at once
 
-`TestContention` (`contention_test.go`) has many goroutines write at once and counts the writes that get `database is locked`, with the time each write that succeeds takes. It skips unless `CONTENTION` says how long each case runs. `benchrun contention` builds the test binary of every driver, runs it on each in turn and writes `results/<goos>-<goarch>/contention/contention.json`, which goes to `published/contention/<name>.json` for the tables of [docs/benchmarks.md](../docs/benchmarks.md#many-writers-at-once) and the READMEs:
+`TestContention` (`contention_test.go`) has many goroutines write at once and counts the writes that get `database is locked`, with the time each write that succeeds takes and the largest the WAL gets (its size is looked at every 10 ms). A driver whose checkpoints fall behind writes faster for a while, and its WAL shows it. It skips unless `CONTENTION` says how long each case runs. `benchrun contention` builds the test binary of every driver, runs it on each in turn and writes `results/<goos>-<goarch>/contention/contention.json`, which goes to `published/contention/<name>.json` for the tables of [docs/benchmarks.md](../docs/benchmarks.md#many-writers-at-once) and the READMEs:
 
 ```sh
 go run ./cmd/benchrun contention -time 30s -name linux-amd64

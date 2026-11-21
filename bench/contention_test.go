@@ -57,7 +57,8 @@ func TestContention(t *testing.T) {
 		{"transfer", "immediate", 64, 0, "FULL"},
 		{"transfer", "immediate", 256, time.Millisecond, "NORMAL"},
 	} {
-		dsn := DSN(filepath.Join(t.TempDir(), "x.db"), c.sync)
+		path := filepath.Join(t.TempDir(), "x.db")
+		dsn := DSN(path, c.sync)
 		if c.txlock != "" {
 			dsn += "&_txlock=" + c.txlock
 		}
@@ -81,6 +82,7 @@ func TestContention(t *testing.T) {
 		var other sync.Map
 		var mu sync.Mutex
 		var samples []sample
+		stopWAL := watchWAL(path + "-wal")
 		begin := time.Now()
 		deadline := begin.Add(run)
 		var wg sync.WaitGroup
@@ -113,12 +115,14 @@ func TestContention(t *testing.T) {
 			})
 		}
 		wg.Wait()
+		maxWAL := stopWAL()
 		var sum int
 		if err := db.QueryRow("SELECT sum(balance) FROM account").Scan(&sum); err != nil {
 			t.Fatal(err)
 		}
 		db.Close()
 		res := summarize(key, run, samples)
+		res.MaxWAL = maxWAL
 		b, err := json.Marshal(res)
 		if err != nil {
 			t.Fatal(err)
@@ -161,6 +165,7 @@ type contentionResult struct {
 	P50     int64   `json:"p50_ns"`
 	P99     int64   `json:"p99_ns"`
 	Max     int64   `json:"max_ns"`
+	MaxWAL  int64   `json:"max_wal_bytes"`
 }
 
 func summarize(key string, run time.Duration, samples []sample) contentionResult {
@@ -252,4 +257,35 @@ func transfer(db *sql.DB, a, b int, hold time.Duration, writeFirst bool) error {
 func isLocked(err error) bool {
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "locked") || strings.Contains(s, "busy")
+}
+
+// watchWAL looks at the size of the WAL every 10 ms until stop is called,
+// which returns the largest size seen.
+func watchWAL(path string) (stop func() int64) {
+	var most int64
+	look := func() {
+		if st, err := os.Stat(path); err == nil {
+			most = max(most, st.Size())
+		}
+	}
+	done, finished := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(finished)
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				look()
+				return
+			case <-tick.C:
+				look()
+			}
+		}
+	}()
+	return func() int64 {
+		close(done)
+		<-finished
+		return most
+	}
 }
