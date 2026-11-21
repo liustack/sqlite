@@ -114,7 +114,7 @@ func cmdRun(args []string) error {
 			t := tags[(r+i)%len(tags)]
 			logf("round %d/%d: %s", r+1, *count, t)
 			var buf bytes.Buffer
-			if err := runIn(bin, &buf, "./"+t+".test", "-test.run=^$", "-test.bench="+*bench,
+			if err := runIn(bin, &buf, "./"+testBin(t, runtime.GOOS), "-test.run=^$", "-test.bench="+*bench,
 				"-test.benchmem", "-test.count=1", "-test.benchtime="+*benchtime); err != nil {
 				return fmt.Errorf("%s: %w", t, err)
 			}
@@ -151,7 +151,11 @@ func machine() Meta {
 	}
 	m.Set("commit", commit)
 	m.Set("go", strings.TrimPrefix(runtime.Version(), "go"))
-	m.Set("os", strings.TrimSpace(output("uname", "-srm")))
+	if runtime.GOOS == "windows" {
+		m.Set("os", windowsVersion(output("cmd", "/c", "ver"), runtime.GOARCH))
+	} else {
+		m.Set("os", strings.TrimSpace(output("uname", "-srm")))
+	}
 	m.Set("cpu", cpuModel())
 	m.Set("threads", fmt.Sprint(runtime.NumCPU()))
 	if g := os.Getenv("GOMAXPROCS"); g != "" {
@@ -166,6 +170,12 @@ func machine() Meta {
 }
 
 func cpuModel() string {
+	if runtime.GOOS == "windows" {
+		if s := windowsCPU(output("reg", "query", `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0`, "/v", "ProcessorNameString")); s != "" {
+			return s
+		}
+		return "unknown"
+	}
 	if s := strings.TrimSpace(output("sysctl", "-n", "machdep.cpu.brand_string")); s != "" {
 		return s
 	}
@@ -176,6 +186,37 @@ func cpuModel() string {
 		}
 	}
 	return "unknown"
+}
+
+// windowsVersion makes "Windows 10.0.26100.4652 arm64" of what `ver`
+// prints, "Microsoft Windows [Version 10.0.26100.4652]".
+func windowsVersion(ver, arch string) string {
+	s := "Windows"
+	if _, after, ok := strings.Cut(ver, "[Version "); ok {
+		if v, _, ok := strings.Cut(after, "]"); ok {
+			s += " " + v
+		}
+	}
+	return s + " " + arch
+}
+
+// windowsCPU is the processor name in what `reg query` prints for
+// ProcessorNameString, "" when it is not there.
+func windowsCPU(out string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if _, v, ok := strings.Cut(l, "REG_SZ"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// testBin is the file name of the test binary of driver t on goos.
+func testBin(t, goos string) string {
+	if goos == "windows" {
+		return t + ".test.exe"
+	}
+	return t + ".test"
 }
 
 // loadAverage is the 1, 5 and 15 minute load averages.
@@ -240,13 +281,13 @@ func logf(format string, args ...any) {
 // settings every driver must run with (pragma_test.go).
 func buildDriver(t, bin string) error {
 	logf("build %s", t)
-	cmd := exec.Command("go", "test", "-c", "-tags", t, "-o", filepath.Join(bin, t+".test"), ".")
+	cmd := exec.Command("go", "test", "-c", "-tags", t, "-o", filepath.Join(bin, testBin(t, runtime.GOOS)), ".")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED="+map[bool]string{false: "0", true: "1"}[cgo[t]])
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("build %s: %w", t, err)
 	}
-	if err := runIn(bin, nil, "./"+t+".test", "-test.count=1", "-test.run=^TestPragmas$"); err != nil {
+	if err := runIn(bin, nil, "./"+testBin(t, runtime.GOOS), "-test.count=1", "-test.run=^TestPragmas$"); err != nil {
 		return fmt.Errorf("%s: settings: %w", t, err)
 	}
 	return nil

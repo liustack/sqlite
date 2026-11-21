@@ -92,6 +92,14 @@ func cmdContention(args []string) error {
 	}
 	set := contentionSet{Name: *name, Meta: machine(), Drivers: tags}
 	set.Meta.Set("time", run.String())
+	for _, t := range tags {
+		if cgo[t] {
+			// The C compiler cgo built mattn with, as `go env CC` names it.
+			cc := strings.TrimSpace(output("go", "env", "CC"))
+			set.Meta.Set("cc", "cgo with "+strings.TrimSpace(strings.SplitN(output(cc, "--version"), "\n", 2)[0]))
+			break
+		}
+	}
 	set.Meta.Set("load_before", loadAverage())
 	os.Setenv("CONTENTION", run.String())
 	if *samples {
@@ -107,7 +115,7 @@ func cmdContention(args []string) error {
 	for _, t := range tags {
 		logf("contention: %s", t)
 		var buf bytes.Buffer
-		err := runIn(bin, &buf, "./"+t+".test", "-test.run=^TestContention$", "-test.v", "-test.count=1", "-test.timeout=2h")
+		err := runIn(bin, &buf, "./"+testBin(t, runtime.GOOS), "-test.run=^TestContention$", "-test.v", "-test.count=1", "-test.timeout=2h")
 		if werr := os.WriteFile(filepath.Join(*out, t+".txt"), buf.Bytes(), 0o644); werr != nil {
 			return werr
 		}
