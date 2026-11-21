@@ -96,17 +96,17 @@ Where another driver still wins: work that stays inside SQLite (the join), where
 Writers in one process wait their turn in order instead of racing for SQLite's lock. Open the database with `_txlock=immediate`, and a write transaction gets `database is locked` only when the ones queued ahead of it take longer than the busy timeout (5 s by default), that is, only when writes come faster than the disk can commit them. With other drivers, a writer that keeps losing the race waits for seconds and times out at a load where the rest wait a few milliseconds.
 
 <!-- bench:readme-contention-linux-amd64 -->
-**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `e5fe295`):
+**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `10d5df4`):
 
 **The slowest write** (a transaction, or an autocommit statement), and how many writes got `database is locked`, in 30 s of each:
 
 | Workload | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| Insert one row, 64 goroutines at once | 23.9 ms | 3.93 s | 3.63 s | 86.4 ms |
-| Transactions, 64 goroutines, `_txlock=immediate` | 22.6 ms | 4.83 s, 3 locked | 3.84 s | 252 ms |
-| Transactions, 64 goroutines, immediate, 2 ms of work in each | 173 ms | 5.01 s, 70 locked | 5.06 s, 18 locked | 2.22 s |
-| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 215 ms | 5.01 s, 77 locked | 5.04 s, 125 locked | 1.41 s |
-| Transactions, 256 goroutines, immediate, 1 ms of work in each | 329 ms | 5.01 s, 273 locked | 5.11 s, 232 locked | 5.01 s, 7 locked |
+| Insert one row, 64 goroutines at once | 16.3 ms | 4.43 s | 2.93 s | 83.1 ms |
+| Transactions, 64 goroutines, `_txlock=immediate` | 28.5 ms | 5.01 s | 4.13 s | 165 ms |
+| Transactions, 64 goroutines, immediate, 2 ms of work in each | 165 ms | 5.01 s, 45 locked | 4.94 s, 35 locked | 1.78 s |
+| Transactions, 64 goroutines, immediate, `synchronous=FULL` | 96.2 ms | 5.01 s, 256 locked | 5.01 s, 241 locked | 4.63 s |
+| Transactions, 256 goroutines, immediate, 1 ms of work in each | 326 ms | 5.01 s, 283 locked | 5.06 s, 216 locked | 4.45 s |
 
 <!-- /bench:readme-contention-linux-amd64 -->
 
