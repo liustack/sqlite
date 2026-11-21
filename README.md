@@ -33,58 +33,58 @@ The pure Go drivers paid for that in speed. modernc translates SQLite's C into G
 Time per operation, lower is better, the median of 6 runs. The best of a row is in bold when its 95% confidence interval overlaps no other driver's. WAL, `synchronous=NORMAL`, the same settings checked on every driver.
 
 <!-- bench:readme-linux-amd64 -->
-**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `44acf8c`):
+**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `91bfddb`):
 
 | Workload | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| Insert one row | 22.9 µs | 23.3 µs | 26.7 µs | 24.2 µs |
-| Insert 1000 rows in a transaction | 1.40 ms | 1.67 ms | 2.19 ms | 1.91 ms |
-| Read one row by key | **3.79 µs** | 7.43 µs | 9.31 µs | 7.11 µs |
-| Read 100k rows | **35.1 ms** | 79.9 ms | 84.5 ms | 52.5 ms |
-| Join and group | 2.88 ms | 2.87 ms | 4.93 ms | 4.74 ms |
-| Find a user with 400 comments | **512 µs** | 880 µs | 1.15 ms | 826 µs |
-| Read 100 rows of 200 KB text | 8.75 ms | **8.34 ms** | 9.38 ms | 9.14 ms |
-| Read by key, 4 threads | **1.47 µs** | 2.97 µs | 3.86 µs | 2.79 µs |
-| Insert, 8 goroutines at once | **10.4 µs** | 22.9 µs | 26.0 µs | 23.4 µs |
-| Insert, 64 goroutines at once | **3.42 µs** | 22.2 µs | 30.1 µs | 28.6 µs |
-| Insert, 64 goroutines, `synchronous=FULL` | **30.4 µs** | 4.53 ms | 7.11 ms | 1.42 ms |
+| Insert one row | 22.8 µs | 23.3 µs | 27.0 µs | 24.3 µs |
+| Insert 1000 rows in a transaction | **1.41 ms** | 1.68 ms | 2.25 ms | 1.89 ms |
+| Read one row by key | **3.85 µs** | 7.54 µs | 9.61 µs | 7.22 µs |
+| Read 100k rows | **34.7 ms** | 81.4 ms | 79.7 ms | 56.0 ms |
+| Join and group | 2.83 ms | 2.89 ms | 4.91 ms | 4.88 ms |
+| Find a user with 400 comments | **521 µs** | 876 µs | 1.13 ms | 841 µs |
+| Read 100 rows of 200 KB text | 8.77 ms | **8.25 ms** | 9.69 ms | 9.49 ms |
+| Read by key, 4 threads | **1.58 µs** | 2.89 µs | 3.85 µs | 2.75 µs |
+| Insert, 8 goroutines at once | **11.2 µs** | 21.7 µs | 26.2 µs | 24.7 µs |
+| Insert, 64 goroutines at once | **3.72 µs** | 22.8 µs | 30.7 µs | 30.2 µs |
+| Insert, 64 goroutines, `synchronous=FULL` | **30.9 µs** | 4.60 ms | 7.15 ms | 1.44 ms |
 <!-- /bench:readme-linux-amd64 -->
 
 <!-- bench:readme-darwin-arm64 -->
-**darwin/arm64** (Apple M4, Go 1.27.2, commit `44acf8c`):
+**darwin/arm64** (Apple M4, Go 1.27.2, commit `91bfddb`):
 
 | Workload | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3) (cgo) | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| Insert one row | 5.95 µs | 5.99 µs | 7.34 µs | 7.01 µs |
-| Insert 1000 rows in a transaction | **483 µs** | 557 µs | 765 µs | 584 µs |
-| Read one row by key | **1.08 µs** | 1.93 µs | 2.76 µs | 2.02 µs |
-| Read 100k rows | **13.7 ms** | 29.7 ms | 29.9 ms | 20.6 ms |
-| Join and group | 1.27 ms | **1.14 ms** | 2.64 ms | 1.87 ms |
-| Find a user with 400 comments | **212 µs** | 371 µs | 554 µs | 342 µs |
-| Read 100 rows of 200 KB text | 3.46 ms | 3.29 ms | 3.79 ms | 3.55 ms |
-| Read by key, 10 threads | **1.13 µs** | 1.52 µs | 1.77 µs | 2.33 µs |
-| Insert, 8 goroutines at once | **3.04 µs** | 6.75 µs | 8.19 µs | 45.0 µs |
-| Insert, 64 goroutines at once | **1.19 µs** | 9.94 µs | 5.67 ms | 85.8 µs |
+| Insert one row | 5.98 µs | 5.90 µs | 7.28 µs | 6.83 µs |
+| Insert 1000 rows in a transaction | **470 µs** | 554 µs | 733 µs | 566 µs |
+| Read one row by key | **1.07 µs** | 1.93 µs | 2.77 µs | 2.02 µs |
+| Read 100k rows | **13.7 ms** | 29.6 ms | 29.8 ms | 20.5 ms |
+| Join and group | 1.27 ms | **1.12 ms** | 2.64 ms | 1.85 ms |
+| Find a user with 400 comments | **212 µs** | 363 µs | 556 µs | 339 µs |
+| Read 100 rows of 200 KB text | 3.41 ms | 3.34 ms | 3.73 ms | 3.62 ms |
+| Read by key, 10 threads | **1.13 µs** | 1.51 µs | 1.78 µs | 2.32 µs |
+| Insert, 8 goroutines at once | **2.98 µs** | 6.58 µs | 7.98 µs | 42.3 µs |
+| Insert, 64 goroutines at once | **1.14 µs** | 9.36 µs | 6.35 ms | 78.7 µs |
 <!-- /bench:readme-darwin-arm64 -->
 
 Against SQLite in C on the same machine: SQLite(C) is a C program calling SQLite itself, liustack/sqlite(direct) calls the driver without `database/sql`, and the two `database/sql` columns read and write as a program would. Many writers at once go faster because the driver merges their commits into one.
 
 <!-- bench:readme-through-linux-amd64 -->
-**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `44acf8c`):
+**linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `91bfddb`):
 
 **Throughput.** Reads or writes done per second by all threads together, on a file of 100k rows in WAL mode, higher is better:
 
 | Benchmark | SQLite(C) | liustack/sqlite(direct) | liustack/sqlite(database/sql) | mattn(database/sql) |
 | :-- | --: | --: | --: | --: |
-| 1 thread, each reads one row by key | 194k reads/s ±1% | **380k reads/s** ±1% | 290k reads/s ±1% | 103k reads/s ±0% |
-| 8 threads, each reads one row by key | 1154k reads/s ±5% | **1320k reads/s** ±2% | 987k reads/s ±2% | 423k reads/s ±5% |
-| 64 threads, each reads one row by key | 1034k reads/s ±8% | **1325k reads/s** ±1% | 939k reads/s ±3% | 425k reads/s ±3% |
-| 1 thread, each reads one row by key, whole file in cache | 241k reads/s ±2% | **756k reads/s** ±2% | 487k reads/s ±2% | 117k reads/s ±1% |
-| 8 threads, each reads one row by key, whole file in cache | 1499k reads/s ±8% | **2394k reads/s** ±4% | 1463k reads/s ±3% | 455k reads/s ±4% |
-| 64 threads, each reads one row by key, whole file in cache | 1241k reads/s ±5% | **2123k reads/s** ±4% | 1293k reads/s ±5% | 327k reads/s ±8% |
-| 8 threads read as above while 8 others write | 1005k reads/s ±8% | 1021k reads/s ±4% | 615k reads/s ±5% | 167k reads/s ±2% |
-| 8 threads, each inserts one row, while 8 others read | 2796 writes/s ±25% | 19467 writes/s ±11% | **28900 writes/s** ±4% | 15437 writes/s ±2% |
-| 64 threads, each inserts one row, `synchronous=FULL` | 819 writes/s ±6% | 56830 writes/s ±5% | 55212 writes/s ±2% | 845 writes/s ±2% |
+| 1 thread, each reads one row by key | 189k reads/s ±2% | **373k reads/s** ±4% | 284k reads/s ±4% | 102k reads/s ±2% |
+| 8 threads, each reads one row by key | 1075k reads/s ±5% | **1280k reads/s** ±4% | 955k reads/s ±5% | 421k reads/s ±2% |
+| 64 threads, each reads one row by key | 982k reads/s ±3% | **1289k reads/s** ±4% | 914k reads/s ±3% | 429k reads/s ±4% |
+| 1 thread, each reads one row by key, whole file in cache | 235k reads/s ±4% | **719k reads/s** ±9% | 481k reads/s ±11% | 115k reads/s ±2% |
+| 8 threads, each reads one row by key, whole file in cache | 1395k reads/s ±7% | **2228k reads/s** ±8% | 1430k reads/s ±7% | 443k reads/s ±4% |
+| 64 threads, each reads one row by key, whole file in cache | 1204k reads/s ±13% | **2003k reads/s** ±5% | 1254k reads/s ±5% | 332k reads/s ±8% |
+| 8 threads read as above while 8 others write | 968k reads/s ±7% | 975k reads/s ±5% | 593k reads/s ±12% | 164k reads/s ±4% |
+| 8 threads, each inserts one row, while 8 others read | 2431 writes/s ±21% | 20551 writes/s ±8% | **27319 writes/s** ±14% | 14970 writes/s ±5% |
+| 64 threads, each inserts one row, `synchronous=FULL` | 845 writes/s ±3% | 56081 writes/s ±4% | 55955 writes/s ±3% | 851 writes/s ±5% |
 
 <!-- /bench:readme-through-linux-amd64 -->
 
