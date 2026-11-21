@@ -191,9 +191,9 @@ On an Apple M4 (WAL, `synchronous=NORMAL`, one autocommit `INSERT` per call, `be
 
 | Writers | mattn (cgo) | this driver |
 | --- | --- | --- |
-| 1 | 6.1 µs | 6.2 µs |
-| 8 | 6.7 µs | 3.2 µs |
-| 64 | 10.3 µs | 1.1 µs |
+| 1 | 5.9 µs | 6.0 µs |
+| 8 | 6.6 µs | 3.0 µs |
+| 64 | 9.4 µs | 1.1 µs |
 
 More drivers and linux are in [benchmarks.md](benchmarks.md).
 
@@ -236,7 +236,7 @@ The `replica` package copies a database to S3-compatible storage as it changes. 
 
 ## Making the engine faster
 
-The engine is slower than the same C built by clang: on an Apple M4, work inside the engine takes up to 1.44 times as long, and 1.21 times in the geometric mean (see [benchmarks.md](benchmarks.md#against-sqlite-in-c)). Part of it is the price of the route itself. liustack/quickjs, which compiles its C the same way, measured 11 to 13% for the same C with the same options, from arguments and results passed on the Go stack, address-taken locals on the shadow stack, and a few more instructions per call. Work to win some of it back follows what quickjs learned from the many routes it tried and left:
+The engine is slower than the same C built by clang: on an Apple M4, work inside the engine takes up to 1.44 times as long, and 1.20 times in the geometric mean (see [benchmarks.md](benchmarks.md#against-sqlite-in-c)). Part of it is the price of the route itself. liustack/quickjs, which compiles its C the same way, measured 11 to 13% for the same C with the same options, from arguments and results passed on the Go stack, address-taken locals on the shadow stack, and a few more instructions per call. Work to win some of it back follows what quickjs learned from the many routes it tried and left:
 
 - **Nothing private to Go.** No `go:linkname` into the runtime, no reliance on how Go uses a register, nothing the Go team may change in a release. Each Go version would have to be checked again, and one could break the driver.
 - **The engine stays on the goroutine stack.** Running it on a stack of its own, as cgo, wazero and purego do, would turn a fault in the C into the end of the whole process instead of a panic of one call.
@@ -273,6 +273,6 @@ What the training runs, how the check works and how to train again: [engine/pgo/
 ## Routes left out
 
 - **cgo** (mattn/go-sqlite3): needs a C compiler for every build and every target, and cross-compiling is hard. Not having to do this is the reason for the project.
-- **C translated to Go** (modernc.org/sqlite, made with ccgo): no cgo, but slower than cgo: 1.2 to 1.4 times as long as cgo on a point read and 1.7 to 2.3 times on a join (see [benchmarks.md](benchmarks.md)). slowjs went this way for QuickJS before and left it for the same reason.
+- **C translated to Go** (modernc.org/sqlite, made with ccgo): no cgo, but slower than cgo: 1.3 to 1.4 times as long as cgo on a point read and 1.7 to 2.4 times on a join (see [benchmarks.md](benchmarks.md)). slowjs went this way for QuickJS before and left it for the same reason.
 - **WebAssembly** (ncruces/go-sqlite3): SQLite compiled to wasm, which wasm2go translates to Go. No cgo, but the C passes through a second machine model on its way to the CPU.
 - **A shared library loaded with purego**: no single static binary, the SQLite version depends on the system, and each call costs more.

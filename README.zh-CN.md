@@ -33,58 +33,58 @@
 每次操作的耗时，越低越好，取 6 轮的中位数。每行最好的那个，95% 置信区间和别的驱动都不重叠时才加粗。全部用 WAL、`synchronous=NORMAL`，每个驱动的设置都核对过一致。
 
 <!-- bench:readme-linux-amd64 -->
-**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `44acf8c`）：
+**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `91bfddb`）：
 
 | 场景 | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| 插入一行 | 22.9 µs | 23.3 µs | 26.7 µs | 24.2 µs |
-| 一个事务插入 1000 行 | 1.40 ms | 1.67 ms | 2.19 ms | 1.91 ms |
-| 按主键读一行 | **3.79 µs** | 7.43 µs | 9.31 µs | 7.11 µs |
-| 读 10 万行 | **35.1 ms** | 79.9 ms | 84.5 ms | 52.5 ms |
-| 连表加分组 | 2.88 ms | 2.87 ms | 4.93 ms | 4.74 ms |
-| 查一个用户和他的 400 条评论 | **512 µs** | 880 µs | 1.15 ms | 826 µs |
-| 读 100 行 200 KB 的文本 | 8.75 ms | **8.34 ms** | 9.38 ms | 9.14 ms |
-| 按主键读，4 线程 | **1.47 µs** | 2.97 µs | 3.86 µs | 2.79 µs |
-| 8 个 goroutine 同时插入 | **10.4 µs** | 22.9 µs | 26.0 µs | 23.4 µs |
-| 64 个 goroutine 同时插入 | **3.42 µs** | 22.2 µs | 30.1 µs | 28.6 µs |
-| 64 个 goroutine 同时插入，`synchronous=FULL` | **30.4 µs** | 4.53 ms | 7.11 ms | 1.42 ms |
+| 插入一行 | 22.8 µs | 23.3 µs | 27.0 µs | 24.3 µs |
+| 一个事务插入 1000 行 | **1.41 ms** | 1.68 ms | 2.25 ms | 1.89 ms |
+| 按主键读一行 | **3.85 µs** | 7.54 µs | 9.61 µs | 7.22 µs |
+| 读 10 万行 | **34.7 ms** | 81.4 ms | 79.7 ms | 56.0 ms |
+| 连表加分组 | 2.83 ms | 2.89 ms | 4.91 ms | 4.88 ms |
+| 查一个用户和他的 400 条评论 | **521 µs** | 876 µs | 1.13 ms | 841 µs |
+| 读 100 行 200 KB 的文本 | 8.77 ms | **8.25 ms** | 9.69 ms | 9.49 ms |
+| 按主键读，4 线程 | **1.58 µs** | 2.89 µs | 3.85 µs | 2.75 µs |
+| 8 个 goroutine 同时插入 | **11.2 µs** | 21.7 µs | 26.2 µs | 24.7 µs |
+| 64 个 goroutine 同时插入 | **3.72 µs** | 22.8 µs | 30.7 µs | 30.2 µs |
+| 64 个 goroutine 同时插入，`synchronous=FULL` | **30.9 µs** | 4.60 ms | 7.15 ms | 1.44 ms |
 <!-- /bench:readme-linux-amd64 -->
 
 <!-- bench:readme-darwin-arm64 -->
-**darwin/arm64**（Apple M4，Go 1.27.2，提交 `44acf8c`）：
+**darwin/arm64**（Apple M4，Go 1.27.2，提交 `91bfddb`）：
 
 | 场景 | liustack/sqlite | [mattn](https://github.com/mattn/go-sqlite3)（cgo） | [modernc](https://gitlab.com/cznic/sqlite) | [ncruces](https://github.com/ncruces/go-sqlite3) |
 | :-- | --: | --: | --: | --: |
-| 插入一行 | 5.95 µs | 5.99 µs | 7.34 µs | 7.01 µs |
-| 一个事务插入 1000 行 | **483 µs** | 557 µs | 765 µs | 584 µs |
-| 按主键读一行 | **1.08 µs** | 1.93 µs | 2.76 µs | 2.02 µs |
-| 读 10 万行 | **13.7 ms** | 29.7 ms | 29.9 ms | 20.6 ms |
-| 连表加分组 | 1.27 ms | **1.14 ms** | 2.64 ms | 1.87 ms |
-| 查一个用户和他的 400 条评论 | **212 µs** | 371 µs | 554 µs | 342 µs |
-| 读 100 行 200 KB 的文本 | 3.46 ms | 3.29 ms | 3.79 ms | 3.55 ms |
-| 按主键读，10 线程 | **1.13 µs** | 1.52 µs | 1.77 µs | 2.33 µs |
-| 8 个 goroutine 同时插入 | **3.04 µs** | 6.75 µs | 8.19 µs | 45.0 µs |
-| 64 个 goroutine 同时插入 | **1.19 µs** | 9.94 µs | 5.67 ms | 85.8 µs |
+| 插入一行 | 5.98 µs | 5.90 µs | 7.28 µs | 6.83 µs |
+| 一个事务插入 1000 行 | **470 µs** | 554 µs | 733 µs | 566 µs |
+| 按主键读一行 | **1.07 µs** | 1.93 µs | 2.77 µs | 2.02 µs |
+| 读 10 万行 | **13.7 ms** | 29.6 ms | 29.8 ms | 20.5 ms |
+| 连表加分组 | 1.27 ms | **1.12 ms** | 2.64 ms | 1.85 ms |
+| 查一个用户和他的 400 条评论 | **212 µs** | 363 µs | 556 µs | 339 µs |
+| 读 100 行 200 KB 的文本 | 3.41 ms | 3.34 ms | 3.73 ms | 3.62 ms |
+| 按主键读，10 线程 | **1.13 µs** | 1.51 µs | 1.78 µs | 2.32 µs |
+| 8 个 goroutine 同时插入 | **2.98 µs** | 6.58 µs | 7.98 µs | 42.3 µs |
+| 64 个 goroutine 同时插入 | **1.14 µs** | 9.36 µs | 6.35 ms | 78.7 µs |
 <!-- /bench:readme-darwin-arm64 -->
 
 和 C 写的 SQLite 在同一台机器上比：SQLite(C) 是直接调用 SQLite 的 C 程序，liustack/sqlite(直接调用) 不经过 `database/sql` 直接调驱动，两列 `database/sql` 像普通程序一样读写。多个写者同时写时更快，是因为驱动把它们的提交合成一次。
 
 <!-- bench:readme-through-linux-amd64 -->
-**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `44acf8c`）：
+**linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `91bfddb`）：
 
 **吞吐量**：所有线程加起来每秒完成多少次读或写，文件是 WAL 模式、10 万行，越高越好：
 
 | 基准 | SQLite(C) | liustack/sqlite(直接调用) | liustack/sqlite(database/sql) | mattn(database/sql) |
 | :-- | --: | --: | --: | --: |
-| 1 个线程，每次按主键读一行 | 194k reads/s ±1% | **380k reads/s** ±1% | 290k reads/s ±1% | 103k reads/s ±0% |
-| 8 个线程，每次按主键读一行 | 1154k reads/s ±5% | **1320k reads/s** ±2% | 987k reads/s ±2% | 423k reads/s ±5% |
-| 64 个线程，每次按主键读一行 | 1034k reads/s ±8% | **1325k reads/s** ±1% | 939k reads/s ±3% | 425k reads/s ±3% |
-| 1 个线程，每次按主键读一行，整个文件在缓存里 | 241k reads/s ±2% | **756k reads/s** ±2% | 487k reads/s ±2% | 117k reads/s ±1% |
-| 8 个线程，每次按主键读一行，整个文件在缓存里 | 1499k reads/s ±8% | **2394k reads/s** ±4% | 1463k reads/s ±3% | 455k reads/s ±4% |
-| 64 个线程，每次按主键读一行，整个文件在缓存里 | 1241k reads/s ±5% | **2123k reads/s** ±4% | 1293k reads/s ±5% | 327k reads/s ±8% |
-| 8 个线程照上面读，同时另有 8 个线程在写 | 1005k reads/s ±8% | 1021k reads/s ±4% | 615k reads/s ±5% | 167k reads/s ±2% |
-| 8 个线程，每次插入一行，同时另有 8 个线程在读 | 2796 writes/s ±25% | 19467 writes/s ±11% | **28900 writes/s** ±4% | 15437 writes/s ±2% |
-| 64 个线程，每次插入一行，`synchronous=FULL` | 819 writes/s ±6% | 56830 writes/s ±5% | 55212 writes/s ±2% | 845 writes/s ±2% |
+| 1 个线程，每次按主键读一行 | 189k reads/s ±2% | **373k reads/s** ±4% | 284k reads/s ±4% | 102k reads/s ±2% |
+| 8 个线程，每次按主键读一行 | 1075k reads/s ±5% | **1280k reads/s** ±4% | 955k reads/s ±5% | 421k reads/s ±2% |
+| 64 个线程，每次按主键读一行 | 982k reads/s ±3% | **1289k reads/s** ±4% | 914k reads/s ±3% | 429k reads/s ±4% |
+| 1 个线程，每次按主键读一行，整个文件在缓存里 | 235k reads/s ±4% | **719k reads/s** ±9% | 481k reads/s ±11% | 115k reads/s ±2% |
+| 8 个线程，每次按主键读一行，整个文件在缓存里 | 1395k reads/s ±7% | **2228k reads/s** ±8% | 1430k reads/s ±7% | 443k reads/s ±4% |
+| 64 个线程，每次按主键读一行，整个文件在缓存里 | 1204k reads/s ±13% | **2003k reads/s** ±5% | 1254k reads/s ±5% | 332k reads/s ±8% |
+| 8 个线程照上面读，同时另有 8 个线程在写 | 968k reads/s ±7% | 975k reads/s ±5% | 593k reads/s ±12% | 164k reads/s ±4% |
+| 8 个线程，每次插入一行，同时另有 8 个线程在读 | 2431 writes/s ±21% | 20551 writes/s ±8% | **27319 writes/s** ±14% | 14970 writes/s ±5% |
+| 64 个线程，每次插入一行，`synchronous=FULL` | 845 writes/s ±3% | 56081 writes/s ±4% | 55955 writes/s ±3% | 851 writes/s ±5% |
 
 <!-- /bench:readme-through-linux-amd64 -->
 

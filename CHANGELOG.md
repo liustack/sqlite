@@ -2,7 +2,7 @@
 
 What changed in each release, for the people who use the driver. Upgrade with `go get github.com/liustack/sqlite@latest`.
 
-## Unreleased
+## v0.1.8 (2026-11-21)
 
 - **windows/arm64 is supported ([#2](https://github.com/liustack/sqlite/issues/2)).** Before, the package built on windows/arm64 but registered no driver, so a program failed at run time with `sql: unknown driver "sqlite"`. Every push is now tested on a Windows on Arm machine. Thanks to @ourongxing.
 - **Other targets stop the build.** On freebsd, 32-bit or riscv64 the package built with no driver, so a program failed only when it opened a database. The build now stops with one error that lists the supported targets.
