@@ -5,7 +5,8 @@
 <p align="center">
   English · <a href="README.zh-CN.md">简体中文</a> ·
   <a href="docs/benchmarks.md">Benchmarks</a> ·
-  <a href="docs/architecture.md">How it works</a>
+  <a href="docs/architecture.md">How it works</a> ·
+  <a href="docs/principles.md">Principles</a>
 </p>
 
 <p align="center">
@@ -226,6 +227,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 
 | Doc | Read it when |
 | :-- | :-- |
+| [Principles](docs/principles.md) | You want to know what the driver promises, what it cannot, and what it will not trade for speed |
 | [Benchmarks](docs/benchmarks.md) | You want the full numbers, or to run them on your machine |
 | [Architecture](docs/architecture.md) | You want to know how C becomes Go assembly, or how group commit works |
 | [Group commit](docs/group-commit.md) | You want to know which concurrent writes merge, and what error each gets when one fails |
