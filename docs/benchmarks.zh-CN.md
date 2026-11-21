@@ -247,6 +247,72 @@
 - **等待分得均匀**，所以写者排队时本驱动的中位数更长：每个事务里做 2 ms 的事时，中位数 149 ms，mattn 和 modernc 7 ms，第 99 百分位 166 ms，它们 2.8 到 3.0 秒。
 - **每秒完成的写**：事务比 mattn 多 25% 到 36%，`synchronous=FULL` 下是 3.4 倍，自动提交的插入是 5 倍，因为组提交把它们合成一次提交。
 
+### 在 Windows 上
+
+同一个测试跑在 GitHub 的 Windows runner 上，`windows-2025`（x64）和 `windows-11-arm`（Arm），每种架构所有驱动在同一台 runner 上跑，由 `bench-windows` 工作流运行（见 [bench/README.md](../bench/README.md)）。mattn 的 cgo 在 x64 上用 runner 自带的 MinGW gcc 编译，在 Arm 上用 llvm-mingw，因为 Arm runner 的 gcc 只能编出 x86-64。这些 runner 是共享的虚拟机，时间在两次运行之间比上面那台 linux 机器波动大。要看的是 `database is locked` 的次数。
+
+<!-- bench:contention-windows-amd64 -->
+提交 `9b06a41`，Go 1.27.4，cgo with gcc (x86_64-posix-seh-rev1, Built by MinGW-Builds project) 15.2.0，AMD EPYC 9V45 96-Core Processor，Windows 10.0.26100.33828 amd64，GOMAXPROCS 4，共 4 个线程，2026-11-21。
+
+**最慢的一次写**（一个事务，或一条自动提交的语句），以及每项 30 秒里有多少次写报 `database is locked`：
+
+| 负载 | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| 64 个 goroutine 同时各插入一行 | 1.06 s | 42.3 s，197 次锁错误 | 31.6 s，139 次锁错误 | 851 ms |
+| 事务，64 个 goroutine，deferred | 1.37 s，6240772 次锁错误 | 2.03 s，3657227 次锁错误 | 3.73 s，1795547 次锁错误 | 1.80 s，3920556 次锁错误 |
+| 事务，64 个 goroutine，`_txlock=immediate` | 192 ms | 5.51 s，139 次锁错误 | 5.07 s，89 次锁错误 | 2.23 s |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 471 ms | 5.49 s，289 次锁错误 | 5.03 s，84 次锁错误 | 2.74 s |
+| 事务，64 个 goroutine，deferred，第一条就写，每个事务里做 2 ms 的事 | 399 ms | 5.51 s，261 次锁错误 | 5.03 s，88 次锁错误 | 2.55 s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 279 ms | 5.52 s，291 次锁错误 | 5.02 s，314 次锁错误 | 3.75 s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 1.02 s | 5.60 s，1150 次锁错误 | 5.04 s，654 次锁错误 | 4.85 s，3 次锁错误 |
+
+**每秒完成的写**，所有 goroutine 加起来：
+
+| 负载 | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| 64 个 goroutine 同时各插入一行 | 79446 writes/s | 58649 writes/s | 24843 writes/s | 21223 writes/s |
+| 事务，64 个 goroutine，deferred | 1325 writes/s | 6731 writes/s | 790 writes/s | 1441 writes/s |
+| 事务，64 个 goroutine，`_txlock=immediate` | 5503 writes/s | 16346 writes/s | 5742 writes/s | 5151 writes/s |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 354 writes/s | 390 writes/s | 324 writes/s | 378 writes/s |
+| 事务，64 个 goroutine，deferred，第一条就写，每个事务里做 2 ms 的事 | 340 writes/s | 379 writes/s | 351 writes/s | 371 writes/s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 340 writes/s | 372 writes/s | 319 writes/s | 242 writes/s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 459 writes/s | 409 writes/s | 552 writes/s | 557 writes/s |
+
+<!-- /bench:contention-windows-amd64 -->
+
+<!-- bench:contention-windows-arm64 -->
+提交 `9b06a41`，Go 1.27.4，cgo with clang version 23.1.5 (https://github.com/llvm/llvm-project.git 392dfff97d29b59d77e5cac6d4b6ef2585fe7117)，Cobalt 100，Windows 10.0.26200.9974 arm64，GOMAXPROCS 4，共 4 个线程，2026-11-21。
+
+**最慢的一次写**（一个事务，或一条自动提交的语句），以及每项 30 秒里有多少次写报 `database is locked`：
+
+| 负载 | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| 64 个 goroutine 同时各插入一行 | 416 ms | 19.8 s，2 次锁错误 | 5.02 s，66 次锁错误 | 413 ms |
+| 事务，64 个 goroutine，deferred | 1.83 s，4246078 次锁错误 | 1.98 s，2154308 次锁错误 | 451 ms，390655 次锁错误 | 2.18 s，3113389 次锁错误 |
+| 事务，64 个 goroutine，`_txlock=immediate` | 142 ms | 5.53 s，144 次锁错误 | 5.05 s，53 次锁错误 | 1.02 s |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 397 ms | 5.46 s，138 次锁错误 | 5.02 s，41 次锁错误 | 2.70 s |
+| 事务，64 个 goroutine，deferred，第一条就写，每个事务里做 2 ms 的事 | 385 ms | 5.46 s，143 次锁错误 | 5.03 s，54 次锁错误 | 2.75 s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 573 ms | 5.50 s，296 次锁错误 | 5.03 s，189 次锁错误 | 3.53 s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 721 ms | 5.59 s，852 次锁错误 | 5.06 s，597 次锁错误 | 4.77 s，9 次锁错误 |
+
+**每秒完成的写**，所有 goroutine 加起来：
+
+| 负载 | liustack/sqlite | mattn | modernc | ncruces |
+| :-- | --: | --: | --: | --: |
+| 64 个 goroutine 同时各插入一行 | 167k writes/s | 34905 writes/s | 11372 writes/s | 10092 writes/s |
+| 事务，64 个 goroutine，deferred | 1333 writes/s | 3489 writes/s | 871 writes/s | 1054 writes/s |
+| 事务，64 个 goroutine，`_txlock=immediate` | 5692 writes/s | 9614 writes/s | 2549 writes/s | 2320 writes/s |
+| 事务，64 个 goroutine，immediate，每个事务里做 2 ms 的事 | 384 writes/s | 387 writes/s | 381 writes/s | 393 writes/s |
+| 事务，64 个 goroutine，deferred，第一条就写，每个事务里做 2 ms 的事 | 349 writes/s | 380 writes/s | 379 writes/s | 388 writes/s |
+| 事务，64 个 goroutine，immediate，`synchronous=FULL` | 214 writes/s | 270 writes/s | 210 writes/s | 191 writes/s |
+| 事务，256 个 goroutine，immediate，每个事务里做 1 ms 的事 | 546 writes/s | 631 writes/s | 552 writes/s | 476 writes/s |
+
+<!-- /bench:contention-windows-arm64 -->
+
+- **用 `_txlock=immediate`，或者第一条语句就写**，本驱动在 x64 和 Arm 上都没有一次写报 `database is locked`，最慢的一次 142 ms 到 1.02 秒。mattn 和 modernc 在每一项这样的场景里都有写因此失败，ncruces 只在 256 个 goroutine 时有（x64 上 3 次，Arm 上 9 次）。
+- **短事务在 Windows 上更慢。**用 `_txlock=immediate` 且事务里不做事时，本驱动在 x64 上每秒 5503 次，Arm 上 5692 次，mattn 是 16346 和 9614 次，而在 linux 上本驱动比 mattn 多（14148 对 11267）。原因还没找到。事务里做 1 或 2 ms 的事时几个驱动差不多：x64 上本驱动每秒 340 到 459 次写，mattn 379 到 409 次，Arm 上 349 到 546 次对 380 到 631 次。
+- **自动提交的插入**由组提交合并，仍然最多：x64 上每秒 79446 次，Arm 上 167k 次，mattn 是 58649 和 34905 次。
+
 ## 复制
 
 [复制](replication.zh-CN.md)在程序里复制每次提交，所以 CPU 花在程序自己的进程里。`replica` 里的 `BenchmarkGroupCommit` 让 8 个或 64 个 goroutine 同时插入，每次一行（WAL，`synchronous=NORMAL`），分别关掉和打开复制。存储是同一台机器另一个核上的 MinIO，它的开销不落在基准的核上，就像存储在别的机器上时一样。

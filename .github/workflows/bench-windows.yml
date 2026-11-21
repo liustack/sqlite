@@ -1,0 +1,59 @@
+# Copyright (c) 2026 The liustack/sqlite Authors.
+# SPDX-License-Identifier: MIT
+# Use of this source code is governed by the MIT license in LICENSE at the
+# root of this repository.
+
+# Many writers at once (bench/contention_test.go) on the Windows runners,
+# every driver on one machine, for bench/published/contention/windows-*.json.
+# Run by hand: gh workflow run bench-windows.yml --ref <branch>.
+
+name: bench-windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contention:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-amd64, os: windows-2025 }
+          - { name: windows-arm64, os: windows-11-arm }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: bench
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache-dependency-path: bench/go.sum
+      # The gcc of windows-11-arm builds only x86-64, so cgo (mattn) gets an
+      # arm64 C compiler from llvm-mingw, checked against its release digest.
+      - name: arm64 C compiler
+        if: matrix.os == 'windows-11-arm'
+        run: |
+          v=20261104
+          f=llvm-mingw-$v-ucrt-aarch64.zip
+          curl -fsSL -o "$RUNNER_TEMP/$f" "https://github.com/mstorsjo/llvm-mingw/releases/download/$v/$f"
+          echo "7d7f8387a8706639b0b47a629d6e23f8b3ef9acce67e9832b8cd4c5bb2816eab  $RUNNER_TEMP/$f" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/$f" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/llvm-mingw-$v-ucrt-aarch64/bin" >> "$GITHUB_PATH"
+          echo "CC=aarch64-w64-mingw32-clang" >> "$GITHUB_ENV"
+      - name: contention
+        run: |
+          go version
+          go env CC
+          go run ./cmd/benchrun contention -time 30s -name ${{ matrix.name }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contention-${{ matrix.name }}
+          path: bench/results/*/contention/*.*
