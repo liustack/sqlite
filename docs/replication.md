@@ -1,8 +1,9 @@
 ---
-summary: 'How to keep a copy of a database in S3-compatible storage with the replica package, restore it, and what replication changes for the program, its limits included'
+summary: 'How to keep a copy of a database in S3-compatible storage with the replica package, restore it, what a lost machine costs and what the store costs, what replication changes for the program, and its limits'
 read_when:
   - Setting up replication of a database, or restoring one
   - Asked what the replicator guarantees, or what happens while the store is down
+  - Asked how many writes a lost machine costs, or what replication costs on R2
   - Moving a replicated database to another machine
   - Changing the user-facing behavior of replica
 ---
@@ -62,6 +63,31 @@ With the store up and nothing waiting, the copy is usually `SyncInterval` plus o
 `r.Close()` copies what is left, checkpoints, and tries for 10 seconds to upload it. What it could not upload stays staged, and the next `New` uploads it. While staging is stopped at `StagingLimit`, Close first uploads what was staged, then stages a full copy with what was committed since, and uploads it in the same 10 seconds. If the store is still down, Close gives an error under `replica.ErrStagingFull`, and the next `New` stages and uploads that full copy.
 
 `r.Status()` says where replication is: the last TXID staged, the last TXID in the store, the bytes waiting, and the error of the last upload. A TXID numbers the files of the replica, as Litestream counts them: each copy into the staging folder is one TXID, and holds every commit since the copy before. A restore point is the end of a file, not each commit.
+
+## What a lost machine costs
+
+No setup loses nothing in every case. A disk that fails is covered by the RAID or the replicated volume under your VPS. What the replica is for is the rarer case: the whole machine gone, its disks with it. Then you lose the commits that were not uploaded yet, about the last second of writes, and only if there were any in that second.
+
+Measured with `TestLostOnKill` (see [bench/README.md](../bench/README.md)): a process replicates to Cloudflare R2 with the default settings while goroutines insert, and is killed with SIGKILL, which stops its uploads at the moment a lost machine would. The replica is then restored on the same machine and compared with what the process had acknowledged. Apple M4, a home connection to R2, 10 s of writes before each kill:
+
+| Writes a second | Kills | Acknowledged writes missing | Newest write in the replica, before the kill | Restore |
+| --: | --: | --: | --: | --: |
+| 100 | 5 | 84 to 94, and 290 once | 0.86 to 0.95 s, and 2.9 s once | 4.0 to 5.6 s |
+| 1,000 | 5 | 867 to 951 | 0.87 to 0.95 s | 6.7 to 7.3 s |
+
+The one longer loss came from one upload that took longer than the others. The window holds while uploads keep up with the writes: at 1,000 small rows a second the WAL grows by about 0.1 MB/s. Writing as fast as 64 goroutines can (250,000 to 330,000 rows a second, 30 to 40 MB/s), the home connection fell behind, 300 to 390 MB waited at the kill, and nearly all of the 10 s was lost. A VPS has more bandwidth to its store than a home connection, but the store must still take what the database writes.
+
+For comparison, managed Postgres in its default setup:
+
+- **Amazon RDS in one Availability Zone** uploads its transaction log every 5 minutes, so losing the instance typically costs up to 5 minutes, and the restore is started by hand and takes from about 10 minutes to hours ([AWS](https://aws.amazon.com/blogs/database/amazon-rds-under-the-hood-single-az-instance-recovery)).
+- **Supabase** backs up once a day unless you pay for point-in-time recovery, whose worst case is 2 minutes ([Supabase](https://supabase.com/docs/guides/platform/backups)).
+- **A synchronous standby** (RDS Multi-AZ) costs a second instance and slower commits, and still loses commits when the replication falls back to asynchronous or a wait for it is cut short ([MySQL](https://dev.mysql.com/doc/refman/8.4/en/replication-semisync.html), [PostgreSQL](https://postgresql.org/message-id/FDE157D7-3F35-450D-B927-7EC2F82DB1D6%40amazon.com)).
+
+When a write must not be lost even then, call `r.Sync(ctx)` before you answer the request: once it returns nil, the write is in the store.
+
+### What it costs on R2
+
+A database that is written to uploads about one file a second while writes go on, and nothing while it is idle, plus a merge each minute and each hour. R2 counts each upload as a Class A operation, with 1 million a month free and $4.50 a million after that, and does not charge for downloads ([R2 pricing](https://developers.cloudflare.com/r2/pricing)). A database written to in every second of a 30-day month makes about 2.6 million uploads, about $7. One written to in fewer than about 11 days' worth of seconds stays in the free tier, and so does any database with `SyncInterval` set to 3 s, which makes the window about 3 s.
 
 ## While the store is down
 
