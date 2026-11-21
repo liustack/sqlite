@@ -114,7 +114,7 @@ A transaction here reads two rows and updates them, and the work inside it holds
 
 ## Real-time backup to S3
 
-Lose the machine, keep the data: a whole VPS gone costs about the last second of writes (0.86 to 0.95 s in 9 of our 10 [kill tests](docs/replication.md#what-a-lost-machine-costs)), where managed Postgres in its default setup can lose 5 minutes (Amazon RDS in one zone) to a day (Supabase's daily backup). On R2 it usually stays in the free tier.
+Your data outlives the machine. Every commit is in R2 about a second later, so if the VPS disappears, a new one is back where it stopped, and if a deploy deletes the wrong rows, you rewind to the second before it. On R2 it usually stays in the free tier.
 
 Start the replicator before you open the database, and every commit goes to S3, Cloudflare R2 or MinIO about a second later:
 
