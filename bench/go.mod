@@ -22,7 +22,9 @@ require (
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.4.35401 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
+	github.com/pierrec/lz4/v4 v4.1.23 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/superfly/ltx v0.5.2 // indirect
 	github.com/tursodatabase/turso-go-platform-libs v0.8.3 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	modernc.org/libc v1.79.0 // indirect

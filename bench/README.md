@@ -150,3 +150,13 @@ On Windows the workflow `bench-windows` ([.github/workflows/bench-windows.yml](.
 REOPEN=30s go test -tags mattn -run '^TestReopenAfterCrash$' -v
 REOPEN=30s REOPEN_COLD=1 go test -tags mattn -run '^TestReopenAfterCrash$' -v
 ```
+
+## A lost machine
+
+`TestLostOnKill` (`lost_test.go`, liustack only) measures what a lost machine costs a replicated database. A process of its own replicates to `LOST_URL` while goroutines insert, and is killed with SIGKILL `LOST` after it starts writing, which stops its uploads as a lost machine would. The test then restores the replica, times the restore, and reports how many acknowledged inserts are missing and how long before the kill the newest one in the replica was made. The credentials of the store come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. `LOST_RATE` caps the inserts a second (as many as the goroutines make by default), `LOST_G` sets the goroutines (64), `LOST_PAD` the bytes of each row (100) and `LOST_ROUNDS` the kills (3):
+
+```sh
+LOST=10s LOST_RATE=1000 LOST_ROUNDS=5 \
+  LOST_URL='s3://bucket/lost?endpoint=https://<account>.r2.cloudflarestorage.com&region=auto' \
+  go test -tags liustack -run '^TestLostOnKill$' -v
+```
