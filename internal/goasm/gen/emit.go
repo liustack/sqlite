@@ -298,6 +298,9 @@ func Emit(objPath string, metas []Meta, names NameMap, buildTag string) (string,
 		}
 		fmt.Fprintf(&b, "\tRET\n\n")
 	}
+	// The room checks call goasm_room on windows, and this is the one file.
+	// The host's functions are called directly, without room wrappers.
+	b.WriteString("#ifdef GOOS_windows\n" + roomText() + "#endif\n")
 	return b.String(), nil
 }
 

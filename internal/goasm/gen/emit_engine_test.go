@@ -46,6 +46,11 @@ func TestEmitLeafFrame(t *testing.T) {
 		i := strings.Index(asmGo, "TEXT ·savingleaf")
 		t.Fatalf("leaf frame not declared:\n%s", asmGo[i:i+60])
 	}
+	// The room checks of the unified functions call goasm_room on windows,
+	// and the one file Emit writes has it there.
+	if !strings.Contains(asmGo, "#ifdef GOOS_windows\n"+roomText()+"#endif\n") {
+		t.Fatalf("no goasm_room for windows:\n%s", asmGo)
+	}
 }
 
 // TestEmitNoStubs: a release build never emits a stub. EmitEngine stops on
