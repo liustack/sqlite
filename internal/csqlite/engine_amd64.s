@@ -39,7 +39,11 @@ TEXT ·goasm_chunked_memmove(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x648b4c3824748b4c
 	QUAD $0xeb28247c8b4c3024
 	QUAD $0xfe000000e2814891
@@ -60,7 +64,11 @@ TEXT ·goasm_chunked_memmove(SB), $64-32
 	QUAD $0x28247c894c202464
 	QUAD $0x24894c10246c894c
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4c3024648b4c
 	QUAD $0x4c3824448b482824
 	QUAD $0x8b4c00000180b08b
@@ -105,7 +113,11 @@ TEXT ·goasm_chunked_memcpy(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4c28246c8b4c
 	QUAD $0x4c3824448b482024
 	QUAD $0x8b4800000180b08b
@@ -151,7 +163,11 @@ TEXT ·goasm_chunked_memset(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4c3c246c8b44
 	QUAD $0x4c3024448b482024
 	QUAD $0x8b4800000180b08b

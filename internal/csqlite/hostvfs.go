@@ -108,13 +108,11 @@ func host_sleep(sp, us uintptr) {
 // the clock's: TestDiffC runs the engine at the time its C side runs at.
 var testNowMs int64
 
-func host_now_ms(sp uintptr) (ret uintptr) {
-	ret = uintptr(testNowMs)
-	if testNowMs == 0 {
-		ret = uintptr(time.Now().UnixMilli())
+func host_now_ms(sp uintptr) uintptr {
+	if testNowMs != 0 {
+		return uintptr(testNowMs)
 	}
-	makeRoom()
-	return ret
+	return uintptr(time.Now().UnixMilli())
 }
 
 // host_localtime writes the fields of struct tm for Unix time t in

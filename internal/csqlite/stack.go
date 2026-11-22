@@ -143,7 +143,6 @@ func stackBase(sp uintptr) uintptr { return sp &^ (stackSize - 1) }
 // it to one).
 func host_poll(sp uintptr) {
 	resetPoll(sp)
-	makeRoom()
 }
 
 //go:noinline

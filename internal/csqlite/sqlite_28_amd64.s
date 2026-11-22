@@ -106,7 +106,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x48000000b8249c8b
 	QUAD $0x4c000000c824bc8b
 	QUAD $0x48000000d024a48b
@@ -471,7 +475,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x48000000b8249c8b
 	QUAD $0x48000000a824b48b
 	QUAD $0x48000000c824bc8b
@@ -493,7 +501,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0x24a48b4cfffffe6d
 	QUAD $0x24b4894c000000d0
 	QUAD $0x2424894c000000b0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000b024b48b4c
 	QUAD $0x0000009024948b48
 	QUAD $0x000000d024a48b4c
@@ -519,7 +531,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c024948b4c
 	QUAD $0x00000090248c8b4c
 	QUAD $0x0000009824848b4c
@@ -540,7 +556,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c8248c8b48
 	QUAD $0x000000c0249c8b4c
 	QUAD $0x000000b8249c8b48
@@ -559,7 +579,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x48000000a824b48b
 	QUAD $0x480000008024948b
 	QUAD $0x4c000000c8248c8b
@@ -577,7 +601,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000b0249c8b4c
 	QUAD $0x000000c824bc8b48
 	QUAD $0x000000d024a48b4c
@@ -586,7 +614,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0x24a48b4cfffff19d
 	QUAD $0x24b48948000000d0
 	QUAD $0x2424894c00000098
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000009824b48b48
 	QUAD $0x0000008024948b48
 	QUAD $0x000000c0249c8b4c
@@ -655,7 +687,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0x2494894c000000a8
 	QUAD $0x24b4894800000098
 	QUAD $0x2424894c00000080
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000008024b48b48
 	QUAD $0x0000009824948b4c
 	QUAD $0x000000a8248c8b44
@@ -727,7 +763,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0x8c89480000009824
 	QUAD $0x24894c000000c824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c8248c8b48
 	QUAD $0x0000009824bc8b4c
 	QUAD $0x000000c0249c8b4c
@@ -737,7 +777,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0xe900000180888b4c
 	QUAD $0x24a48b4cfffff3f0
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x8c8b4868247c8b48
 	QUAD $0x448b4c000000a824
 	QUAD $0x008024948b487024
@@ -1035,7 +1079,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0xa48b4cffffff688f
 	QUAD $0x24894c000000d024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x244c8b48ffffff43
@@ -1048,7 +1096,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0xe9000000b0249c8b
 	QUAD $0x24a48b4cffffe604
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000d024a48b4c
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
@@ -1158,7 +1210,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4850244c8b4c
 	QUAD $0x00a824848b4c5824
 	QUAD $0x4c6824748b440000
@@ -1620,43 +1676,75 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xe9000000b0248489
 	QUAD $0x24a48b4cfffff96b
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24a48b4cffffe93a
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24a48b4cffffea20
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24a48b4cffffeacc
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24a48b4cffffeb53
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24a48b4cffffecd0
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24a48b4cffffed91
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24848b48ffffeb83
@@ -1756,7 +1844,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x244c8b48ffffff4c
@@ -2289,7 +2381,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xff3145ffffe7aee9
 	QUAD $0x9c8b48000000c0ba
 	QUAD $0xdf8948000000d024
@@ -2320,7 +2416,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0xa48b4cffffe811e9
 	QUAD $0x24894c000000d024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xffec1de978244489
@@ -2330,25 +2430,41 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xe9000000b0248489
 	QUAD $0x24a48b4cffffecbf
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xe9000000b0248489
 	QUAD $0x24a48b4cffffed68
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xe9000000b0248489
 	QUAD $0x24a48b4cffffec43
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xe9000000b0248489
@@ -2362,7 +2478,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xe9000000b0248489
@@ -2425,7 +2545,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a024848b48
 	QUAD $0xe900000180808b48
 	BYTE $0x22
@@ -2516,7 +2640,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	QUAD $0x894c000000a8248c
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a8248c8b48
 	QUAD $0x000000c824948b48
 	QUAD $0x000000d024a48b4c
@@ -2535,7 +2663,11 @@ TEXT ·fts5ExprNodeTest_STRING(SB), $224-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c824b48b4c
 	QUAD $0x000000c024ac8b4c
 	QUAD $0x000000b8249c8b48
@@ -2594,13 +2726,21 @@ TEXT ·fts5ExprNodeZeroPoslist(SB), $48-16
 	QUAD $0x894c202474894818
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x548b482024748b48
 	QUAD $0xeb2824648b4c1824
 	QUAD $0x894c2824648b4c8c
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xff6ae92024548b48
 	BYTE $0xff
 	BYTE $0xff
@@ -2880,10 +3020,18 @@ TEXT ·sqlite3Fts5ParseNodeFree(SB), $64-16
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c8eeb302444ff48
 	QUAD $0x2424894c3824648b
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0x9f
 	BYTE $0xfd
@@ -3597,7 +3745,11 @@ TEXT ·sqlite3Fts5IndexBeginWrite(SB), $96-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0xea
 	BYTE $0xfa
@@ -3814,7 +3966,11 @@ TEXT ·fts5StorageInsertCallback(SB), $192-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c00000098248c8b
 	QUAD $0x249c8b447024548b
 	QUAD $0x9c8bc031000000a4
@@ -3845,7 +4001,11 @@ TEXT ·fts5StorageInsertCallback(SB), $192-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000009024848b48
 	QUAD $0xeb00000180888b4c
 	QUAD $0x2fe900008000b99e
@@ -3886,7 +4046,11 @@ TEXT ·fts5StorageInsertCallback(SB), $192-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c000000b4249c8b
 	QUAD $0x480000008824848b
 	QUAD $0x4c0000009024bc8b
@@ -4202,7 +4366,11 @@ TEXT ·fts5StorageInsertDocsize(SB), $176-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0x53
 	BYTE $0xfd
@@ -4578,7 +4746,11 @@ TEXT ·fts5IndexOptimizeStruct(SB), $128-32
 	QUAD $0x4401480000018091
 	QUAD $0x4c857fd285485024
 	QUAD $0x2424894c7024648b
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x878948ffffff72e9
 	QUAD $0xe906ff4100000180
 	QUAD $0x38c2834800000220
@@ -4593,7 +4765,11 @@ TEXT ·fts5IndexOptimizeStruct(SB), $128-32
 	QUAD $0x894c202454894c28
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c8b4c2024548b4c
 	QUAD $0x4c28246c8b4c4024
 	QUAD $0x245c8b4c3024648b
@@ -4607,7 +4783,11 @@ TEXT ·fts5IndexOptimizeStruct(SB), $128-32
 	QUAD $0x894c30244c894c60
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x448b4c30244c8b4c
 	QUAD $0x8b4868245c8b6024
 	QUAD $0x5024748b4858247c
@@ -4623,7 +4803,11 @@ TEXT ·fts5IndexOptimizeStruct(SB), $128-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x5c8b4c3024648b4c
 	QUAD $0x4c58247c8b4c6024
 	QUAD $0x24548b4c6824748b
@@ -6435,7 +6619,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x618d4dffffff56e9
 	QUAD $0x0001982494894850
 	QUAD $0x0001a0249c894800
@@ -6558,7 +6746,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000019024848b4c
 	QUAD $0x00000188249c8b4c
 	QUAD $0x000001a8248c8b4c
@@ -7455,7 +7647,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0x894c000001a824a4
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000013024848b48
 	QUAD $0x848948ffffe357e9
 	QUAD $0x028b490000019824
@@ -7650,7 +7846,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0xac894c0000016024
 	QUAD $0x24894c000000f824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000f824ac8b4c
 	QUAD $0x0000018824bc8b48
 	QUAD $0x00000160249c8b4c
@@ -7665,7 +7865,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000019824bc8b48
 	QUAD $0x000001a024bc8b4c
 	QUAD $0x0000018024848b4c
@@ -7677,7 +7881,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000160249c8b4c
 	QUAD $0x0000013824948b4c
 	QUAD $0x000001a024bc8b4c
@@ -7689,7 +7897,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0x24a48b4cffffdbdd
 	QUAD $0x24bc8948000001a8
 	QUAD $0x2424894c00000198
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000019824bc8b48
 	QUAD $0x0000019024b48b48
 	QUAD $0x000001a024948b48
@@ -7698,7 +7910,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0x84894c0000019024
 	QUAD $0x24894c0000018824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000018824848b4c
 	QUAD $0x0000019024b48b48
 	QUAD $0x4c0000012424948b
@@ -7714,7 +7930,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000019824b48b48
 	QUAD $0x0000019024948b48
 	QUAD $0x000001a024bc8b4c
@@ -7735,7 +7955,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0xbc8948000001a824
 	QUAD $0x24894c0000019824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000019824bc8b48
 	QUAD $0x000001a024b48b48
 	QUAD $0x0000018024948b48
@@ -7744,7 +7968,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0x8c894c0000013024
 	QUAD $0x24894c0000019824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000198248c8b4c
 	QUAD $0x0000011024b48b48
 	QUAD $0x00000118248c8b48
@@ -7752,7 +7980,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0xa48b4cffffe52ae9
 	QUAD $0x24894c000001a824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000019824b48b48
 	QUAD $0x0000014824848b48
 	QUAD $0x848b48fffff48de9
@@ -7869,7 +8101,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000018024848b4c
 	LEAQ ·engine_rodata+3720(SB), CX
 	QUAD $0x000001a824a48b4c
@@ -7939,7 +8175,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x2484c7ffffff6de9
 	QUAD $0x00000014000001a0
 	QUAD $0xc48349ffffd5d2e9
@@ -8058,7 +8298,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0xe900000098818948
 	QUAD $0x24a48b4c0000018e
 	QUAD $0x2424894c000001a8
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000014824848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x248c8b48ffffdc25
@@ -8071,12 +8315,20 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000013024848b48
 	QUAD $0xe900000180808b48
 	QUAD $0x24a48b4cffffd608
 	QUAD $0x2424894c000001a8
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000008024848b48
 	QUAD $0x000000d824848948
 	QUAD $0x0060beffffddb9e9
@@ -8269,7 +8521,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000016024848b48
 	QUAD $0x4800000180808b48
 	QUAD $0xe900000180248489
@@ -8571,7 +8827,11 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0x9c89480000013824
 	QUAD $0x24894c000000f824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000f8249c8b48
 	QUAD $0x00000138249c8b4c
 	QUAD $0x0000015824948b4c
@@ -8983,12 +9243,20 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0xa48b4cffffd312e9
 	QUAD $0x24894c000001a824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000017024848b48
 	QUAD $0xe900000180b08b48
 	QUAD $0x24a48b4cffffe5ab
 	QUAD $0x2424894c000001a8
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000017024848b48
 	QUAD $0xe900000180b08b48
 	QUAD $0x24848b48ffffe628
@@ -9286,11 +9554,19 @@ TEXT ·sqlite3Fts5StorageDelete(SB), $432-48
 	QUAD $0xa48b4cfffff9fde9
 	QUAD $0x24894c000001a824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xa48b4cffffe899e9
 	QUAD $0x24894c000001a824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0xc3
 	BYTE $0xe8
@@ -9553,7 +9829,11 @@ TEXT ·sqlite3Fts5StorageContentInsert(SB), $192-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000008824b48b4c
 	QUAD $0xa48b4cffffff0fe9
 	QUAD $0xac8b4c000000b824
@@ -9926,7 +10206,11 @@ TEXT ·sqlite3Fts5StorageContentInsert(SB), $192-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x2444c7ffffff6ce9
 	QUAD $0x0010b80000001060
 	QUAD $0x4850244489480000
@@ -10076,7 +10360,11 @@ TEXT ·sqlite3Fts5StorageContentInsert(SB), $192-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000009024848b4c
 	QUAD $0x000000a824bc8b48
 	QUAD $0x548b48502474b70f
@@ -10934,7 +11222,11 @@ TEXT ·sqlite3Fts5StorageIndexInsert(SB), $224-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c000000d8249c8b
 	QUAD $0x4800000088248c8b
 	QUAD $0x4c000000a824948b
@@ -11016,7 +11308,11 @@ TEXT ·sqlite3Fts5StorageIndexInsert(SB), $224-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xfad7e97024448b48
 	QUAD $0x00d024848b48ffff
 	QUAD $0x8b4c30608d4c0000
@@ -11236,7 +11532,11 @@ TEXT ·sqlite3Fts5StorageIndexInsert(SB), $224-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b487024448b48
 	QUAD $0xfff771e900000180
 	QUAD $0xf436850f01c1f6ff
@@ -11284,7 +11584,11 @@ TEXT ·sqlite3Fts5StorageIndexInsert(SB), $224-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0010b8ffffff65e9
 	QUAD $0x8d00000010b90000
 	QUAD $0x00d8248c8b4cf050
@@ -11365,7 +11669,11 @@ TEXT ·sqlite3Fts5StorageIndexInsert(SB), $224-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000b024b48b48
 	QUAD $0x000000c824948b48
 	QUAD $0x000000d0249c8b4c
@@ -11612,7 +11920,11 @@ TEXT ·fts5IndexTombstoneAddToPage(SB), $80-40
 	QUAD $0x448944c80f41ffff
 	QUAD $0x4cffffff0fe90881
 	QUAD $0x2424894c3824648b
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xd089ff31f6899ceb
 	QUAD $0x840f0008c17c8348
 	QUAD $0xd231c0ff00000083
@@ -11639,7 +11951,11 @@ TEXT ·fts5IndexTombstoneAddToPage(SB), $80-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xeb
 	BYTE $0xbb
 	RET
@@ -11761,7 +12077,11 @@ TEXT ·sqlite3Fts5IndexReinit(SB), $112-24
 	QUAD $0x648b4cfffffe91e9
 	QUAD $0x4868247489486024
 	QUAD $0x2424894c40247c89
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	LEAQ ·engine_rodata+3720(SB), R9
 	QUAD $0x7c8b483824448b4c
 	QUAD $0x486824748b484024
@@ -12304,7 +12624,11 @@ TEXT ·fts5SorterNext(SB), $128-24
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b483824448b48
 	QUAD $0x2444ff4800000180
 	QUAD $0x8b48fffffeaae940
@@ -13079,7 +13403,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c024848348
 	QUAD $0x8949ffffff4fe9e8
 	QUAD $0x894808458b490055
@@ -13106,7 +13434,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	QUAD $0x948948987fc98548
 	QUAD $0x24894c000000e024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000e024948b48
 	QUAD $0x000000c824ac8b4c
 	QUAD $0x000000f024a48b4c
@@ -13186,7 +13518,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000e024948b48
 	QUAD $0x000000c824ac8b4c
 	QUAD $0x000000f024a48b4c
@@ -13403,7 +13739,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	QUAD $0x948948000000e824
 	QUAD $0x24894c000000e024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000e024948b48
 	QUAD $0x000000e8248c8b48
 	QUAD $0x000000dc24848b44
@@ -13460,7 +13800,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000e824bc8b48
 	QUAD $0x000000b024bc8b4c
 	QUAD $0x000000b824b48b4c
@@ -13502,7 +13846,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	QUAD $0x0000008824848b48
 	QUAD $0x24894cfffffaf7e9
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	LEAQ ·engine_rodata+69488(SB), BX
 	LEAQ ·engine_rodata+69984(SB), R11
 	LEAQ ·engine_rodata+69232(SB), R10
@@ -13520,7 +13868,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000b824b48b4c
 	LEAQ ·engine_rodata+69488(SB), BX
 	LEAQ ·engine_rodata+69984(SB), R11
@@ -13540,7 +13892,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c024948b48
 	QUAD $0x000000b824b48b4c
 	LEAQ ·engine_rodata+69488(SB), BX
@@ -14307,7 +14663,11 @@ TEXT ·sqlite3Fts5ExprNew(SB), $256-64
 	QUAD $0x894c502444894800
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000098248c8b48
 	QUAD $0x000000e024948b48
 	QUAD $0x000000dc24848b44
@@ -14839,7 +15199,11 @@ TEXT ·sqlite3Fts5ExprAnd(SB), $176-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0x73
 	BYTE $0xff
@@ -14896,7 +15260,11 @@ TEXT ·sqlite3Fts5ExprAnd(SB), $176-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b487024448b48
 	QUAD $0x8b489eeb00000180
 	QUAD $0x8d4c000000882484
@@ -15171,7 +15539,11 @@ TEXT ·fts5CursorFirstSorted(SB), $144-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xa48b4cffffff75e9
 	QUAD $0x2444890000008024
 	QUAD $0x00008824848b4860
@@ -16024,7 +16396,11 @@ TEXT ·sqlite3Fts5ParseNode(SB), $128-56
 	QUAD $0x894c48247c894828
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x748b4848247c8b48
 	QUAD $0x8b4c4024548b2824
 	QUAD $0x38246c8b4c702474
@@ -16091,7 +16467,11 @@ TEXT ·sqlite3Fts5ParseNode(SB), $128-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0x01
 	BYTE $0xfc
@@ -16467,7 +16847,11 @@ TEXT ·fts5ParsePhraseToAnd(SB), $192-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0x6c
 	BYTE $0xff
@@ -16536,7 +16920,11 @@ TEXT ·fts5ParsePhraseToAnd(SB), $192-32
 	QUAD $0x8c894c000000b824
 	QUAD $0x24894c0000009024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x010101010100bb49
 	QUAD $0x80808080ba490101
 	QUAD $0x248c8b4c80808080
@@ -16582,7 +16970,11 @@ TEXT ·fts5ParsePhraseToAnd(SB), $192-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000090248c8b4c
 	QUAD $0xbc8b486024448b4c
 	QUAD $0xbc8b4c0000008824
@@ -16604,7 +16996,11 @@ TEXT ·fts5ParsePhraseToAnd(SB), $192-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a824ac8b4c
 	LEAQ ·engine_rodata+3720(SB), SI
 	QUAD $0xa48b4cfffff5cce9
@@ -16654,7 +17050,11 @@ TEXT ·fts5ParsePhraseToAnd(SB), $192-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x5c8b4850244c8b48
 	QUAD $0x4c40245c8b4c4824
 	QUAD $0x248c8b4c7024548b
@@ -17259,7 +17659,11 @@ TEXT ·fts5ParsePhraseToAnd(SB), $192-32
 	QUAD $0xa48b4cffffeab6e9
 	QUAD $0x24894c000000b824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0xd4
 	BYTE $0xf4
@@ -17399,7 +17803,11 @@ TEXT ·fts5ExprNodeNext_OR(SB), $128-48
 	QUAD $0x894c70244c894c3c
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x448b4c70244c8b4c
 	QUAD $0x8b58247c8b443024
 	QUAD $0x50247c8b483c245c
@@ -17435,7 +17843,11 @@ TEXT ·fts5ExprNodeNext_OR(SB), $128-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b485024448b48
 	QUAD $0x2444ff4800000180
 	BYTE $0x68
@@ -17527,7 +17939,11 @@ TEXT ·fts5ExprNodeNext_AND(SB), $112-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x448b4c60247c8b48
 	QUAD $0x313824548b4c4824
 	QUAD $0x8b4c4024548b48f6
@@ -17552,7 +17968,11 @@ TEXT ·fts5ExprNodeNext_AND(SB), $112-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x448b4c30244c8b4c
 	QUAD $0x8b4c54245c8b4824
 	QUAD $0x548b48f631382454
@@ -17660,7 +18080,11 @@ TEXT ·fts5ExprNodeNext_NOT(SB), $96-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x748b4c3024448b4c
 	QUAD $0x4c4024548b485024
 	QUAD $0x244c8b484824648b
@@ -17740,7 +18164,11 @@ TEXT ·fts5ExprAddChildren(SB), $128-24
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x41782464894c84eb
 	QUAD $0x894803e0c128468b
 	QUAD $0x5824748948502454
@@ -17847,7 +18275,11 @@ TEXT ·fts5ExprAddChildren(SB), $128-24
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b484024448b48
 	QUAD $0xfffed9e900000180
 	BYTE $0xff
@@ -18408,7 +18840,11 @@ TEXT ·sqlite3Fts5ParseNearset(SB), $80-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0xc7
 	BYTE $0xfb
@@ -18448,7 +18884,11 @@ TEXT ·sqlite3Fts5ParseNearset(SB), $80-40
 	QUAD $0x894c4824648b4cff
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xe9
 	BYTE $0x0f
 	BYTE $0xfd
@@ -18559,7 +18999,11 @@ TEXT ·sqlite3Fts5ParseColsetInvert(SB), $96-32
 	QUAD $0x8b7fd2854838247c
 	QUAD $0x24894c5024648b4c
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x648b4cffffff78e9
 	QUAD $0x4828247489485024
 	QUAD $0x2444894c48244489
@@ -18570,7 +19014,11 @@ TEXT ·sqlite3Fts5ParseColsetInvert(SB), $96-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x245c8b20244c8b44
 	QUAD $0x8b484024448b4c38
 	QUAD $0x2824748b48482444
@@ -18993,7 +19441,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	LEAQ ·engine_rodata+656(SB), R14
 	QUAD $0x5c8b4c78245c8b48
 	QUAD $0x008824948b4c6024
@@ -19132,7 +19584,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	QUAD $0xa48b4c8c7fc98548
 	QUAD $0x24894c0000009024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x348d43ffffff76e9
 	QUAD $0xfffad6e912c6830b
 	QUAD $0x0f07c2f6d68948ff
@@ -19195,7 +19651,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xce0148ffffff7ae9
 	QUAD $0x00017e807674c084
 	QUAD $0x834800000080840f
@@ -19211,7 +19671,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	QUAD $0x480000008824b489
 	QUAD $0x24a48b4cb67fd285
 	QUAD $0x2424894c00000090
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xac8b4cc60148a3eb
 	QUAD $0x548b480000008024
 	QUAD $0xfff68ce9d6296824
@@ -19248,7 +19712,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4c4824648b4c
 	BYTE $0x24
 	BYTE $0x58
@@ -19273,7 +19741,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	QUAD $0x894c482474894c58
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xb60f444824748b4c
 	QUAD $0x7824548b4c58245c
 	QUAD $0x5cb60f60244c8b4c
@@ -19330,7 +19802,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x5c8b4840244c8b48
 	QUAD $0x4c58245c8b4c4824
 	QUAD $0x24b48b487824548b
@@ -19531,7 +20007,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	QUAD $0x60245c894c000000
 	QUAD $0x24894c78245c8948
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x5c8b4c78245c8b48
 	QUAD $0x008824948b4c6024
 	QUAD $0x008024848b480000
@@ -19709,7 +20189,11 @@ TEXT ·sqlite3Fts5ParseColset(SB), $160-40
 	QUAD $0xa48b4cfffffe95e9
 	QUAD $0x24894c0000009024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x888b484824448b48
 	QUAD $0xffff4fe900000180
 	BYTE $0xff
@@ -19832,7 +20316,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x010101010100bb49
 	QUAD $0x80808080ba490101
 	QUAD $0x24748b4880808080
@@ -19862,7 +20350,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x9cb60f7824748b48
 	QUAD $0xc031450000008024
 	QUAD $0x000000b024bc8b48
@@ -20101,7 +20593,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xcf0148ffffff7ae9
 	QUAD $0x00017f807674c084
 	QUAD $0x8348000000ff840f
@@ -20117,7 +20613,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	QUAD $0x48000000c024bc89
 	QUAD $0x24a48b4cb67fd285
 	QUAD $0x2424894c000000c8
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xa48b4cc70148a3eb
 	QUAD $0xac8b4c000000c824
 	QUAD $0xb48b48000000b824
@@ -20306,7 +20806,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000009824b48b4c
 	QUAD $0x000088249cb60f44
 	QUAD $0x0000a024948b4c00
@@ -20344,7 +20848,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	QUAD $0x894c000000c824a4
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0xfbdee96024448b48
 	QUAD $0x848920c48349ffff
 	QUAD $0xac894c000000c024
@@ -20372,7 +20880,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	QUAD $0x4800000098249c89
 	QUAD $0x248c894870245c89
 	QUAD $0x2424894c00000080
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000080248c8b48
 	QUAD $0x9c8b4c70245c8b48
 	QUAD $0x948b4c0000009824
@@ -20607,7 +21119,11 @@ TEXT ·sqlite3Fts5ParseTerm(SB), $208-48
 	QUAD $0xa48b4cffffec4ce9
 	QUAD $0x24894c000000c824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b486024448b48
 	QUAD $0xfff7c0e900000180
 	QUAD $0x0000c824848b48ff
@@ -20812,7 +21328,11 @@ TEXT ·fts5ParseSetColset(SB), $112-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4c4824548b48
 	QUAD $0x4cfffffdf9e95024
 	QUAD $0x2424894c6024648b
@@ -20832,7 +21352,11 @@ TEXT ·fts5ParseSetColset(SB), $112-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x448b4434244c8b44
 	QUAD $0x7c8b38245c8b3024
 	QUAD $0x4c5824748b484824
@@ -21044,7 +21568,11 @@ TEXT ·sqlite3Fts5IndexClose(SB), $96-16
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	LEAQ ·engine_rodata+3720(SB), DI
 	QUAD $0x748b482824648b4c
 	QUAD $0x484024548b483824
@@ -21915,7 +22443,11 @@ TEXT ·sqlite3Fts5ConfigFree(SB), $80-16
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	LEAQ ·engine_rodata+3720(SB), DI
 	QUAD $0x548b482824748b48
 	QUAD $0xe938244c8b483024

@@ -18,166 +18,153 @@ import (
 	"testing"
 )
 
-// roomHandlers are the functions a callback defers to catch a panic. Each
-// makes the room last, so a callback that defers one of them as its first
-// statement, and nothing else, makes the room after all it does.
-var roomHandlers = map[string]bool{"failWith": true, "failQuiet": true, "failAndGoOn": true}
-
-// TestCallbacksMakeRoom: every Go function the generated code calls makes
-// the room for a fault on windows (makeRoom) as the last thing it does
-// before it returns into the engine. On windows the stack may shrink while
-// a callback runs, and the generated code checks the room only where a
-// function starts. A callback either defers one of roomHandlers as its
-// first statement and defers nothing else, or defers nothing and calls
-// makeRoom right before its only return, which computes nothing. A callback
-// that never returns ends with a panic.
-func TestCallbacksMakeRoom(t *testing.T) {
-	called, texts := map[string]bool{}, map[string]bool{}
+// TestCallsThroughRoom: on windows/amd64 the generated code calls every Go
+// function of the package through its wrapper in
+// engine_room_windows_amd64.go, which calls the function, then goasm_room,
+// and returns. The stack may shrink while the function runs, and the
+// generated code checks the room for a fault only where one of its own
+// functions starts.
+func TestCallsThroughRoom(t *testing.T) {
 	files, err := filepath.Glob("*_amd64.s")
 	if err != nil {
 		t.Fatal(err)
 	}
 	call := regexp.MustCompile(`CALL ·([A-Za-z0-9_]+)\(SB\)`)
 	text := regexp.MustCompile(`(?m)^TEXT ·([A-Za-z0-9_]+)\(SB\)`)
+	pair := regexp.MustCompile(`#ifdef GOOS_windows\n\tCALL ·([A-Za-z0-9_]+)_room\(SB\)\n#else\n\tCALL ·([A-Za-z0-9_]+)\(SB\)\n#endif\n`)
+	texts := map[string]bool{}
+	calls := map[string]int{}  // calls of each function outside the generated code
+	paired := map[string]int{} // of those, the ones in the pair
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range call.FindAllSubmatch(b, -1) {
-			called[string(m[1])] = true
-		}
 		for _, m := range text.FindAllSubmatch(b, -1) {
 			texts[string(m[1])] = true
 		}
+		for _, m := range call.FindAllSubmatch(b, -1) {
+			calls[string(m[1])]++
+		}
+		for _, m := range pair.FindAllSubmatch(b, -1) {
+			if string(m[1]) != string(m[2]) {
+				t.Errorf("windows calls %s_room where the others call %s", m[1], m[2])
+			}
+			paired[string(m[2])]++
+		}
 	}
 	for name := range texts {
-		delete(called, name)
+		delete(calls, name)
 	}
-	if !called["host_poll"] || !called["malloc"] || !called["host_write"] {
-		t.Fatalf("the generated code calls %v: no host_poll, malloc or host_write", called)
+	if calls["host_poll"] == 0 || calls["malloc"] == 0 || calls["host_write"] == 0 {
+		t.Fatalf("the generated code calls %v: no host_poll, malloc or host_write", calls)
 	}
-	gofiles, err := filepath.Glob("*.go")
+	wrappers := roomWrappers(t)
+	for name, n := range calls {
+		if strings.HasSuffix(name, "_room") {
+			if !wrappers[name] {
+				t.Errorf("the generated code calls %s, which %s does not define", name, roomGoFile)
+			}
+			continue
+		}
+		if paired[name] != n {
+			t.Errorf("%d of the %d calls of %s are not through %s_room on windows", n-paired[name], n, name, name)
+		}
+	}
+}
+
+const roomGoFile = "engine_room_windows_amd64.go"
+
+// roomWrappers reads roomGoFile and checks each wrapper: go:norace, and a
+// body that calls the function it wraps with its own arguments, then
+// goasm_room, then returns what the function returned.
+func roomWrappers(t *testing.T) map[string]bool {
+	f, err := parser.ParseFile(token.NewFileSet(), roomGoFile, nil, parser.ParseComments)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defined := map[string]*ast.FuncDecl{}
-	fset := token.NewFileSet()
-	for _, gf := range gofiles {
-		if strings.HasSuffix(gf, "_test.go") {
+	got := map[string]bool{}
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Body == nil {
 			continue
 		}
-		f, err := parser.ParseFile(fset, gf, nil, 0)
-		if err != nil {
-			t.Fatal(err)
+		name := fd.Name.Name
+		got[name] = true
+		if fd.Doc == nil || !hasDirective(fd.Doc, "//go:norace") {
+			t.Errorf("%s does not say go:norace", name)
 		}
-		for _, d := range f.Decls {
-			if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Body != nil {
-				defined[fd.Name.Name] = fd
-			}
-		}
-	}
-	for name := range roomHandlers {
-		fd := defined[name]
-		if fd == nil {
-			t.Fatalf("no %s", name)
-		}
-		if returns(fd.Body) > 0 || !isMakeRoom(fd.Body.List[len(fd.Body.List)-1]) {
-			t.Errorf("%s does not end with makeRoom(), or returns before it", name)
-		}
-	}
-	for name := range called {
-		fd := defined[name]
-		if fd == nil {
-			t.Errorf("the generated code calls %s, which the package does not define in Go", name)
-			continue
-		}
-		if why := makesRoomLast(fd); why != "" {
+		if why := wrapsRoom(fd, strings.TrimSuffix(name, "_room")); why != "" {
 			t.Errorf("%s: %s", name, why)
 		}
 	}
+	return got
 }
 
-// makesRoomLast says what is wrong with the callback fd, or "".
-func makesRoomLast(fd *ast.FuncDecl) string {
-	list := fd.Body.List
-	if len(list) == 0 {
-		return "it does not make the room"
+func hasDirective(g *ast.CommentGroup, d string) bool {
+	for _, c := range g.List {
+		if c.Text == d {
+			return true
+		}
 	}
-	defers := 0
-	ast.Inspect(fd.Body, func(n ast.Node) bool {
-		switch n.(type) {
-		case *ast.FuncLit:
+	return false
+}
+
+// wrapsRoom says what is wrong with the wrapper fd of the function inner,
+// or "".
+func wrapsRoom(fd *ast.FuncDecl, inner string) string {
+	list := fd.Body.List
+	var params []string
+	for _, f := range fd.Type.Params.List {
+		for _, n := range f.Names {
+			params = append(params, n.Name)
+		}
+	}
+	isCall := func(e ast.Expr, fn string, args []string) bool {
+		c, ok := e.(*ast.CallExpr)
+		if !ok || len(c.Args) != len(args) {
 			return false
-		case *ast.DeferStmt:
-			defers++
+		}
+		if id, ok := c.Fun.(*ast.Ident); !ok || id.Name != fn {
+			return false
+		}
+		for i, a := range c.Args {
+			if id, ok := a.(*ast.Ident); !ok || id.Name != args[i] {
+				return false
+			}
 		}
 		return true
-	})
-	if d, ok := list[0].(*ast.DeferStmt); ok {
-		id, ok := d.Call.Fun.(*ast.Ident)
-		if !ok || !roomHandlers[id.Name] {
-			return "its first statement defers a function that does not make the room"
-		}
-		if defers != 1 {
-			return "it defers more than its handler, which would run after the handler made the room"
+	}
+	isStmt := func(s ast.Stmt, fn string, args []string) bool {
+		e, ok := s.(*ast.ExprStmt)
+		return ok && isCall(e.X, fn, args)
+	}
+	if fd.Type.Results == nil {
+		if len(list) != 2 || !isStmt(list[0], inner, params) || !isStmt(list[1], "goasm_room", nil) {
+			return "its body is not the call, then goasm_room()"
 		}
 		return ""
 	}
-	if defers != 0 {
-		return "it defers something, and not one of the handlers as its first statement"
+	if len(list) != 3 {
+		return "its body is not three statements"
 	}
-	if e, ok := list[len(list)-1].(*ast.ExprStmt); ok {
-		if c, ok := e.X.(*ast.CallExpr); ok {
-			if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "panic" && returns(fd.Body) == 0 {
-				return ""
-			}
+	a, ok := list[0].(*ast.AssignStmt)
+	if !ok || a.Tok != token.DEFINE || len(a.Rhs) != 1 || !isCall(a.Rhs[0], inner, params) {
+		return "it does not first keep what the call returns"
+	}
+	if !isStmt(list[1], "goasm_room", nil) {
+		return "its second statement is not goasm_room()"
+	}
+	r, ok := list[2].(*ast.ReturnStmt)
+	if !ok || len(r.Results) != len(a.Lhs) {
+		return "it does not return what the call returned"
+	}
+	for i, e := range r.Results {
+		id, ok := e.(*ast.Ident)
+		lhs, _ := a.Lhs[i].(*ast.Ident)
+		if !ok || lhs == nil || id.Name != lhs.Name {
+			return "it does not return what the call returned"
 		}
-	}
-	n := returns(fd.Body)
-	if r, ok := list[len(list)-1].(*ast.ReturnStmt); ok {
-		for _, e := range r.Results {
-			if _, ok := e.(*ast.Ident); !ok {
-				return "its return computes a value after makeRoom"
-			}
-		}
-		list = list[:len(list)-1]
-		n--
-	}
-	if n != 0 {
-		return "it returns before it makes the room"
-	}
-	if len(list) == 0 || !isMakeRoom(list[len(list)-1]) {
-		return "its last statement before the return is not makeRoom()"
 	}
 	return ""
-}
-
-// returns counts the return statements of body, outside function literals.
-func returns(body *ast.BlockStmt) int {
-	n := 0
-	ast.Inspect(body, func(x ast.Node) bool {
-		switch x.(type) {
-		case *ast.FuncLit:
-			return false
-		case *ast.ReturnStmt:
-			n++
-		}
-		return true
-	})
-	return n
-}
-
-// isMakeRoom says s is the statement makeRoom().
-func isMakeRoom(s ast.Stmt) bool {
-	e, ok := s.(*ast.ExprStmt)
-	if !ok {
-		return false
-	}
-	c, ok := e.X.(*ast.CallExpr)
-	if !ok || len(c.Args) != 0 {
-		return false
-	}
-	id, ok := c.Fun.(*ast.Ident)
-	return ok && id.Name == "makeRoom"
 }

@@ -309,11 +309,7 @@ func headerOf(p uintptr) *blockHeader { return (*blockHeader)(at(p - header)) }
 // A bad block (heap damage) fails the call: free leaks it, realloc says out of
 // memory, and the connection is marked broken. The heap is shared, but the
 // block that failed is the only one lost.
-func malloc(sp, n uintptr) (ret uintptr) {
-	ret = arenaOf(sp).alloc(n)
-	makeRoom()
-	return ret
-}
+func malloc(sp, n uintptr) uintptr { return arenaOf(sp).alloc(n) }
 
 func free(sp, p uintptr) {
 	defer failQuiet(sp)

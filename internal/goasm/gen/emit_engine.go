@@ -37,6 +37,9 @@ type EngineEmit struct {
 	// run once per call. A change elsewhere in the program then moves the
 	// body by whole lines of 64 bytes only.
 	Align64 map[string]int
+	// Host are the C names of the functions the host gives in Go, which
+	// the engine calls through their room wrappers on windows (callText).
+	Host map[string]bool
 }
 
 // FuncPlace is the assembly that puts function name in the lowered object
@@ -154,7 +157,7 @@ func EmitEngine(objPath string, e EngineEmit) (map[string]string, error) {
 		if cs, ok := o.funcs[m.Name+".const"]; ok {
 			code = int(cs[0])
 		}
-		if err := emitFunc(&fb, o, lo, code, e.Names); err != nil {
+		if err := emitFunc(&fb, o, lo, code, e.Names, e.Host); err != nil {
 			return nil, fmt.Errorf("%s: %w", m.Name, err)
 		}
 		if err := emitBytes(&fb, o.code[code:hi]); err != nil {

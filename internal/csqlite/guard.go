@@ -40,15 +40,12 @@ const (
 )
 
 // failWith is deferred by a callback that returns a result: it recovers a
-// panic, marks the stack of sp broken and sets the result to code. Like
-// failQuiet and failAndGoOn, it is the first and only defer of the
-// callbacks that use it, so it runs last, and it ends with makeRoom.
+// panic, marks the stack of sp broken and sets the result to code.
 func failWith(sp uintptr, r *uintptr, code uintptr) {
 	if e := recover(); e != nil {
 		poison(sp, e)
 		*r = code
 	}
-	makeRoom()
 }
 
 // failQuiet is deferred by a callback that returns nothing.
@@ -56,7 +53,6 @@ func failQuiet(sp uintptr) {
 	if e := recover(); e != nil {
 		poison(sp, e)
 	}
-	makeRoom()
 }
 
 // failAndGoOn is deferred by a callback that cannot fail cleanly: it marks
@@ -66,7 +62,6 @@ func failAndGoOn(sp uintptr) {
 		poison(sp, e)
 		panic(e)
 	}
-	makeRoom()
 }
 
 // Broken says a host callback panicked under the connection. It is safe to
