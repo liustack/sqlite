@@ -258,7 +258,7 @@
 - **用 `_txlock=immediate`，或者第一条语句就写**，本驱动没有一次写报 `database is locked`，最慢的一次 29 到 326 ms。同一个进程里的写者按到达顺序排队，一次写只等排在它前面的写。别的驱动里写者去抢 SQLite 的锁，两次尝试之间睡得越来越久：大多数写很快就过去了，少数几次一输再输，直到 busy timeout。mattn 和 modernc 在这样的场景里只有一项没有写因此失败，而同时大多数写只等了几毫秒。ncruces 这一轮没有。
 - **等待分得均匀**，所以写者排队时本驱动的中位数更长：每个事务里做 2 ms 的事时，中位数 147 ms，mattn 和 modernc 6 ms，第 99 百分位 163 ms，它们 2.9 到 3.1 秒。
 - **每秒完成的写**：事务比 mattn 多 15% 到 23%，`synchronous=FULL` 下是 2.4 倍，自动提交的插入是 6.3 倍，因为组提交把它们合成一次提交。
-- **别的驱动的 WAL 涨到了几 GB**，在这台机器上 30 秒内：mattn 自动提交插入时 5.49 GiB，`_txlock=immediate` 时 2.48 GiB，modernc 和 ncruces 1.70 到 3.83 GiB。SQLite 只在没有连接读 WAL 的那一刻把它从头写，而它们的 64 个写者全在 SQLite 里面，要么在事务中，要么在 busy handler 里重试，这一刻等不来。数据不会丢，但负载停了文件也不缩，一直占着磁盘。这样插入 30 秒后崩溃，再打开时第一次读，mattn 的库在 WAL 已进页缓存时要 2.2 秒，不在时 33 秒，modernc 是 1.7 秒和 19 秒，本驱动是 2.3 ms 和 63 ms（`TestReopenAfterCrash`，见 [bench/README.md](../bench/README.md)）。本驱动在写者进 SQLite 之前就让它们排队，每 1000 帧把 WAL 从头写：WAL 一直不到 4 MiB，deferred 事务时到了 144 MiB，因为它们的读把 WAL 撑过了 64 MiB 的上限。在 10 核的 Apple M4 上 mattn 的 WAL 只到 12 MiB，所以涨到多大取决于机器。
+- **别的驱动的 WAL 涨到了几 GB**，在这台机器上 30 秒内：mattn 自动提交插入时 5.49 GiB，`_txlock=immediate` 时 2.48 GiB，modernc 和 ncruces 1.70 到 3.83 GiB。SQLite 只在没有连接读 WAL 的那一刻把它从头写，而它们的 64 个写者全在 SQLite 里面，要么在事务中，要么在 busy handler 里重试，这一刻等不来。数据不会丢，但负载停了文件也不缩，一直占着磁盘。这样插入 30 秒后崩溃，再打开时第一次读，mattn 的库在 WAL 已进页缓存时要 2.2 秒，不在时 33 秒，modernc 是 1.7 秒和 19 秒，本驱动是 2.3 ms 和 63 ms（`TestReopenAfterCrash`，见 [bench/README.md](../bench/README.md)）。本驱动在写者进 SQLite 之前就让它们排队，每 1000 帧把 WAL 从头写：WAL 一直不到 4 MiB，deferred 事务时到了 144 MiB，因为 64 个叠在一起的读占满了 SQLite 的读者槽，到 64 MiB 上限时从头写可能失败（见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-长度的上限)）。在 10 核的 Apple M4 上 mattn 的 WAL 只到 12 MiB，所以涨到多大取决于机器。
 
 ### 在 Windows 上
 
