@@ -131,6 +131,8 @@ make check-gen
 
 generates both again, fails if `internal/csqlite` differs from what is checked in, and runs the post-link check on a linux binary of the package for each target: every generated function and `engine_rodata` held to llc's object.
 
+The room for a fault on windows/amd64 (see [architecture.md](architecture.md#the-go-host)) has three tests. `TestRoomCheck` (`internal/goasm/gen`) checks the check each kind of function gets, and `TestRoomCheckAssembles` that the assembler of windows/amd64 takes it before a long body, which Go before 1.26.11 and 1.27.4 would loop on without the no-op after the branch (golang/go#81792). `TestCallbacksMakeRoom` (`internal/csqlite`) reads every Go function the generated code calls and requires it to make the room last. `TestFaultNearStackBottom` faults in the C at each depth over 48 KiB of fresh goroutine stacks and runs the collector after: on a Windows machine with AMX it would stop the process without the room. The post-link check reads only linux binaries, so no check holds a windows binary to the room.
+
 ## The generator
 
 Without LLVM, `go test ./internal/goasm/...` runs only the rule tests of the generator. With LLVM 22.1.8 installed:
