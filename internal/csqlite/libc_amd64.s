@@ -412,6 +412,13 @@ TEXT ·memset(SB), NOSPLIT, $0-0
 
 TEXT ·bcmp(SB), $48-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
 	QUAD $0x4c5024748b4c4824
@@ -447,7 +454,11 @@ TEXT ·bcmp(SB), $48-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4c2824648b4c
 	QUAD $0x4c18246c8b4c2024
 	QUAD $0xffff08e91024748b
@@ -456,6 +467,13 @@ TEXT ·bcmp(SB), $48-40
 
 TEXT ·bzero(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
 	QUAD $0x4d5024748b4c4824
@@ -500,13 +518,24 @@ TEXT ·bzero(SB), $48-24
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xeb
 	BYTE $0x94
 	RET
 
 TEXT ·memchr(SB), $64-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
 	QUAD $0x4c6024748b4c5824
@@ -530,7 +559,11 @@ TEXT ·memchr(SB), $64-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c20247c8b4cc031
 	QUAD $0x24648b4c18246c8b
 	QUAD $0x80eb3424748b4428
@@ -600,7 +633,11 @@ TEXT ·memchr(SB), $64-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808080808080b949
 	QUAD $0x481024448b4c8080
 	QUAD $0x01010101010100bf
@@ -618,6 +655,13 @@ TEXT ·memchr(SB), $64-40
 
 TEXT ·memcmp(SB), $48-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
 	QUAD $0x4c5024748b4c4824
@@ -653,7 +697,11 @@ TEXT ·memcmp(SB), $48-40
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x7c8b4c2824648b4c
 	QUAD $0x4c18246c8b4c2024
 	QUAD $0xffff08e91024748b
@@ -662,6 +710,13 @@ TEXT ·memcmp(SB), $48-40
 
 TEXT ·__memrchr(SB), $64-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
 	QUAD $0x4c6024748b4c5824
@@ -680,7 +735,11 @@ TEXT ·__memrchr(SB), $64-40
 	QUAD $0x342474894418246c
 	QUAD $0x24894c20247c8948
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x648b4c20247c8b48
 	QUAD $0x4c3424748b442824
 	QUAD $0x8b4cc03118246c8b
@@ -692,6 +751,13 @@ TEXT ·__memrchr(SB), $64-40
 
 TEXT ·strchr(SB), $48-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
 	QUAD $0x445024748b4c4824
@@ -709,6 +775,13 @@ TEXT ·strchr(SB), $48-32
 
 TEXT ·__strchrnul(SB), $64-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
 	QUAD $0x446024748b4c5824
@@ -787,7 +860,11 @@ TEXT ·__strchrnul(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x748b443024448b48
 	QUAD $0xeb2824648b4c2424
 	QUAD $0x24448948e8894c96
@@ -854,7 +931,11 @@ TEXT ·__strchrnul(SB), $64-32
 	QUAD $0x4c01480000018090
 	QUAD $0x4c9f7fd285483024
 	QUAD $0x2424894c2824648b
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x8430244c01488feb
 	QUAD $0x3024448b486474c0
 	QUAD $0x8348637400017880
@@ -870,7 +951,11 @@ TEXT ·__strchrnul(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x483024440148b2eb
 	QUAD $0xfffd86e93024448b
 	QUAD $0x8b48302444ff48ff
@@ -893,7 +978,11 @@ TEXT ·__strchrnul(SB), $64-32
 	QUAD $0x548b4c10244c8b4c
 	QUAD $0x4cfffffc08e91824
 	QUAD $0x2424894c2824648b
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b481824448b48
 	BYTE $0x80
 	BYTE $0x01
@@ -905,6 +994,13 @@ TEXT ·__strchrnul(SB), $64-32
 
 TEXT ·strcmp(SB), $48-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
 	QUAD $0x415024748b4c4824
@@ -927,7 +1023,11 @@ TEXT ·strcmp(SB), $48-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x6c8b4c2024648b4c
 	QUAD $0xeb1024748b4c1824
 	QUAD $0x29cab60fc1b60f85
@@ -936,6 +1036,13 @@ TEXT ·strcmp(SB), $48-32
 
 TEXT ·strcspn(SB), $80-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
 	QUAD $0x4c7024748b4c6824
@@ -957,7 +1064,11 @@ TEXT ·strcspn(SB), $80-32
 	QUAD $0x2474894438244489
 	QUAD $0x24894c30245c8844
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x748b4430245cb60f
 	QUAD $0x4c3824448b484424
 	QUAD $0x246c8b4c2824648b
@@ -1013,13 +1124,21 @@ TEXT ·strcspn(SB), $80-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b483024448b48
 	QUAD $0xffff41e900000180
 	QUAD $0x894c2824648b4cff
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x808b483024448b48
 	BYTE $0x80
 	BYTE $0x01
@@ -1031,6 +1150,13 @@ TEXT ·strcspn(SB), $80-32
 
 TEXT ·strlen(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c4024648b4c
 	QUAD $0xc5f641e8894c4824
@@ -1080,7 +1206,11 @@ TEXT ·strlen(SB), $48-24
 	QUAD $0x648b4c202464894c
 	QUAD $0x4810246c894c2024
 	QUAD $0x2424894c18244489
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x010101010100b849
 	QUAD $0x80808080bf480101
 	QUAD $0x24648b4c80808080
@@ -1104,7 +1234,11 @@ TEXT ·strlen(SB), $48-24
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x448b482024648b4c
 	QUAD $0xeb10246c8b4c1824
 	QUAD $0x48e8294cf001489d
@@ -1120,6 +1254,13 @@ TEXT ·strlen(SB), $48-24
 
 TEXT ·strncmp(SB), $80-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c6024648b4c
 	QUAD $0x4c7024748b4c6824
@@ -1143,7 +1284,11 @@ TEXT ·strncmp(SB), $80-40
 	QUAD $0x894c30247c894828
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x648b4c30247c8b48
 	QUAD $0x4c28246c8b4c3824
 	QUAD $0x24748b4820247c8b
@@ -1159,6 +1304,13 @@ TEXT ·strncmp(SB), $80-40
 
 TEXT ·strrchr(SB), $64-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
 	QUAD $0x4c6024748b4c5824
@@ -1216,7 +1368,11 @@ TEXT ·strrchr(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x010101010100b849
 	QUAD $0x80808080bf480101
 	QUAD $0x24748b4880808080
@@ -1239,7 +1395,11 @@ TEXT ·strrchr(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x648b4c2024748b48
 	QUAD $0x4c3424748b442824
 	QUAD $0x014893eb18246c8b
@@ -1261,7 +1421,11 @@ TEXT ·strrchr(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x48c0311024448b4c
 	QUAD $0x24648b4c2024748b
 	QUAD $0x8b4c3424748b4428
@@ -1281,6 +1445,13 @@ TEXT ·strrchr(SB), $64-32
 
 TEXT ·strspn(SB), $64-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c5024648b4c
 	QUAD $0x0f6024748b4c5824
@@ -1305,7 +1476,11 @@ TEXT ·strspn(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4cb60f2024748b4c
 	QUAD $0x4c1024748b483724
 	QUAD $0x246c8b4c2824648b
@@ -1334,7 +1509,11 @@ TEXT ·strspn(SB), $64-32
 	QUAD $0x7401480000018091
 	QUAD $0x4cbe7fd285482024
 	QUAD $0x2424894c2824648b
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x482024448b48aeeb
 	QUAD $0xe9f001481824442b
 	QUAD $0x2464894cffffff7b
@@ -1346,7 +1525,11 @@ TEXT ·strspn(SB), $64-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x448b48372454b60f
 	QUAD $0x4c1024748b482024
 	QUAD $0x246c8b4c2824648b
@@ -1358,8 +1541,16 @@ TEXT ·strspn(SB), $64-32
 	BYTE $0xff
 	RET
 
-TEXT ·__cos(SB), NOSPLIT, $0-32
+TEXT ·__cos(SB), NOSPLIT|NOFRAME, $0-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x244c100ff2102444
@@ -1397,6 +1588,13 @@ TEXT ·__cos(SB), NOSPLIT, $0-32
 
 TEXT ·__expo2(SB), $64-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff25024648b4c
 	QUAD $0x244c100ff2582444
@@ -1469,8 +1667,16 @@ TEXT ·__expo2(SB), $64-32
 	QUAD $0x7fc0000000000000
 	RET
 
-TEXT ·__math_divzero(SB), NOSPLIT, $0-24
+TEXT ·__math_divzero(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c0824648b4c
 	QUAD $0x0fed8545c0311024
@@ -1482,8 +1688,16 @@ TEXT ·__math_divzero(SB), NOSPLIT, $0-24
 	QUAD $0x7ff0000000000000
 	RET
 
-TEXT ·__math_invalid(SB), NOSPLIT, $0-24
+TEXT ·__math_invalid(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xf2c05c0ff2102444
@@ -1493,8 +1707,16 @@ TEXT ·__math_invalid(SB), NOSPLIT, $0-24
 	BYTE $0x00
 	RET
 
-TEXT ·__math_oflow(SB), NOSPLIT, $0-24
+TEXT ·__math_oflow(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c0824648b4c
 	QUAD $0x0fed8545c0311024
@@ -1506,8 +1728,16 @@ TEXT ·__math_oflow(SB), NOSPLIT, $0-24
 	QUAD $0x7ff0000000000000
 	RET
 
-TEXT ·__math_uflow(SB), NOSPLIT, $0-24
+TEXT ·__math_uflow(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c0824648b4c
 	QUAD $0xed8545c0570f1024
@@ -1518,8 +1748,16 @@ TEXT ·__math_uflow(SB), NOSPLIT, $0-24
 	QUAD $0x8000000000000000
 	RET
 
-TEXT ·__math_xflow(SB), NOSPLIT, $0-32
+TEXT ·__math_xflow(SB), NOSPLIT|NOFRAME, $0-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x6c8b4c0824648b4c
 	QUAD $0x182444100ff21024
@@ -1535,6 +1773,13 @@ TEXT ·__math_xflow(SB), NOSPLIT, $0-32
 
 TEXT ·__rem_pio2(SB), $112-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x0000008024a48b4c
 	QUAD $0x0000882484100ff2
@@ -1695,7 +1940,11 @@ TEXT ·__rem_pio2(SB), $112-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x414c247c8b449beb
 	QUAD $0xfbeac7814114efc1
 	QUAD $0x2958247c8b48ffff
@@ -1754,6 +2003,13 @@ TEXT ·__rem_pio2(SB), $112-32
 
 TEXT ·__rem_pio2_large(SB), $352-56
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x0000017024a48b4c
 	QUAD $0x0000017824ac8b4c
@@ -2305,7 +2561,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000f824bc8b48
 	QUAD $0x0000181935100ff2
 	QUAD $0x000017d12d100ff2
@@ -2428,7 +2688,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c8249c8b48
 	QUAD $0x000000e0249c8b4c
 	QUAD $0x00000138248c8b4c
@@ -2529,7 +2793,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000c8249c8b48
 	QUAD $0x000000e0249c8b4c
 	QUAD $0x00000138248c8b4c
@@ -2567,7 +2835,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0xb48948000000d024
 	QUAD $0x24894c0000010824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000010824b48b48
 	QUAD $0x0000d02494100ff2
 	QUAD $0x0000f8248c8b4800
@@ -2590,7 +2862,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x94110f66000000f8
 	QUAD $0x24894c000000d024
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000d02494100f66
 	QUAD $0x0000f8248c8b4800
 	QUAD $0x00014024bc8b4400
@@ -2615,7 +2891,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x8c8b4c3024748b4c
 	QUAD $0x748b48000000a824
 	QUAD $0x402494100ff26024
@@ -2653,7 +2933,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x948948000000f024
 	QUAD $0x24894c0000013824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000013824948b48
 	QUAD $0x00000da91d100ff2
 	QUAD $0x000dc03d100f44f2
@@ -2695,7 +2979,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000013024848b48
 	QUAD $0x00000c8d1d100ff2
 	QUAD $0x000ca43d100f44f2
@@ -2736,7 +3024,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000090248c8b4c
 	QUAD $0x000000b824848b4c
 	QUAD $0x0000c82494100ff2
@@ -2770,7 +3062,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000138249c8b4c
 	QUAD $0xf20000013024b48b
 	QUAD $0xf200000a881d100f
@@ -2807,7 +3103,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000a8249c8b48
 	QUAD $0x8c8b4c60245c8b4c
 	QUAD $0x848b4c0000014024
@@ -2852,7 +3152,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000118248c8b48
 	QUAD $0x000000e8248c8b4c
 	QUAD $0x0000c82494100ff2
@@ -2886,7 +3190,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x8b4c20244c6f0ff3
 	QUAD $0x245c6f0ff370245c
 	QUAD $0x0000a824948b4830
@@ -2924,7 +3232,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x70244c894c302444
 	QUAD $0x24894c20245c894c
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c8b4c20245c8b4c
 	QUAD $0x483024448b4c7024
 	QUAD $0x41000000a824b48b
@@ -2962,7 +3274,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x48000000e0249c8b
 	QUAD $0x4c0000013824948b
 	QUAD $0x480000013024bc8b
@@ -2979,7 +3295,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x5024a48b4c000001
 	QUAD $0x24bc110ff2000001
 	QUAD $0x2424894c000000f0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000004a01d100ff2
 	QUAD $0x0004b73d100f44f2
 	QUAD $0x04be35100f44f200
@@ -3011,7 +3331,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	LEAQ ·engine_rodata+87008(SB), R13
 	QUAD $0x0000010824b48b4c
 	QUAD $0x000000d0249c8b48
@@ -3030,7 +3354,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x8c8948000000f824
 	QUAD $0x24894c0000010824
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00000108248c8b48
 	QUAD $0x000000f824b48b48
 	QUAD $0x0000d024ac100ff2
@@ -3054,7 +3382,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x8c8b4c50247c8b4c
 	QUAD $0x948b480000009024
 	QUAD $0x9c8b48000000b024
@@ -3074,7 +3406,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x248c110f66000001
 	QUAD $0x24b48948000000f8
 	QUAD $0x2424894c000000d0
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000d024b48b48
 	QUAD $0x0000f8248c100f66
 	QUAD $0x00014024bc8b4400
@@ -3093,7 +3429,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x894c0000013824bc
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000013824bc8b48
 	QUAD $0x00000130248c8b48
 	QUAD $0x0000010824b48b48
@@ -3111,7 +3451,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x894c000000d024b4
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x000000d024b48b48
 	QUAD $0x0000f82484100f66
 	QUAD $0x00014024bc8b4400
@@ -3127,7 +3471,11 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x894c000001082494
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x0000010824948b48
 	QUAD $0x0000d0249c100ff2
 	QUAD $0x0000f8248c8b4800
@@ -3160,8 +3508,16 @@ TEXT ·__rem_pio2_large(SB), $352-56
 	QUAD $0x7ff0000000000000
 	RET
 
-TEXT ·__sin(SB), NOSPLIT, $0-40
+TEXT ·__sin(SB), NOSPLIT|NOFRAME, $0-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x244c100ff2102444
@@ -3199,8 +3555,16 @@ TEXT ·__sin(SB), NOSPLIT, $0-40
 	QUAD $0xbfc5555555555549
 	RET
 
-TEXT ·__tan(SB), NOSPLIT, $0-40
+TEXT ·__tan(SB), NOSPLIT|NOFRAME, $0-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x244c100ff2102444
@@ -3291,8 +3655,16 @@ TEXT ·__tan(SB), NOSPLIT, $0-40
 	QUAD $0x3ff0000000000000
 	RET
 
-TEXT ·acos(SB), NOSPLIT, $0-24
+TEXT ·acos(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -3410,8 +3782,16 @@ TEXT ·acos(SB), NOSPLIT, $0-24
 	QUAD $0x3ff0000000000000
 	RET
 
-TEXT ·acosh(SB), NOSPLIT, $0-24
+TEXT ·acosh(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -3732,8 +4112,16 @@ TEXT ·acosh(SB), NOSPLIT, $0-24
 	QUAD $0x3fe5555555555593
 	RET
 
-TEXT ·asin(SB), NOSPLIT, $0-24
+TEXT ·asin(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -3845,8 +4233,16 @@ TEXT ·asin(SB), NOSPLIT, $0-24
 	QUAD $0x3870000000000000
 	RET
 
-TEXT ·asinh(SB), NOSPLIT, $0-24
+TEXT ·asinh(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x66c86f0f66102444
@@ -4173,8 +4569,16 @@ TEXT ·asinh(SB), NOSPLIT, $0-24
 	QUAD $0x3fe62e42fefa39ef
 	RET
 
-TEXT ·atan(SB), NOSPLIT, $0-24
+TEXT ·atan(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -4275,8 +4679,16 @@ TEXT ·atan(SB), NOSPLIT, $0-24
 	QUAD $0xbfc999999998ebc4
 	RET
 
-TEXT ·atan2(SB), NOSPLIT, $0-32
+TEXT ·atan2(SB), NOSPLIT|NOFRAME, $0-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x244c100ff2102444
@@ -4508,8 +4920,16 @@ TEXT ·atan2(SB), NOSPLIT, $0-32
 	QUAD $0xfffffe3efffffe1f
 	RET
 
-TEXT ·atanh(SB), NOSPLIT, $0-24
+TEXT ·atanh(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -4614,8 +5034,16 @@ TEXT ·atanh(SB), NOSPLIT, $0-24
 	QUAD $0x3fe62e42fee00000
 	RET
 
-TEXT ·ceil(SB), NOSPLIT, $0-24
+TEXT ·ceil(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x66c9570f66102444
@@ -4646,6 +5074,13 @@ TEXT ·ceil(SB), NOSPLIT, $0-24
 
 TEXT ·cos(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff24024648b4c
 	QUAD $0xc07e0f4866482444
@@ -4784,6 +5219,13 @@ TEXT ·cos(SB), $48-24
 
 TEXT ·cosh(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff24024648b4c
 	QUAD $0x1d05db0f66482444
@@ -4925,6 +5367,13 @@ TEXT ·cosh(SB), $48-24
 
 TEXT ·exp(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff24024648b4c
 	QUAD $0x66c86f0f66482444
@@ -4996,8 +5445,16 @@ TEXT ·exp(SB), $48-24
 	QUAD $0x3fa55555cf172b91
 	RET
 
-TEXT ·specialcase(SB), NOSPLIT, $0-40
+TEXT ·specialcase(SB), NOSPLIT|NOFRAME, $0-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x18246c8b4c102444
@@ -5031,8 +5488,16 @@ TEXT ·specialcase(SB), NOSPLIT, $0-40
 	QUAD $0x7f00000000000000
 	RET
 
-TEXT ·expm1(SB), NOSPLIT, $0-24
+TEXT ·expm1(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -5156,8 +5621,16 @@ TEXT ·expm1(SB), NOSPLIT, $0-24
 	QUAD $0x3fe0000000000000
 	RET
 
-TEXT ·floor(SB), NOSPLIT, $0-24
+TEXT ·floor(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x66c9570f66102444
@@ -5186,6 +5659,13 @@ TEXT ·floor(SB), NOSPLIT, $0-24
 
 TEXT ·fmod(SB), $96-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff27024648b4c
 	QUAD $0x248c100ff2782444
@@ -5227,7 +5707,11 @@ TEXT ·fmod(SB), $96-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x4c8b4c3824548b4c
 	QUAD $0x00000000b8494824
 	QUAD $0x247c8b4800100000
@@ -5316,7 +5800,11 @@ TEXT ·fmod(SB), $96-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x648b4cfffffe98e9
 	BYTE $0x24
 	BYTE $0x50
@@ -5324,7 +5812,11 @@ TEXT ·fmod(SB), $96-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	QUAD $0x00b849ffffff24e9
 	QUAD $0x4500080000000000
 	QUAD $0x3c8d48c7394cc931
@@ -5350,13 +5842,25 @@ TEXT ·fmod(SB), $96-32
 	BYTE $0x89
 	BYTE $0x24
 	BYTE $0x24
+#ifdef GOOS_windows
+	CALL ·host_poll_room(SB)
+#else
 	CALL ·host_poll(SB)
+#endif
 	BYTE $0xeb
 	BYTE $0xc6
 	RET
 
-TEXT ·log(SB), NOSPLIT, $0-24
+TEXT ·log(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -5488,8 +5992,16 @@ TEXT ·log(SB), NOSPLIT, $0-24
 	QUAD $0x3fd5555555555577
 	RET
 
-TEXT ·log10(SB), NOSPLIT, $0-24
+TEXT ·log10(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc17e0f4866102444
@@ -5577,8 +6089,16 @@ TEXT ·log10(SB), NOSPLIT, $0-24
 	QUAD $0x3fdbcb7b15200000
 	RET
 
-TEXT ·log1p(SB), NOSPLIT, $0-24
+TEXT ·log1p(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -5664,8 +6184,16 @@ TEXT ·log1p(SB), NOSPLIT, $0-24
 	QUAD $0x3fe5555555555593
 	RET
 
-TEXT ·log2(SB), NOSPLIT, $0-24
+TEXT ·log2(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -6073,6 +6601,13 @@ TEXT ·log2(SB), NOSPLIT, $0-24
 
 TEXT ·pow(SB), $48-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff24024648b4c
 	QUAD $0x244c100ff2482444
@@ -6304,8 +6839,16 @@ TEXT ·pow(SB), $48-32
 	QUAD $0x7ff0000000000000
 	RET
 
-TEXT ·specialcase_75(SB), NOSPLIT, $0-40
+TEXT ·specialcase_75(SB), NOSPLIT|NOFRAME, $0-40
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x18246c8b4c102444
@@ -6350,8 +6893,16 @@ TEXT ·specialcase_75(SB), NOSPLIT, $0-40
 	QUAD $0x7f00000000000000
 	RET
 
-TEXT ·scalbn(SB), NOSPLIT, $0-32
+TEXT ·scalbn(SB), NOSPLIT|NOFRAME, $0-32
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0x18246c8b4c102444
@@ -6383,6 +6934,13 @@ TEXT ·scalbn(SB), NOSPLIT, $0-32
 
 TEXT ·sin(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff24024648b4c
 	QUAD $0xc07e0f4866482444
@@ -6513,6 +7071,13 @@ TEXT ·sin(SB), $48-24
 
 TEXT ·sinh(SB), $80-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff26024648b4c
 	QUAD $0x66c86f0f66682444
@@ -6630,6 +7195,13 @@ TEXT ·sinh(SB), $80-24
 
 TEXT ·tan(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff24024648b4c
 	QUAD $0xc07e0f4866482444
@@ -6790,6 +7362,13 @@ TEXT ·tan(SB), $48-24
 
 TEXT ·tanh(SB), $48-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff24024648b4c
 	QUAD $0x66d06f0f66482444
@@ -6857,8 +7436,16 @@ TEXT ·tanh(SB), $48-24
 	QUAD $0x8000000000000000
 	RET
 
-TEXT ·trunc(SB), NOSPLIT, $0-24
+TEXT ·trunc(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xc07e0f4866102444
@@ -6877,8 +7464,16 @@ TEXT ·trunc(SB), NOSPLIT, $0-24
 	BYTE $0xd7
 	RET
 
-TEXT ·sqrt(SB), NOSPLIT, $0-24
+TEXT ·sqrt(SB), NOSPLIT|NOFRAME, $0-24
 	NO_LOCAL_POINTERS
+#ifdef GOOS_windows
+	MOVQ (TLS), R14
+	LEAQ -12288(SP), R12
+	CMPQ R12, 16(R14)
+	JHI 2(PC)
+	CALL ·goasm_room(SB)
+	BYTE $0x90
+#endif
 	PCALIGN $16
 	QUAD $0x100ff20824648b4c
 	QUAD $0xf2c0510ff2102444

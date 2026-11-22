@@ -96,14 +96,174 @@ func readObject(path string) (*object, error) {
 // always declared. A leaf that saved registers (Meta.Frame > 0) must not be
 // written with a zero frame: Go would give it no stack space and its stores
 // would overwrite the return address.
+//
+// Every unified function is followed by its room check (roomCheck). A
+// NOSPLIT one without a frame says NOFRAME, which the Go assembler gives a
+// frameless leaf by itself: on windows its room check calls goasm_room, and
+// the call would otherwise make the assembler save BP and move the
+// arguments the body reads.
 func funcHeader(goName string, m Meta) string {
 	if m.Kind == Register {
 		return fmt.Sprintf("TEXT ·%s(SB), NOSPLIT, $%d-0\n", goName, m.Frame)
 	}
-	if m.NoSplit {
-		return fmt.Sprintf("TEXT ·%s(SB), NOSPLIT, $%d-%d\n\tNO_LOCAL_POINTERS\n", goName, m.Frame, m.ArgBytes)
+	if m.NoSplit && m.Frame == 0 {
+		return fmt.Sprintf("TEXT ·%s(SB), NOSPLIT|NOFRAME, $0-%d\n\tNO_LOCAL_POINTERS\n", goName, m.ArgBytes) + roomCheck(m)
 	}
-	return fmt.Sprintf("TEXT ·%s(SB), $%d-%d\n\tNO_LOCAL_POINTERS\n", goName, m.Frame, m.ArgBytes)
+	if m.NoSplit {
+		return fmt.Sprintf("TEXT ·%s(SB), NOSPLIT, $%d-%d\n\tNO_LOCAL_POINTERS\n", goName, m.Frame, m.ArgBytes) + roomCheck(m)
+	}
+	return fmt.Sprintf("TEXT ·%s(SB), $%d-%d\n\tNO_LOCAL_POINTERS\n", goName, m.Frame, m.ArgBytes) + roomCheck(m)
+}
+
+// RoomBelow is how many bytes past Go's stack guard every unified function
+// on windows/amd64 has below its stack pointer before its body runs.
+// Windows writes the state of the CPU at a fault below the stack pointer of
+// the thread that faulted, which in the engine is the goroutine's stack, and
+// Go keeps 4 KiB below each stack for it (golang/go#81238). On a CPU with
+// AMX that state and the frames of the dispatch take 12,816 bytes, measured
+// on GitHub's windows runners, and near the bottom of a stack the rest goes
+// into the heap. The guard is 5024 bytes above the bottom of the stack on
+// windows/amd64 (800 + 4096 + 128), so a body has at least
+// RoomBelow + 5024 bytes below its stack pointer, and a register-entry leaf
+// it calls, which takes less than 128 bytes and the return address, at
+// least 17176.
+const RoomBelow = 12 << 10
+
+// RoomFrame is the frame of goasm_room. Its own stack check passes only when
+// SP - (RoomFrame + 8 - 128) is above the guard, so the room check of the
+// function that called it then passes with 16 bytes to spare, and morestack
+// grows the stack for that frame.
+const RoomFrame = RoomBelow + 128
+
+// RoomFile is the generated file of goasm_room. Its name builds it on
+// windows/amd64 only, the one target with the room check.
+const RoomFile = "engine_room_windows_amd64.s"
+
+// roomCheck is the check that follows Go's prologue of a unified function, in
+// the assembly of windows only: when the stack less RoomBelow is at or below
+// the guard in g, it calls goasm_room, whose stack check grows the stack.
+// The runtime shrinks a stack only where the goroutine stopped at a call, so
+// in the engine at the stack check of a generated function, which runs this
+// check after it, or in a Go function of the host, which the engine calls
+// through a wrapper that makes the room after it returns (callText).
+//
+// R14 holds g after a split prologue, and a NOSPLIT function loads it first.
+// No argument is in a register yet (the body loads them from the Go stack)
+// and R12 is the scratch register of Go's own check, so both are free. The
+// JHI lands on a NOP, not on the PCALIGN of the body that follows: Go before
+// 1.26.11 and 1.27.4 loops forever on a forward branch to a PCALIGN once a
+// branch of the function needs its long form (golang/go#81792).
+func roomCheck(m Meta) string {
+	load := ""
+	if m.NoSplit {
+		load = "\tMOVQ (TLS), R14\n"
+	}
+	return "#ifdef GOOS_windows\n" + load +
+		fmt.Sprintf("\tLEAQ -%d(SP), R12\n\tCMPQ R12, 16(R14)\n\tJHI 2(PC)\n\tCALL ·goasm_room(SB)\n\tBYTE $0x90\n", RoomBelow) +
+		"#endif\n"
+}
+
+// roomText is goasm_room: a function with a frame of RoomFrame bytes that
+// does nothing, so that its stack check makes the room (see RoomBelow). The
+// wrappers of the host's functions call it too (RoomWrappers).
+func roomText() string {
+	return fmt.Sprintf("// goasm_room makes RoomBelow bytes of room below the stack pointer of its\n// caller: its stack check grows the stack for a frame it never touches.\nTEXT ·goasm_room(SB), $%d-0\n\tNO_LOCAL_POINTERS\n\tRET\n", RoomFrame)
+}
+
+// RoomSuffix ends the name of the wrapper through which the engine calls a
+// Go function of the host on windows/amd64 (RoomWrappers).
+const RoomSuffix = "_room"
+
+// RoomGoFile is the generated Go file of the wrappers. Its name builds it on
+// windows/amd64 only.
+const RoomGoFile = "engine_room_windows_amd64.go"
+
+// callText is a direct call of target. A target in host is a Go function
+// of the host, and on windows the engine calls its wrapper: the
+// stack may shrink while the function runs, in its own code, in the defers
+// it runs as it returns or in the runtime's ending of a panic it recovered,
+// and the wrapper makes the room again once all of that is over. Both calls
+// are five bytes, so the body is the same length on every system.
+func callText(target string, names NameMap, host map[string]bool) string {
+	gn := names[target]
+	if gn == "" {
+		gn = target
+	}
+	if !host[target] {
+		return fmt.Sprintf("\tCALL ·%s(SB)\n", gn)
+	}
+	return fmt.Sprintf("#ifdef GOOS_windows\n\tCALL ·%s%s(SB)\n#else\n\tCALL ·%s(SB)\n#endif\n", gn, RoomSuffix, gn)
+}
+
+// RoomAddressed fails when a function of metas or engine_rodata holds a
+// pointer to a Go function of the host (host). The engine would call it
+// through that pointer without its room wrapper (callText).
+func RoomAddressed(metas []Meta, plan *DataPlan, host map[string]bool) error {
+	for _, m := range metas {
+		if m.Rec == nil {
+			continue
+		}
+		for _, r := range m.Rec.Refs {
+			if r.Func && host[r.Label] {
+				return fmt.Errorf("%s takes the address of the host's function %s, which the engine has to call through its room wrapper", m.Name, r.Label)
+			}
+		}
+	}
+	if plan != nil {
+		for _, r := range plan.Relocs {
+			if r.Func && host[r.Sym] {
+				return fmt.Errorf("engine_rodata holds a pointer to the host's function %s, which the engine has to call through its room wrapper", r.Sym)
+			}
+		}
+	}
+	return nil
+}
+
+// RoomWrappers is RoomGoFile of package pkg: goasm_room, and the wrapper of
+// each Go function of the host in callbacks, by Go name, with its
+// signature. A
+// wrapper calls the function, makes the room and returns what it returned.
+// It says go:norace, so that the race detector adds no call after the room
+// is made. Go does not inline a function that defers, so the function's
+// defers run before the wrapper makes the room.
+func RoomWrappers(pkg, tag string, callbacks map[string]Sig) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "// Code generated by internal/goasm/gen. DO NOT EDIT.\n\n//go:build %s\n\npackage %s\n\n", BuildExpr(tag, "amd64"), pkg)
+	fmt.Fprintf(&b, "// goasm_room is in %s.\nfunc goasm_room()\n", RoomFile)
+	for _, name := range SortedKeys(callbacks) {
+		s := callbacks[name]
+		var ps, as []string
+		w := 0
+		for _, p := range s.Params {
+			switch p {
+			case F64:
+				ps = append(ps, fmt.Sprintf("a%d float64", w))
+				as = append(as, fmt.Sprintf("a%d", w))
+				w++
+			case JSV:
+				ps = append(ps, fmt.Sprintf("a%d, a%d uintptr", w, w+1))
+				as = append(as, fmt.Sprintf("a%d, a%d", w, w+1))
+				w += 2
+			default:
+				ps = append(ps, fmt.Sprintf("a%d uintptr", w))
+				as = append(as, fmt.Sprintf("a%d", w))
+				w++
+			}
+		}
+		call := fmt.Sprintf("%s(%s)", name, strings.Join(as, ", "))
+		fmt.Fprintf(&b, "\n//go:norace\nfunc %s%s(%s)", name, RoomSuffix, strings.Join(ps, ", "))
+		switch s.Ret {
+		case Void:
+			fmt.Fprintf(&b, " {\n\t%s\n\tgoasm_room()\n}\n", call)
+		case F64:
+			fmt.Fprintf(&b, " float64 {\n\tr := %s\n\tgoasm_room()\n\treturn r\n}\n", call)
+		case JSV:
+			fmt.Fprintf(&b, " (uintptr, uintptr) {\n\tr0, r1 := %s\n\tgoasm_room()\n\treturn r0, r1\n}\n", call)
+		default:
+			fmt.Fprintf(&b, " uintptr {\n\tr := %s\n\tgoasm_room()\n\treturn r\n}\n", call)
+		}
+	}
+	return b.String()
 }
 
 // Emit writes the Go assembly for the functions described by metas.
@@ -130,7 +290,7 @@ func Emit(objPath string, metas []Meta, names NameMap, buildTag string) (string,
 		if cs, ok := o.funcs[m.Name+".const"]; ok {
 			code = int(cs[0])
 		}
-		if err := emitFunc(&b, o, lo, code, names); err != nil {
+		if err := emitFunc(&b, o, lo, code, names, nil); err != nil {
 			return "", fmt.Errorf("%s: %w", m.Name, err)
 		}
 		if err := emitBytes(&b, o.code[code:hi]); err != nil {
@@ -138,6 +298,9 @@ func Emit(objPath string, metas []Meta, names NameMap, buildTag string) (string,
 		}
 		fmt.Fprintf(&b, "\tRET\n\n")
 	}
+	// The room checks call goasm_room on windows, and this is the one file.
+	// The host's functions are called directly, without room wrappers.
+	b.WriteString("#ifdef GOOS_windows\n" + roomText() + "#endif\n")
 	return b.String(), nil
 }
 
@@ -154,7 +317,7 @@ func emitBytes(b *strings.Builder, data []byte) error {
 }
 
 // emitFunc disassembles [lo,hi) and writes bytes with CALLs made symbolic.
-func emitFunc(b *strings.Builder, o *object, lo, hi int, names NameMap) error {
+func emitFunc(b *strings.Builder, o *object, lo, hi int, names NameMap, host map[string]bool) error {
 	i := lo
 	pending := []byte{} // raw bytes awaiting a flush
 	flush := func() {
@@ -227,11 +390,7 @@ func emitFunc(b *strings.Builder, o *object, lo, hi int, names NameMap) error {
 		if inst.Op == x86asm.CALL {
 			flush()
 			if name, ok := o.calls[uint64(i)]; ok { // direct E8
-				gn := names[name]
-				if gn == "" {
-					gn = name
-				}
-				fmt.Fprintf(b, "\tCALL ·%s(SB)\n", gn)
+				b.WriteString(callText(name, names, host))
 			} else { // indirect
 				reg, ok := inst.Args[0].(x86asm.Reg)
 				if !ok {

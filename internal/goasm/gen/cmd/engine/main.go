@@ -735,7 +735,22 @@ func main() {
 	}
 	// A copy goes with the function it is a copy of (cloneGroups).
 	cloneGroups(group, metas, stubs)
-	ee := gen.EngineEmit{Metas: metas, Names: gonames, Group: group,
+	// The functions SQLite needs from outside, which the host gives in Go:
+	// the engine calls them through their room wrappers on windows
+	// (gen.RoomWrappers).
+	host := map[string]bool{}
+	for name, defined := range rep.Defined {
+		if !defined {
+			if _, ok := sigs[name]; !ok {
+				die(fmt.Errorf("no signature for the host's function %s", name))
+			}
+			host[name] = true
+		}
+	}
+	if err := gen.RoomAddressed(metas, plan, host); err != nil {
+		die(err)
+	}
+	ee := gen.EngineEmit{Metas: metas, Names: gonames, Group: group, Host: host,
 		MaxBytes: *maxFile, Stubs: stubs, NoStubs: *release, Plan: plan, Arch: *arch, Tag: *buildTag, Align64: align64}
 	emit := gen.EmitEngine
 	if a64 {
@@ -762,6 +777,13 @@ func main() {
 		os.Remove(filepath.Join(*out, f))
 	}
 	writeFile(filepath.Join(*out, "engine_decl_"+*arch+".go"), goDecls(metas, stubs, sigs, gonames, rep, negative, layout, wrappers))
+	if !a64 {
+		callbacks := map[string]gen.Sig{}
+		for name := range host {
+			callbacks[gonames[name]] = sigs[name]
+		}
+		writeFile(filepath.Join(*out, gen.RoomGoFile), gen.RoomWrappers(*pkg, *buildTag, callbacks))
+	}
 	negativeFile := filepath.Join(*out, "engine_negative_"+*arch+".go")
 	if negative {
 		writeFile(negativeFile, negativeBuildFile())
