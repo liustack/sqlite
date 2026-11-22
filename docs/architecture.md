@@ -94,6 +94,8 @@ So the connection that gives the write lock back looks at the length of the WAL,
 
 When the readers do not end in time, as with a read transaction that stays open, the next try comes once the WAL has grown by another quarter of the limit: the wait is paid once in that much writing, not at each commit. So the limit is where the driver starts to try, not a length the WAL cannot pass. A read that never ends still lets the WAL grow, as in SQLite.
 
+Short reads can hold a try off too, when enough of them overlap. SQLite has four slots for the readers of the WAL, each marked with how far its readers read, and a new reader can move a mark forward only while that slot is free. When no slot is ever free, new readers join the slot whose mark is behind, and that slot does not empty within the wait. On an Apple M4, 64 goroutines that each read in a deferred transaction and retry as soon as it fails held off 1 to 5 of 13 to 22 tries in 10 seconds, and the WAL reached 80 to 96 MiB. Sixty goroutines that each read with a single statement, beside four writers, held off none of 8. Holding new readers back during the try would let it through, but they would wait for the checkpoint and its sync, so the driver does not.
+
 A replicated file follows the same rule in its replicator, which runs every checkpoint of that file (see [Replication](#replication)).
 
 ## Automatic checkpoints
