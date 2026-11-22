@@ -248,9 +248,10 @@ func TestPostLinkCheck(t *testing.T) {
 	}
 	asmFiles, _ := filepath.Glob(filepath.Join(pkgDir, "*_amd64.s"))
 	for _, fn := range align {
-		// The body starts where the PCALIGN $64 and its no-ops put it, and
-		// only there: 8 more bytes of no-op in front of it are refused.
-		re := regexp.MustCompile(`(TEXT ·` + fn + `\(SB\).*\n(?:\tNO_LOCAL_POINTERS\n)?\tPCALIGN \$64\n)`)
+		// The body starts where the PCALIGN $64 and its no-ops put it, after
+		// the room check of windows, and only there: 8 more bytes of no-op
+		// in front of it are refused.
+		re := regexp.MustCompile(`(TEXT ·` + fn + `\(SB\).*\n(?:\tNO_LOCAL_POINTERS\n)?(?:#ifdef GOOS_windows\n(?:\t.*\n)*?#endif\n)?\tPCALIGN \$64\n)`)
 		var path string
 		var orig []byte
 		for _, f := range asmFiles {
