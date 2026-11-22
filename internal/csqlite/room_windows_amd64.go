@@ -12,3 +12,9 @@ package csqlite
 // below the stack pointer, and Go keeps only 4 KiB for it (golang/go#81238,
 // docs/architecture.md).
 func goasm_room()
+
+// makeRoom makes the room again before a callback returns into the engine:
+// the stack may have shrunk while the callback ran, and the generated code
+// checks the room only where a function starts. Every callback makes it
+// last (TestCallbacksMakeRoom).
+func makeRoom() { goasm_room() }
