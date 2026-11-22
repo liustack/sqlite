@@ -747,6 +747,9 @@ func main() {
 			host[name] = true
 		}
 	}
+	if err := gen.RoomAddressed(metas, plan, host); err != nil {
+		die(err)
+	}
 	ee := gen.EngineEmit{Metas: metas, Names: gonames, Group: group, Host: host,
 		MaxBytes: *maxFile, Stubs: stubs, NoStubs: *release, Plan: plan, Arch: *arch, Tag: *buildTag, Align64: align64}
 	emit := gen.EmitEngine

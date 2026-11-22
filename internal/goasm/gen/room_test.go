@@ -167,3 +167,26 @@ func malloc_room(a0 uintptr, a1 uintptr) uintptr {
 		t.Errorf("%s does not build on windows/amd64 only", RoomGoFile)
 	}
 }
+
+// TestRoomAddressed: the engine reaches a Go function of the host only by a
+// direct call, which callText turns into a call of its room wrapper. A
+// pointer to one, in a function or in engine_rodata, would be called
+// without the wrapper, so the generator refuses it.
+func TestRoomAddressed(t *testing.T) {
+	host := map[string]bool{"host_read": true}
+	ok := []Meta{{Name: "f", Rec: &FuncRecord{Refs: []RefRecord{{Label: "g", Func: true}, {Label: "host_read"}}}}}
+	if err := RoomAddressed(ok, &DataPlan{Relocs: []BlobReloc{{Sym: "g", Func: true}}}, host); err != nil {
+		t.Errorf("no pointer to the host: %v", err)
+	}
+	if err := RoomAddressed(ok, nil, host); err != nil {
+		t.Errorf("no plan: %v", err)
+	}
+	inFunc := []Meta{{Name: "f", Rec: &FuncRecord{Refs: []RefRecord{{Label: "host_read", Func: true}}}}}
+	if err := RoomAddressed(inFunc, nil, host); err == nil || !strings.Contains(err.Error(), "host_read") {
+		t.Errorf("a pointer to host_read in f: %v", err)
+	}
+	inData := &DataPlan{Relocs: []BlobReloc{{Sym: "host_read", Func: true}}}
+	if err := RoomAddressed(ok, inData, host); err == nil || !strings.Contains(err.Error(), "host_read") {
+		t.Errorf("a pointer to host_read in engine_rodata: %v", err)
+	}
+}

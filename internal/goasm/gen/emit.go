@@ -195,6 +195,30 @@ func callText(target string, names NameMap, host map[string]bool) string {
 	return fmt.Sprintf("#ifdef GOOS_windows\n\tCALL ·%s%s(SB)\n#else\n\tCALL ·%s(SB)\n#endif\n", gn, RoomSuffix, gn)
 }
 
+// RoomAddressed fails when a function of metas or engine_rodata holds a
+// pointer to a Go function of the host (host). The engine would call it
+// through that pointer without its room wrapper (callText).
+func RoomAddressed(metas []Meta, plan *DataPlan, host map[string]bool) error {
+	for _, m := range metas {
+		if m.Rec == nil {
+			continue
+		}
+		for _, r := range m.Rec.Refs {
+			if r.Func && host[r.Label] {
+				return fmt.Errorf("%s takes the address of the host's function %s, which the engine has to call through its room wrapper", m.Name, r.Label)
+			}
+		}
+	}
+	if plan != nil {
+		for _, r := range plan.Relocs {
+			if r.Func && host[r.Sym] {
+				return fmt.Errorf("engine_rodata holds a pointer to the host's function %s, which the engine has to call through its room wrapper", r.Sym)
+			}
+		}
+	}
+	return nil
+}
+
 // RoomWrappers is RoomGoFile of package pkg: goasm_room, and the wrapper of
 // each Go function of the host in callbacks, by Go name, with its
 // signature. A
