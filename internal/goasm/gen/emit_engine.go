@@ -194,6 +194,10 @@ func EmitEngine(objPath string, e EngineEmit) (map[string]string, error) {
 	if e.Plan != nil {
 		files["engine_rodata_"+e.Arch+".s"] = EmitRodata(e.Plan, e.Names, header)
 	}
+	// The functions call goasm_room on windows (roomCheck). The name of the
+	// file builds it on windows/amd64 only, where room_windows_amd64.go of
+	// the package declares it.
+	files[RoomFile] = header + roomText()
 	return files, nil
 }
 

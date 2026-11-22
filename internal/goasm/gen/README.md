@@ -94,7 +94,10 @@ runs its own checks and lowering in Go (`debug/elf`,
 5. clang -c (llvm-mc on arm64) re-assembles the lowered text so every branch
    offset is fixed.
 6. Emit writes Go assembly: one TEXT per function, the body as bytes, every
-   call a Go-visible CALL or BL.
+   call a Go-visible CALL or BL. On amd64 each unified function gets a room
+   check after Go's prologue, inside `#ifdef GOOS_windows`, that grows the
+   stack until `RoomBelow` bytes are free past the guard for the state
+   windows writes at a fault (`roomCheck`, `engine_room_windows_amd64.s`).
 7. VerifyLinked checks the linked binary: body bytes unchanged, a stack-check
    prologue on every entry off the NOSPLIT list and on `host_poll`, none on
    the entries on it, the function table points only at unified entries, no
