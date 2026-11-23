@@ -14,7 +14,7 @@ import (
 )
 
 // The engine is generated with a profile (-profile), which
-// engine/pgo/train.sh trains (the route of github.com/liustack/slowjs). The
+// engine/pgo/train.sh trains (the route of github.com/liustack/tifajs). The
 // profile tells llc where to place blocks and spills, which is the whole
 // gain. What is inlined stays what the build without the profile inlines:
 // make gen compiles twice, first without the profile to write the inlining
