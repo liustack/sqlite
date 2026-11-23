@@ -6,6 +6,7 @@ read_when:
   - 被问到机器没了数据会怎样，或者复制在 R2 上花多少钱
   - 把复制中的数据库搬到另一台机器
   - 改 replica 面向用户的行为
+translatedFrom: d8a2bb243ee4
 ---
 
 # 复制

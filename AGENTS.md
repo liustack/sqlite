@@ -40,7 +40,7 @@ The driver runs on linux, darwin and windows, amd64 and arm64. Other targets sto
 
 ## Docs (`docs/`)
 
-1. Every doc starts with front matter: `summary` (one sentence saying what question the doc answers) and `read_when` (when to read it). See the comment at the top of [scripts/docs-list.sh](scripts/docs-list.sh).
+1. Every doc starts with front matter: `summary` (one sentence saying what question the doc answers), `read_when` (when to read it) and `audience` (`users` or `developers`, see 5). See the comment at the top of [scripts/docs-list.sh](scripts/docs-list.sh).
 2. Before starting work, run `scripts/docs-list.sh` and read the docs whose Read when applies. Before committing, run `scripts/docs-list.sh --check`.
 3. What each doc is for:
    - [docs/architecture.md](docs/architecture.md): the layers, the route from C to Go assembly, the decisions and the routes left out
@@ -54,7 +54,7 @@ The driver runs on linux, darwin and windows, amd64 and arm64. Other targets sto
    - [docs/busy-cores.md](docs/busy-cores.md): how long a call waits when goroutines outnumber cores, what the driver does about it, what a program can do, and what a change to a lock or a wake must keep
    - [docs/principles.md](docs/principles.md): what the driver promises a program, what it cannot, the order it chooses in, what it will not do even when faster, and how a change is judged
 4. Docs are written for readers: conclusions and how to do things, not reasoning or work logs. The README is a landing page and only links to the docs.
-5. Docs are written in English. README.md, docs/architecture.md, docs/benchmarks.md, docs/busy-cores.md, docs/group-commit.md, docs/principles.md, docs/query-cache.md, docs/replication.md and docs/upstream.md also have a `*.zh-CN.md` Chinese version, linked from the top of each side: when you change one side, change the other to match. `scripts/docs-list.sh` skips `*.zh-CN.md` files.
+5. Docs are written in English. The docs for the people who use the driver are also in Chinese, in the same commit: README.md, and each doc whose front matter says `audience: users` (architecture, benchmarks, busy-cores, group-commit, principles, query-cache, replication, upstream). The docs about working on the driver say `audience: developers` and stay in English only (commit.md, testing.md, and the READMEs of bench/, engine/pgo/ and internal/goasm/gen/). The Chinese version is `<name>.zh-CN.md` beside the English, linked from the top of each side. Its front matter (or, with none, a first line `<!-- translatedFrom: <hex> -->`) has `translatedFrom:` the first 12 hex digits of the SHA-256 of the English file (`shasum -a 256 docs/<name>.md | cut -c1-12`). `scripts/docs-list.sh --check`, which `make check` and CI run, fails when a user doc has no Chinese version or the hash does not match: a change to the English changes the Chinese to match, and sets the new hash, in the same commit. The Chinese is written in the owner's style: no semicolons, no dashes as punctuation, everyday words, and each sentence with a negation or a condition read again against the English.
 6. English: keep it short and direct, use everyday words, and do not invent terms. Both languages: do not use semicolons, and do not use dashes as punctuation.
 
 ## License headers

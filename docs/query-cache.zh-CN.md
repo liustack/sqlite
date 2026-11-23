@@ -5,6 +5,7 @@ read_when:
   - 改 writer.go 的 cached 或 execCached
   - 改 engine/os.c 的 goClassify，或者新加一种会改连接的语句
   - 被问到 Query 为什么比别的驱动快，或者缓存会不会读到旧的东西
+translatedFrom: 7602e8feb791
 ---
 
 # 语句缓存的规则
