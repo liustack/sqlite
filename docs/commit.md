@@ -4,6 +4,7 @@ read_when:
   - Getting ready to commit
   - Writing a commit message or a merge message
   - Splitting up a set of changes
+audience: developers
 ---
 
 # Commit rules

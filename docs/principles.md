@@ -4,6 +4,7 @@ read_when:
   - Deciding whether to run SQLite on a server with this driver
   - Proposing a change that makes the driver faster or smaller
   - Asked why the driver does not do something another driver does (yield to readers, wait to fill a batch, run C on its own stack)
+audience: users
 ---
 
 # Principles

@@ -22,6 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: scripts/check-files.sh
+      # Each doc for users has a Chinese version translated from the English
+      # as it is now (AGENTS.md).
+      - run: scripts/docs-list.sh --check > /dev/null
 
   test:
     name: test (${{ matrix.target.name }}, ${{ matrix.go }})

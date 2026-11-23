@@ -4,6 +4,7 @@ read_when:
   - Asked how fast the driver is, or how it compares with other drivers
   - Changing something on the path of a query or a commit, to measure it again
   - Publishing numbers
+audience: users
 ---
 
 # Benchmarks

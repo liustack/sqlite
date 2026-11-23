@@ -5,6 +5,7 @@ read_when:
   - Changing cached or execCached in writer.go
   - Changing goClassify in engine/os.c, or adding a kind of statement that changes the connection
   - Asked why Query is faster than in other drivers, or whether the cache can read something stale
+audience: users
 ---
 
 # Statement cache

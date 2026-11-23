@@ -1,3 +1,4 @@
+<!-- translatedFrom: 15bdc5e7d1ff -->
 # 基准测试
 
 [English](benchmarks.md) · 简体中文

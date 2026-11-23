@@ -40,6 +40,6 @@ Making the assembly again (`make gen`) and the tests of the generator need LLVM 
 
 - `type(scope): imperative summary`, at most 72 characters, no period at the end.
 - One commit does one thing, and the tree builds and passes its tests after each. Keep a refactor or a reformat apart from a change of behavior. A change to `engine/` or the generator carries the assembly made again.
-- Docs are written in English. The README and the architecture, benchmarks and upstream docs have a `*.zh-CN.md` twin that changes with them.
+- Docs are written in English. The README and each doc whose front matter says `audience: users` have a `*.zh-CN.md` Chinese version that changes with them, in the same commit, with `translatedFrom` set to the new hash of the English: `scripts/docs-list.sh --check` tells when one is missing or behind.
 
 The full rules are in [docs/commit.md](docs/commit.md).

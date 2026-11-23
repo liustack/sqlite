@@ -6,6 +6,7 @@ read_when:
   - Writing or reading a benchmark where goroutines call the database in a loop with no pause
   - Changing a lock, a wait or a wake on the path of a transaction (internal/vfs/shm.go, writer.go, conn.go)
   - Thinking of calling runtime.Gosched in the driver
+audience: users
 ---
 
 # When every core is busy

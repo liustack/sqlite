@@ -5,6 +5,7 @@ read_when:
   - 改 Go 函数、聚合、窗口函数、排序规则、虚表的注册或回调
   - 改复制的 committed 回调，或写锁的交接
   - 被问到并发写入为什么会拿到 SQLITE_ABORT_ROLLBACK，或者合并提交保证什么
+translatedFrom: 06d43409cae6
 ---
 
 # 合并提交的规则

@@ -6,6 +6,7 @@ read_when:
   - Asked which version of SQLite the driver has
   - Moving to a new Go release, or asked which Go releases are supported
   - Asked when to train the profile again, or make gen prints a line that starts with "warning: profile:"
+audience: users
 ---
 
 # Upstream

@@ -5,6 +5,7 @@ read_when:
   - Changing the generator, the C tree or the compile options of SQLite
   - Deciding where a new piece of code goes
   - Asked why the driver does not use cgo, modernc, wasm or a shared library
+audience: users
 ---
 
 # Architecture

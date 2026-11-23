@@ -6,6 +6,7 @@ read_when:
   - Asked what a lost machine means for the data, or what replication costs on R2
   - Moving a replicated database to another machine
   - Changing the user-facing behavior of replica
+audience: users
 ---
 
 # Replication

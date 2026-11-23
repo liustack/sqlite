@@ -1,3 +1,4 @@
+<!-- translatedFrom: 7e2b2ce9377e -->
 # 架构
 
 [English](architecture.md) · 简体中文

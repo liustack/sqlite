@@ -5,6 +5,7 @@ read_when:
   - Changing how Go functions, aggregates, window functions, collations or virtual tables are registered or called
   - Changing the committed callback of replication, or how the write lock is handed on
   - Asked why concurrent writes can get SQLITE_ABORT_ROLLBACK, or what group commit guarantees
+audience: users
 ---
 
 # Group commit

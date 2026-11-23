@@ -7,6 +7,7 @@ read_when:
   - Changing how internal/vfs writes, syncs, cuts or deletes a file, or a test of power loss fails
   - Changing replica or replica/internal/s3, or running their tests against MinIO
   - Changing replica/internal/capture or internal/replhook
+audience: developers
 ---
 
 # Testing
@@ -17,7 +18,7 @@ read_when:
 make check
 ```
 
-It runs, in order: `engine/vendor.sh --verify` and `engine/libc/vendor.sh --verify` (the vendored C is the pinned release), `scripts/check-files.sh` (no file git tracks or would add is binary or larger than 1 MiB, but the amalgamation and the images of `assets/`: larger test data is downloaded, pinned by its hash), `go build ./...`, `gofmt -l -s` over the Go files git knows or would add (prints nothing, and leaves out `.build/`), `go vet -asmdecl=false ./...`, `scripts/docs-list.sh --check`, `go test -count=1 ./...`, and the tests of the driver, the VFS, the C API and the replicator again under the race detector. With `SQLITE3` set to a sqlite3 shell, `TestInteropShell` has it write the same database as the driver at the same time. CI sets it on every target. The `-asmdecl=false` leaves out the check of the declarations of generated assembly, which the generator's own checks cover.
+It runs, in order: `engine/vendor.sh --verify` and `engine/libc/vendor.sh --verify` (the vendored C is the pinned release), `scripts/check-files.sh` (no file git tracks or would add is binary or larger than 1 MiB, but the amalgamation and the images of `assets/`: larger test data is downloaded, pinned by its hash), `go build ./...`, `gofmt -l -s` over the Go files git knows or would add (prints nothing, and leaves out `.build/`), `go vet -asmdecl=false ./...`, `scripts/docs-list.sh --check` (every doc has a summary and an audience, and each doc for users has a Chinese version translated from the English as it is now), `go test -count=1 ./...`, and the tests of the driver, the VFS, the C API and the replicator again under the race detector. With `SQLITE3` set to a sqlite3 shell, `TestInteropShell` has it write the same database as the driver at the same time. CI sets it on every target. The `-asmdecl=false` leaves out the check of the declarations of generated assembly, which the generator's own checks cover.
 
 CI runs `make check`'s tests on the five targets (darwin/amd64 on an arm64 Mac, under Rosetta) with the lowest supported Go and with Go 1.27. `scripts/go-versions.sh` runs them with each Go release the module supports, and the weekly workflow `go-latest` runs it on every target (see [upstream.md](upstream.md#moving-to-a-new-go)).
 

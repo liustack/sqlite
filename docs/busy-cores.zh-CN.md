@@ -6,6 +6,7 @@ read_when:
   - 写或读一个 goroutine 不停顿地循环调数据库的压测
   - 改事务路径上的锁、等待或唤醒（internal/vfs/shm.go、writer.go、conn.go）
   - 想在驱动里调 runtime.Gosched
+translatedFrom: 1c8f6a8a1a28
 ---
 
 # 所有核都忙的时候
