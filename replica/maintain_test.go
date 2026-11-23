@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -376,6 +377,12 @@ func TestRetainWhole(t *testing.T) {
 // deleteStore is a Replica on a store that takes DELETE requests only, and
 // the keys deleted.
 func deleteStore(t *testing.T) (*Replica, *[]string) {
+	return failingDeleteStore(t, -1)
+}
+
+// failingDeleteStore is deleteStore, but the store answers 503 from the
+// delete after the first ok on, and ok < 0 never.
+func failingDeleteStore(t *testing.T, ok int) (*Replica, *[]string) {
 	t.Helper()
 	var mu sync.Mutex
 	deleted := new([]string)
@@ -384,8 +391,12 @@ func deleteStore(t *testing.T) (*Replica, *[]string) {
 			t.Errorf("%s %s", req.Method, req.URL)
 		}
 		mu.Lock()
+		defer mu.Unlock()
+		if ok >= 0 && len(*deleted) >= ok {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
 		*deleted = append(*deleted, strings.TrimPrefix(req.URL.Path, "/bucket/"))
-		mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(srv.Close)
@@ -424,7 +435,8 @@ func TestDropLevel0(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{levelKey("p", 0, 1, 1), levelKey("p", 0, 2, 2), levelKey("p", 0, 3, 3), levelKey("p", 0, 7, 7)}
+	// The last first.
+	want := []string{levelKey("p", 0, 7, 7), levelKey("p", 0, 3, 3), levelKey("p", 0, 2, 2), levelKey("p", 0, 1, 1)}
 	if fmt.Sprint(*deleted) != fmt.Sprint(want) {
 		t.Fatalf("deleted %v, want %v", *deleted, want)
 	}
@@ -433,6 +445,37 @@ func TestDropLevel0(t *testing.T) {
 	}
 	if len(r.files) != 7 {
 		t.Fatalf("%d files left", len(r.files))
+	}
+}
+
+// A drop of level 0 that fails part way leaves each file it did not delete
+// a point the replica restores to: the files a level 1 file holds go from
+// its last.
+func TestDropLevel0Fails(t *testing.T) {
+	for ok := range 7 {
+		r, deleted := failingDeleteStore(t, ok)
+		old := time.Now().Add(-time.Hour)
+		for i := range ltx.TXID(9) {
+			r.files = append(r.files, testFile(0, i+1, i+1, old))
+		}
+		r.files = append(r.files, testFile(1, 1, 4, old), testFile(1, 5, 8, old))
+		if _, err := r.dropLevel0(context.Background(), time.Now()); err == nil {
+			t.Fatalf("%d deletes go: no error", ok)
+		}
+		if len(*deleted) != ok || len(r.files) != 11-ok {
+			t.Fatalf("%d deletes go: %d deleted, %d files left", ok, len(*deleted), len(r.files))
+		}
+		for _, f := range r.files {
+			var upto []remoteFile
+			for _, g := range r.files {
+				if g.max <= f.max {
+					upto = append(upto, g)
+				}
+			}
+			if end, _ := chainEnd(upto, 0); end != f.max {
+				t.Fatalf("%d deletes go: deleted %v, and the files left lead to TXID %s, not to %s", ok, *deleted, end, f.max)
+			}
+		}
 	}
 }
 
@@ -517,12 +560,36 @@ func TestRetainKeeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Level 0 up to 10 stays: level 1 does not hold it yet.
-	want := []string{levelKey("p", 1, 1, 8), levelKey("p", 2, 1, 8), levelKey("p", snapshotLevel, 1, 5)}
+	want := []string{levelKey("p", 2, 1, 8), levelKey("p", 1, 1, 8), levelKey("p", snapshotLevel, 1, 5)}
 	if fmt.Sprint(*deleted) != fmt.Sprint(want) {
 		t.Fatalf("deleted %v, want %v", *deleted, want)
 	}
 	if !next.Equal(ago(time.Hour).Add(r.sched.retention)) {
 		t.Fatalf("next at %v, want when the newest snapshot is retention old", next)
+	}
+}
+
+// Retention that fails part way keeps the old snapshot until the files
+// only it needed are gone: with fewer than two snapshots it would not run
+// again, and they would stay.
+func TestRetainFails(t *testing.T) {
+	for ok := range 2 {
+		r, deleted := failingDeleteStore(t, ok)
+		now := time.Now()
+		ago := func(d time.Duration) time.Time { return now.Add(-d) }
+		r.files = []remoteFile{
+			testFile(0, 11, 11, ago(time.Hour)),
+			testFile(1, 1, 10, ago(30*time.Hour)),
+			testFile(2, 1, 10, ago(30*time.Hour)),
+			testFile(snapshotLevel, 1, 5, ago(50*time.Hour)),
+			testFile(snapshotLevel, 1, 10, ago(26*time.Hour)),
+		}
+		if _, err := r.retain(context.Background(), now); err == nil {
+			t.Fatalf("%d deletes go: no error", ok)
+		}
+		if !slices.ContainsFunc(r.files, func(f remoteFile) bool { return f.level == snapshotLevel && f.max == 5 }) {
+			t.Fatalf("%d deletes go: deleted %v, the old snapshot first", ok, *deleted)
+		}
 	}
 }
 
