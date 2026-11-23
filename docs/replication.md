@@ -91,7 +91,7 @@ A database that is written to uploads about one file a second while writes go on
 
 ## While the store is down
 
-Writes go on, and changes pile up in the staging folder. Uploads are tried again, longer after each failure, up to a minute apart. Past `StagingLimit`, staging stops and `OnError` gets an error under `replica.ErrStagingFull`. Checkpoints go on all the same, so the WAL does not grow because the store is down. Once the store answers and what was staged is uploaded, a full copy of the database follows, and staging goes on from it. The changes made while staging was stopped have no point of their own to restore to. If the machine is lost while the store is down, what was not uploaded is lost with it: no design keeps it while the store cannot be reached.
+Writes go on, and changes pile up in the staging folder. Each request that fails with an error that may pass (no answer, a 5xx, 429) is sent again up to twice, within a second or two, so a store that drops a connection now and then or answers 503 for a moment does not fail the work. Past that, the work is tried again, longer after each failure, up to a minute apart. Past `StagingLimit`, staging stops and `OnError` gets an error under `replica.ErrStagingFull`. Checkpoints go on all the same, so the WAL does not grow because the store is down. Once the store answers and what was staged is uploaded, a full copy of the database follows, and staging goes on from it. The changes made while staging was stopped have no point of their own to restore to. If the machine is lost while the store is down, what was not uploaded is lost with it: no design keeps it while the store cannot be reached.
 
 ## Restore
 

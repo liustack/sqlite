@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -60,6 +62,7 @@ type Client struct {
 	partSize     int64         // the size of a part, and the largest object sent in one PUT
 	idle         time.Duration // how long a request goes on with no byte sent or received
 	listPage     int           // max-keys of a LIST, 0 for the store's own (1000)
+	retryWait    time.Duration // the wait before the second try, at most: twice that before the third
 }
 
 // New checks cfg and makes a client. It makes no request.
@@ -100,14 +103,15 @@ func New(cfg Config) (*Client, error) {
 	// the end of the body, so a large upload does not run into it.
 	t.ResponseHeaderTimeout = time.Minute
 	c := &Client{
-		scheme:   u.Scheme,
-		host:     u.Host,
-		bucket:   cfg.Bucket,
-		region:   cfg.Region,
-		creds:    cfg.Credentials,
-		now:      time.Now,
-		partSize: 64 << 20,
-		idle:     time.Minute,
+		scheme:    u.Scheme,
+		host:      u.Host,
+		bucket:    cfg.Bucket,
+		region:    cfg.Region,
+		creds:     cfg.Credentials,
+		now:       time.Now,
+		partSize:  64 << 20,
+		idle:      time.Minute,
+		retryWait: 500 * time.Millisecond,
 		http: &http.Client{
 			Transport: t,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -217,20 +221,44 @@ type request struct {
 // do sends r and gives the answer when it is a success. The caller closes
 // its body.
 //
-// A store closes connections that wait idle in the pool, and a request
-// sent on one just as it closes fails without an answer. Go sends again
-// only GET and HEAD then. do sends any request again, once, on a new
-// connection: a body is read again from body, the requests other than PUT
-// and a multipart upload's completion change nothing when repeated, and a
-// repeated conditional PUT answers 412, which the replicator reads.
+// A request that fails with an error that may pass (Retryable) is sent
+// again, up to tries times in all, after a wait of up to retryWait, then
+// twice that, picked at random so that clients do not come back together:
+// a store that drops a connection now and then, or answers 503 for a
+// moment, does not fail the work. One that went a whole minute without an
+// answer or with nothing moving is not sent again, nor one whose ctx is
+// done: those wait already. A store also closes connections that wait idle
+// in the pool, and a request sent on one just as it closes fails without
+// an answer: the first try sent on one is sent again at once. Any request
+// can go again: a body is read again from body, the requests other than
+// PUT and a multipart upload's completion change nothing when repeated,
+// and a repeated conditional PUT answers 412, which the replicator reads.
 func (c *Client) do(ctx context.Context, r request) (*http.Response, error) {
 	for try := 1; ; try++ {
 		resp, reused, err := c.send(ctx, r)
-		if errors.Is(err, ErrNoAnswer) && reused && try == 1 && ctx.Err() == nil {
+		if err == nil || try == tries || ctx.Err() != nil || !again(err) {
+			return resp, err
+		}
+		if errors.Is(err, ErrNoAnswer) && reused && try == 1 {
 			continue
 		}
-		return resp, err
+		t := time.NewTimer(rand.N(c.retryWait << (try - 1)))
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return nil, fmt.Errorf("%w, and then %w", err, context.Cause(ctx))
+		case <-t.C:
+		}
 	}
+}
+
+// tries is how many times do sends a request at most.
+const tries = 3
+
+// again says whether do sends a request that failed with err again.
+func again(err error) bool {
+	var ne net.Error
+	return Retryable(err) && !errors.Is(err, errStalled) && !(errors.As(err, &ne) && ne.Timeout())
 }
 
 // send sends r once, and says whether it went on a connection used before.
@@ -295,7 +323,12 @@ func (c *Client) send(ctx context.Context, r request) (resp *http.Response, reus
 	resp.Body = &watched{ReadCloser: resp.Body, p: p, answer: true}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
-		return nil, reused, c.errorOf(resp, r.op, r.key, nil)
+		e := c.errorOf(resp, r.op, r.key, nil)
+		if cause := context.Cause(p.ctx); errors.Is(cause, errStalled) {
+			// Its body stopped: the request is not sent again.
+			return nil, reused, fmt.Errorf("%w: %w", e, cause)
+		}
+		return nil, reused, e
 	}
 	return resp, reused, nil
 }

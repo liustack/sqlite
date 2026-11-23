@@ -310,6 +310,67 @@ func TestRetryable(t *testing.T) {
 	}
 }
 
+// A request that fails with an error that may pass is sent again, up to 3
+// times in all, the same each time. Other errors are not, and the wait in
+// between ends with ctx.
+func TestRetries(t *testing.T) {
+	var n, fails atomic.Int32
+	var status atomic.Int32 // 0 closes the connection
+	c := fakeStore(t, func(w http.ResponseWriter, r *http.Request) {
+		n.Add(1)
+		if body, _ := io.ReadAll(r.Body); r.Method == http.MethodPut && string(body) != "x" {
+			t.Errorf("body %q", body)
+		}
+		if fails.Add(-1) < 0 {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if status.Load() == 0 {
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close()
+			}
+			return
+		}
+		w.WriteHeader(int(status.Load()))
+	})
+	c.retryWait = time.Millisecond
+	put := func() error {
+		return c.Put(context.Background(), "k", strings.NewReader("x"), 1, PutOptions{IfNoneMatch: true})
+	}
+	for _, tc := range []struct {
+		status, fails, sent int32
+		ok                  bool
+	}{
+		{503, 2, 3, true}, {500, 1, 2, true}, {429, 2, 3, true}, {0, 2, 3, true},
+		{503, 3, 3, false}, {0, 5, 3, false},
+		{400, 1, 1, false}, {403, 1, 1, false}, {412, 1, 1, false},
+	} {
+		n.Store(0)
+		status.Store(tc.status)
+		fails.Store(tc.fails)
+		err := put()
+		if (err == nil) != tc.ok || n.Load() != tc.sent {
+			t.Errorf("%d answered %d times: %d sent, %v", tc.status, tc.fails, n.Load(), err)
+		}
+		var e *Error
+		if !tc.ok && tc.status != 0 && (!errors.As(err, &e) || e.StatusCode != int(tc.status)) {
+			t.Errorf("%d answered %d times: %v", tc.status, tc.fails, err)
+		}
+	}
+	// The wait ends with ctx.
+	c.retryWait = time.Hour
+	status.Store(503)
+	fails.Store(5)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	// The error says both.
+	var e *Error
+	if err := c.Delete(ctx, "k"); !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &e) || time.Since(start) > 10*time.Second {
+		t.Errorf("Delete with ctx done in the wait: %v after %v", err, time.Since(start))
+	}
+}
+
 // A multipart upload whose context ends is aborted all the same.
 func TestAbortOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -512,7 +573,9 @@ func TestErrorScrubsEveryField(t *testing.T) {
 // request ends once nothing moved for c.idle.
 func TestStalled(t *testing.T) {
 	release := make(chan struct{})
+	var n atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		n.Add(1)
 		switch req.URL.Path {
 		case "/bkt/get", "/bkt/error":
 			if req.URL.Path == "/bkt/error" {
@@ -541,6 +604,7 @@ func TestStalled(t *testing.T) {
 	ctx := context.Background()
 	bounded := func(what string, f func() error) {
 		t.Helper()
+		n.Store(0)
 		done := make(chan error, 1)
 		go func() { done <- f() }()
 		select {
@@ -550,6 +614,10 @@ func TestStalled(t *testing.T) {
 			}
 		case <-time.After(10 * time.Second):
 			t.Fatalf("%s: still waiting", what)
+		}
+		// It waited already: it is not sent again.
+		if n.Load() != 1 {
+			t.Errorf("%s: sent %d times", what, n.Load())
 		}
 	}
 	bounded("get", func() error {
