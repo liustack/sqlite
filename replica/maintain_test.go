@@ -179,10 +179,26 @@ type counter struct {
 	// the connection without its answer, and lets the other requests
 	// through.
 	down atomic.Int32
+	// lose is how many of the next PUTs go to the store and lose their
+	// answer, the connection closed.
+	lose atomic.Int32
 	// get, if set, runs before each GET of an object, given its path.
 	get atomic.Pointer[func(path string)]
 	// put, if set, runs before each PUT, given its path.
 	put atomic.Pointer[func(path string)]
+}
+
+// takeLose says whether the answer of this PUT is lost, and counts it.
+func (cnt *counter) takeLose() bool {
+	for {
+		n := cnt.lose.Load()
+		if n <= 0 {
+			return false
+		}
+		if cnt.lose.CompareAndSwap(n, n-1) {
+			return true
+		}
+	}
 }
 
 func countingStore(t *testing.T, cfg Config) (Config, *counter) {
@@ -224,6 +240,13 @@ func countingStore(t *testing.T, cfg Config) (Config, *counter) {
 				}
 				return
 			}
+		}
+		if req.Method == http.MethodPut && cnt.takeLose() {
+			proxy.ServeHTTP(httptest.NewRecorder(), req)
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close()
+			}
+			return
 		}
 		if req.Method == http.MethodPut {
 			cnt.puts.Store(req.URL.Path, true)

@@ -435,3 +435,21 @@ func stopStaging(t *testing.T, cfg Config) (Config, *Replica, string) {
 	db.Close()
 	return cfg, r, name
 }
+
+// The store takes the first PUT of the probe but its answer is lost: the
+// client sends it again and gets 412. The key is the probe's own, and the
+// probe passes.
+func TestProbeLostAnswer(t *testing.T) {
+	cfg, cnt := countingStore(t, testConfig(t))
+	c, path, err := cfg.client()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cnt.lose.Store(1)
+	if err := probe(context.Background(), c, path); err != nil {
+		t.Fatal(err)
+	}
+	if n := cnt.lose.Load(); n != 0 {
+		t.Fatalf("%d answers left to lose", n)
+	}
+}
