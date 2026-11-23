@@ -1,4 +1,4 @@
-<!-- translatedFrom: 7e2b2ce9377e -->
+<!-- translatedFrom: 88219135bb59 -->
 # 架构
 
 [English](architecture.md) · 简体中文
@@ -231,7 +231,7 @@ sequenceDiagram
 
 ## 让引擎更快
 
-引擎比 clang 编出来的同一份 C 慢：在 Apple M4 上，引擎内部的计算最多要用 1.44 倍的时间，几何平均 1.20 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#和-c-版-sqlite-比)）。其中一部分是这条路线本身的代价。liustack/quickjs 用同样的方式编译它的 C，量过同一份 C、同样的选项下差 11% 到 13%，来自经过 Go 栈的参数和结果、放在影子栈上的取过地址的局部变量，以及每次调用多出来的几条指令。想要赢回一些时，照 quickjs 试过又放弃的那些路得出的规矩做：
+引擎比 clang 编出来的同一份 C 慢：在 Apple M4 上，引擎内部的计算最多要用 1.44 倍的时间，几何平均 1.20 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#和-c-版-sqlite-比)）。其中一部分是这条路线本身的代价。liustack/slowjs 用同样的方式编译它的 C，量过同一份 C、同样的选项下差 11% 到 13%，来自经过 Go 栈的参数和结果、放在影子栈上的取过地址的局部变量，以及每次调用多出来的几条指令。想要赢回一些时，照 slowjs 试过又放弃的那些路得出的规矩做：
 
 - **不用 Go 的私有实现。** 不用 `go:linkname` 接进 runtime，不依赖 Go 怎么用某个寄存器，不依赖 Go 团队可能在某个版本里改掉的东西。否则每个 Go 版本都要重新核对，哪一版都可能让驱动坏掉。
 - **引擎留在 goroutine 的栈上。** 像 cgo、wazero、purego 那样让它跑在自己的栈上，C 里的一次出错就会结束整个进程，而不是让这一次调用 panic。
@@ -239,7 +239,7 @@ sequenceDiagram
 - **每个平台得到同样的位。** 数学函数继续不用融合乘加，每个平台算出同样的结果。
 - **SQLite 的 C 保持发布时的样子。** 改动放在生成器、`engine/libc` 或 Go host 里。
 
-quickjs 也守同样的规矩，还写了它是怎么得出这些规矩的：[让引擎更快](https://github.com/liustack/quickjs/blob/main/docs/architecture.zh-CN.md#让引擎更快)。试一个想法之前，先查 quickjs 试过但没做的清单：[performance.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/performance.zh-CN.md#试过但没做的) 和 [history.zh-CN.md](https://github.com/liustack/quickjs/blob/main/docs/history.zh-CN.md#在旧引擎上试过但没做的)。
+slowjs 也守同样的规矩，还写了它是怎么得出这些规矩的：[Making the engine faster](https://github.com/liustack/slowjs/blob/main/docs/internals/architecture.md#making-the-engine-faster)（英文）。试一个想法之前，先查 slowjs 试过但没做的清单：[What was tried and not done](https://github.com/liustack/slowjs/blob/main/docs/internals/performance.md#what-was-tried-and-not-done)（英文）。
 
 时间花在哪里，是拿 SQLite 和原生编译的同一份 C 比着量的，用 `bench/native/engine.sql` 的十个负载，在下面两处改动之前。在 darwin/arm64 上，不用编译器内建函数和换用我们的 libc 都不花时间：那 31% 全在转成 Go 汇编这一步。在 linux/amd64 上，不用内建函数占 6 个点，musl 的函数比 glibc 的再多 4 个点，转成 Go 汇编占 17 个点。
 
@@ -255,7 +255,7 @@ quickjs 也守同样的规矩，还写了它是怎么得出这些规矩的：[�
 
 有三类决定不交给 profile，因为它们的代价取决于程序自己的数据，训练不可能知道：
 
-- **内联什么。** `make gen` 编译两遍。第一遍不带 profile，把内联了的每一处调用记下来。第二遍带 profile，只在记下来的调用里内联。放手让 profile 决定的话，它会往训练里跑得最多的函数里内联更多东西，引擎的其余部分为此付出代价：quickjs 量过，这样要多用 5% 到 15% 的时间。
+- **内联什么。** `make gen` 编译两遍。第一遍不带 profile，把内联了的每一处调用记下来。第二遍带 profile，只在记下来的调用里内联。放手让 profile 决定的话，它会往训练里跑得最多的函数里内联更多东西，引擎的其余部分为此付出代价：slowjs 量过，这样要多用 5% 到 15% 的时间。
 - **要小还是要快。** 带 profile 时，编译器会把训练里很少跑或没跑过的代码编得小而不是快，还会认定一个循环转的圈数就是训练里的圈数。两样都关掉了。
 - **循环在哪里为 poll 计数。** 加 poll 的那一步按不带 profile 时的方式给每个循环估重。
 
