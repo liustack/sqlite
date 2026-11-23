@@ -240,7 +240,7 @@ The `replica` package copies a database to S3-compatible storage as it changes. 
 
 ## Making the engine faster
 
-The engine is slower than the same C built by clang: on an Apple M4, work inside the engine takes up to 1.44 times as long, and 1.20 times in the geometric mean (see [benchmarks.md](benchmarks.md#against-sqlite-in-c)). Part of it is the price of the route itself. liustack/quickjs, which compiles its C the same way, measured 11 to 13% for the same C with the same options, from arguments and results passed on the Go stack, address-taken locals on the shadow stack, and a few more instructions per call. Work to win some of it back follows what quickjs learned from the many routes it tried and left:
+The engine is slower than the same C built by clang: on an Apple M4, work inside the engine takes up to 1.44 times as long, and 1.20 times in the geometric mean (see [benchmarks.md](benchmarks.md#against-sqlite-in-c)). Part of it is the price of the route itself. liustack/slowjs, which compiles its C the same way, measured 11 to 13% for the same C with the same options, from arguments and results passed on the Go stack, address-taken locals on the shadow stack, and a few more instructions per call. Work to win some of it back follows what slowjs learned from the many routes it tried and left:
 
 - **Nothing private to Go.** No `go:linkname` into the runtime, no reliance on how Go uses a register, nothing the Go team may change in a release. Each Go version would have to be checked again, and one could break the driver.
 - **The engine stays on the goroutine stack.** Running it on a stack of its own, as cgo, wazero and purego do, would turn a fault in the C into the end of the whole process instead of a panic of one call.
@@ -248,7 +248,7 @@ The engine is slower than the same C built by clang: on an Apple M4, work inside
 - **The same bits on every target.** The math functions stay without fused multiply-add, so every platform gives the same result.
 - **SQLite's C stays as released.** Changes go in the generator, `engine/libc` or the Go host.
 
-quickjs keeps the same rules, with the reasons it learned them: [Making the engine faster](https://github.com/liustack/quickjs/blob/main/docs/architecture.md#making-the-engine-faster). Before trying an idea, check the lists of what quickjs tried and did not do: [performance.md](https://github.com/liustack/quickjs/blob/main/docs/performance.md#what-was-tried-and-not-done) and [history.md](https://github.com/liustack/quickjs/blob/main/docs/history.md#what-was-tried-and-not-done-on-the-old-engine).
+slowjs keeps the same rules, with the reasons it learned them: [Making the engine faster](https://github.com/liustack/slowjs/blob/main/docs/internals/architecture.md#making-the-engine-faster). Before trying an idea, check the list of what slowjs tried and did not do: [What was tried and not done](https://github.com/liustack/slowjs/blob/main/docs/internals/performance.md#what-was-tried-and-not-done).
 
 Where the time goes was measured for SQLite against the same C built natively, on the ten workloads of `bench/native/engine.sql`, before the two changes below. On darwin/arm64 the missing compiler builtins and the libc cost nothing: the 31% are the lowering to Go assembly. On linux/amd64 the builtins cost 6 points and musl's functions against glibc's 4 more, and the lowering 17.
 
@@ -264,7 +264,7 @@ On the ten workloads of `bench/native/engine.sql`, none of which the profile was
 
 Three decisions are kept from the profile, because what they cost depends on the data of the program, which a training cannot know:
 
-- **What is inlined.** `make gen` compiles twice. The first time it compiles without the profile and writes down every call it inlined. The second time it compiles with the profile and inlines only calls it wrote down. Left to itself, the profile inlines more into the functions the training ran most, and the rest of the engine pays for it: quickjs measured 5 to 15% more time that way.
+- **What is inlined.** `make gen` compiles twice. The first time it compiles without the profile and writes down every call it inlined. The second time it compiles with the profile and inlines only calls it wrote down. Left to itself, the profile inlines more into the functions the training ran most, and the rest of the engine pays for it: slowjs measured 5 to 15% more time that way.
 - **Size over speed.** With a profile the compiler makes the code the training ran little or never small instead of fast, and counts on a loop running as many turns as it did in the training. Both are turned off.
 - **Where a loop counts for its polls.** The pass that adds the polls weighs each loop as it does without a profile.
 
