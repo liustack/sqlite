@@ -122,7 +122,9 @@ func probe(ctx context.Context, c *s3.Client, path string) error {
 		key := fmt.Sprintf("%s/probe/%s-%t", path, hex.EncodeToString(id[:]), multipart)
 		opt := s3.PutOptions{IfNoneMatch: true, Multipart: multipart}
 		body := []byte("probe")
-		if err := c.Put(ctx, key, bytes.NewReader(body), int64(len(body)), opt); err != nil {
+		// The key is new: a 412 is the answer to the client's own try sent
+		// again, the first having lost its answer.
+		if err := c.Put(ctx, key, bytes.NewReader(body), int64(len(body)), opt); err != nil && !errors.Is(err, s3.ErrPreconditionFailed) {
 			return err
 		}
 		err := c.Put(ctx, key, bytes.NewReader(body), int64(len(body)), opt)
