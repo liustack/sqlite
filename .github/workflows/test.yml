@@ -92,7 +92,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: echo "FUZZDATA_SLICE=$((GITHUB_RUN_NUMBER % 4))/4" >> "$GITHUB_ENV"
-      - run: go test -count=1 ./...
+      # On the Windows runners a flush (FlushFileBuffers) has waited seconds
+      # while several packages ran their tests at once, also in a process
+      # beside them that only writes and flushes, and a write lock held
+      # across such flushes made the waiting writers give "database is
+      # locked". No package alone has gone over a second. So there the
+      # packages run one at a time.
+      - run: go test -count=1 ${{ runner.os == 'Windows' && '-p 1' || '' }} ./...
         env:
           FUZZDATA: ${{ github.workspace }}/.build/fuzzdata
           FUZZDATA_REQUIRED: "1"
