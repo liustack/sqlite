@@ -167,20 +167,14 @@ func TestWritersWaitOnceForStep(t *testing.T) {
 	c := open(t, name, opt)
 	db := openApp(t, name)
 	run(t, db, "CREATE TABLE t(x)")
-	commits := func() time.Duration {
-		start := time.Now()
-		for range 30 {
-			run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
-		}
-		return time.Since(start)
-	}
-	// The commits alone: a sync of the WAL each, slow on some machines.
-	alone := commits()
 	c.mu.Lock()
 	t.Cleanup(sync.OnceFunc(c.mu.Unlock))
-	// A wait at each commit would add 30 stepWaits.
-	if d := commits(); d-alone > 10*stepWait {
-		t.Fatalf("30 commits beside a long step took %v, %v alone", d, alone)
+	start := time.Now()
+	for range 30 {
+		run(t, db, "INSERT INTO t VALUES (randomblob(3000))")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("30 commits beside a long step took %v", d)
 	}
 }
 
