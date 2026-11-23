@@ -126,26 +126,33 @@ func (r *Replica) last(level int) ltx.TXID {
 }
 
 // remove deletes the files of the replica drop says, and takes them out of
-// r.files.
+// r.files. It deletes one at a time, the last TXID first, and stops at the
+// first error: what it leaves of a level is then the files that come first,
+// which lead to each of their TXIDs as before.
 func (r *Replica) remove(ctx context.Context, drop func(remoteFile) bool) error {
-	kept := r.files[:0:0]
+	gone := make([]bool, len(r.files))
 	var err error
-	for _, f := range r.files {
-		if err == nil && drop(f) {
-			if err = r.client.Delete(ctx, f.key); err == nil {
-				continue
-			}
+	// r.files is in key order: by level, then by TXID.
+	for i := len(r.files) - 1; i >= 0 && err == nil; i-- {
+		if f := r.files[i]; drop(f) {
+			err = r.client.Delete(ctx, f.key)
+			gone[i] = err == nil
 		}
-		kept = append(kept, f)
+	}
+	kept := r.files[:0:0]
+	for i, f := range r.files {
+		if !gone[i] {
+			kept = append(kept, f)
+		}
 	}
 	r.files = kept
 	return err
 }
 
 // dropLevel0 deletes the level 0 files a level 1 file holds, all of them
-// at once when it is older than keepL0, but the last level 0 file. A
-// restore to a time inside a level 1 file needs every level 0 file it
-// holds, so they never go one by one. It returns when the next can go.
+// when it is older than keepL0, but the last level 0 file. A restore to a
+// time inside a level 1 file needs every level 0 file it holds up to that
+// time, so they go from the last. It returns when the next can go.
 func (r *Replica) dropLevel0(ctx context.Context, now time.Time) (time.Time, error) {
 	l0 := r.last(0)
 	holds := func(l1, f remoteFile) bool {
@@ -280,6 +287,11 @@ func (r *Replica) retain(ctx context.Context, now time.Time) (time.Time, error) 
 	}
 	if end, whole := chainEnd(kept, oldest.max); !whole || end != want {
 		return time.Time{}, fmt.Errorf("replica: retention kept nothing: without the files of TXIDs up to %s, the replica would not be whole from the snapshot of TXID %s", oldest.max, oldest.max)
+	}
+	// The old snapshots go last: while one is left, retain runs again and
+	// deletes what a failure left of the rest.
+	if err := r.remove(ctx, func(f remoteFile) bool { return f.level != snapshotLevel && drop(f) }); err != nil {
+		return time.Time{}, err
 	}
 	return next, r.remove(ctx, drop)
 }
