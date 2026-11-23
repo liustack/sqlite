@@ -271,7 +271,13 @@ func TestSoak(t *testing.T) {
 		wg.Wait()
 	}()
 
-	walBound := int64(4000 * (4096 + 24))
+	// The WAL starts over about every CheckpointFrames frames, but while the
+	// replicator reads the database for a full copy or a snapshot it grows by
+	// what is written meanwhile, more on a slow machine. Past _wal_limit (64
+	// MiB by default) the checkpoint waits for the readers. Without
+	// checkpoints, as when they stopped with the store down, the writers
+	// pass it within seconds.
+	walBound := int64(64 << 20)
 	points := map[ltx.TXID]string{}
 	rng := rand.New(rand.NewPCG(7, 7))
 	for start := time.Now(); time.Since(start) < d && !t.Failed(); {
