@@ -1,4 +1,4 @@
-<!-- translatedFrom: 2ad569031014 -->
+<!-- translatedFrom: 43eb33d32a7e -->
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。<br>并发写按顺序排队，<code>database is locked</code> 只代表真过载，不再是运气不好。</b></p>
@@ -94,7 +94,42 @@
 
 ## 并发写不再报 `database is locked`
 
-同一个进程里的写者按到达顺序排队，不去抢 SQLite 的锁。用 `_txlock=immediate` 打开数据库，一个写事务只有在排在它前面的事务加起来超过 busy timeout（默认 5 秒）时才会报 `database is locked`，也就是写入速度真的超过了磁盘能提交的速度。别的驱动里，抢锁一直输的写者会等上好几秒然后超时，而同样的负载下其他写者只等几毫秒。
+SQLite 同一时刻只让一个连接写。别的驱动里，其余连接在 SQLite 的忙等里抢锁，一直抢不到的那个等满 `busy_timeout` 就报 `database is locked`，而同样的负载下别的连接只等几毫秒。这里同一个进程的写者按到达顺序排队，一次写只有在排在它前面的写加起来超过 busy timeout（默认 5 秒）时才会报 `database is locked`，也就是写入速度真的超过了磁盘能提交的速度。
+
+打开数据库时用 WAL 模式，并加上 `_txlock=immediate`：
+
+```go
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
+```
+
+- **单独一句写**（用 `db.Exec` 执行 `INSERT`、`UPDATE` 或 `DELETE`）不用再做什么。同时到达的写会一起提交。
+- **先读后写的事务**，就是 `_txlock=immediate` 要管的。它的 `BEGIN` 先排队拿到写锁，所以不会写到一半失败：
+
+  ```go
+  func buy(ctx context.Context, db *sql.DB, item, qty int) error {
+  	tx, err := db.BeginTx(ctx, nil) // 在这里排队拿写锁
+  	if err != nil {
+  		return err
+  	}
+  	defer tx.Rollback()
+  	var stock int
+  	if err := tx.QueryRowContext(ctx, `SELECT stock FROM items WHERE id = ?`, item).Scan(&stock); err != nil {
+  		return err
+  	}
+  	if stock < qty {
+  		return errSoldOut
+  	}
+  	if _, err := tx.ExecContext(ctx, `UPDATE items SET stock = stock - ? WHERE id = ?`, qty, item); err != nil {
+  		return err
+  	}
+  	return tx.Commit()
+  }
+  ```
+
+  不加它的话，SQLite 会把事务当成读者开始。到第一句写时，只要别的连接正拿着写锁，或者在它读之后提交过，就会马上报 `database is locked`。把超时调长也没用。
+- **只读的事务**要标明只读：`db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})`。它不拿写锁，也不用等任何写者。加了 `_txlock=immediate` 以后，普通的 `db.Begin()` 在 `BEGIN` 时就会拿写锁，即使后面只读。
+
+什么情况下还会碰上，碰上了怎么办：见 [database is locked](docs/database-is-locked.zh-CN.md)。
 
 <!-- bench:readme-contention-linux-amd64 -->
 **linux/amd64**（AMD EPYC 7B13，Go 1.27.4，提交 `10d5df4`）：
@@ -166,7 +201,7 @@ import (
 db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate")
 ```
 
-名字可以是文件名、`:memory:` 或 [SQLite URI](https://sqlite.org/uri.html)。`_pragma=name(value)` 在每个新连接上执行一条 PRAGMA，`_txlock=immediate` 让 `BEGIN` 先排队拿到写锁，这样先读后写的事务不会写到一半报 `database is locked`。只读的事务用 `db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})` 开，它不拿写锁。没有用 `busy_timeout` 另设的话，连接等锁最多 5 秒。其余见 [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite)。
+名字可以是文件名、`:memory:` 或 [SQLite URI](https://sqlite.org/uri.html)。`_pragma=name(value)` 在每个新连接上执行一条 PRAGMA，`_txlock=immediate` 让 `BEGIN` 先排队拿到写锁（见[并发写不再报 `database is locked`](#并发写不再报-database-is-locked)）。没有用 `busy_timeout` 另设的话，连接等锁最多 5 秒。其余见 [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite)。
 
 每个连接在关闭前都留着 SQLite 的页缓存，默认最多 2 MB，而 `database/sql` 会给每个同时在跑的查询开一个连接。给连接池定个大小，并让它留着同样多的空闲连接，免得连接关了又开：
 
@@ -233,6 +268,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 | [原则](docs/principles.zh-CN.md) | 想知道驱动保证什么、保证不了什么、哪些东西不拿来换速度 |
 | [基准测试](docs/benchmarks.zh-CN.md) | 想看完整数据，或者在自己机器上跑一遍 |
 | [架构](docs/architecture.zh-CN.md) | 想知道 C 怎么变成 Go 汇编，或者合并提交怎么工作 |
+| [database is locked](docs/database-is-locked.zh-CN.md) | 有写操作报了 `database is locked`，或者想知道事务怎么写才不会碰上 |
 | [合并提交](docs/group-commit.zh-CN.md) | 想知道并发写入哪些会合并、失败时各自拿到什么错误 |
 | [语句缓存](docs/query-cache.zh-CN.md) | 想知道驱动替你留下哪些语句，以及留下的语句为什么不会读到旧东西 |
 | [复制](docs/replication.zh-CN.md) | 想把数据库复制到 S3、R2 或 MinIO，或者从副本恢复 |
