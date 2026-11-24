@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -843,50 +844,64 @@ func TestStoppedWALBackfilledByOtherProcess(t *testing.T) {
 
 // While a stopped WAL is still open in this process, a process that opens
 // the database waits: the WAL index it would find counts the frames cut.
+// Its first read comes while the connection that saw the failure is open,
+// or as it closes, when SQLite locks the database to checkpoint.
 func TestStoppedWALProcessOpensLater(t *testing.T) {
 	for _, kind := range peerKinds() {
-		t.Run(kind, func(t *testing.T) {
-			ctx := context.Background()
-			path := mPath(t)
-			db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)")
-			db.SetMaxOpenConns(1)
-			conn, err := db.Conn(ctx)
-			if err != nil {
-				t.Fatal(err)
-			}
-			mExec(t, conn, `CREATE TABLE t(k INTEGER PRIMARY KEY, v BLOB); CREATE TABLE u(k INTEGER PRIMARY KEY, v BLOB)`)
-			for k := range 5 {
-				mExec(t, conn, `INSERT INTO t VALUES (?, randomblob(10))`, k)
-			}
-			mExec(t, conn, `PRAGMA wal_checkpoint(TRUNCATE)`)
-			for k := 5; k < 10; k++ {
-				mExec(t, conn, `INSERT INTO t VALUES (?, randomblob(10))`, k)
-			}
-			failed := failSyncOnce(t, "-wal")
-			if _, err := conn.ExecContext(ctx, `PRAGMA wal_checkpoint`); err == nil || !failed() {
-				t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
-			}
+		t.Run(kind, func(t *testing.T) { stoppedWALProcessOpensLater(t, kind, false) })
+	}
+	// Only the shell is up before it reads the database: this driver reads it
+	// as it connects.
+	if slices.Contains(peerKinds(), "sqlite3") {
+		t.Run("sqlite3/closing", func(t *testing.T) { stoppedWALProcessOpensLater(t, "sqlite3", true) })
+	}
+}
 
-			// The connection that saw the failure stays open for a while.
-			p := startPeer(t, kind, path)
-			got := make(chan string)
-			go func() { got <- p.do(`SELECT count(*) FROM t`) }()
-			time.Sleep(100 * time.Millisecond)
-			conn.Close()
-			if n := <-got; n != "5" {
-				t.Fatalf("the process that opened later counts %q rows in t, want 5", n)
-			}
-			p.want(`INSERT INTO u VALUES (1, 'x')`, "")
-			writesGoOn(t, db, `INSERT INTO u VALUES (2, 'y')`)
-			p.want(`SELECT count(*) FROM t`, "5")
-			p.want(`SELECT count(*) FROM u`, "2")
-			p.want(`PRAGMA integrity_check`, "ok")
-			p.stop()
-			var ic string
-			if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
-				t.Fatalf("integrity_check %q %v", ic, err)
-			}
-		})
+func stoppedWALProcessOpensLater(t *testing.T, kind string, closing bool) {
+	ctx := context.Background()
+	path := mPath(t)
+	db := mOpen(t, "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=wal_autocheckpoint(0)")
+	db.SetMaxOpenConns(1)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mExec(t, conn, `CREATE TABLE t(k INTEGER PRIMARY KEY, v BLOB); CREATE TABLE u(k INTEGER PRIMARY KEY, v BLOB)`)
+	for k := range 5 {
+		mExec(t, conn, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+	}
+	mExec(t, conn, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	for k := 5; k < 10; k++ {
+		mExec(t, conn, `INSERT INTO t VALUES (?, randomblob(10))`, k)
+	}
+	failed := failSyncOnce(t, "-wal")
+	if _, err := conn.ExecContext(ctx, `PRAGMA wal_checkpoint`); err == nil || !failed() {
+		t.Fatalf("checkpoint: %v, sync failed %v", err, failed())
+	}
+
+	p := startPeer(t, kind, path)
+	if closing {
+		p.up()
+	}
+	got := make(chan string)
+	go func() { got <- p.do(`SELECT count(*) FROM t`) }()
+	if !closing {
+		// The connection that saw the failure stays open for a while.
+		time.Sleep(100 * time.Millisecond)
+	}
+	conn.Close()
+	if n := <-got; n != "5" {
+		t.Fatalf("the process that opened later counts %q rows in t, want 5", n)
+	}
+	p.want(`INSERT INTO u VALUES (1, 'x')`, "")
+	writesGoOn(t, db, `INSERT INTO u VALUES (2, 'y')`)
+	p.want(`SELECT count(*) FROM t`, "5")
+	p.want(`SELECT count(*) FROM u`, "2")
+	p.want(`PRAGMA integrity_check`, "ok")
+	p.stop()
+	var ic string
+	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&ic); err != nil || ic != "ok" {
+		t.Fatalf("integrity_check %q %v", ic, err)
 	}
 }
 
