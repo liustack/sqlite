@@ -93,7 +93,42 @@ Where another driver still wins: work that stays inside SQLite (the join), where
 
 ## Concurrent writes without `database is locked`
 
-Writers in one process wait their turn in order instead of racing for SQLite's lock. Open the database with `_txlock=immediate`, and a write transaction gets `database is locked` only when the ones queued ahead of it take longer than the busy timeout (5 s by default), that is, only when writes come faster than the disk can commit them. With other drivers, a writer that keeps losing the race waits for seconds and times out at a load where the rest wait a few milliseconds.
+SQLite lets one connection write at a time. With other drivers the rest race for the lock in SQLite's busy handler, and one that keeps losing gives up with `database is locked` after `busy_timeout`, at a load where the others wait a few milliseconds. Here the writers of one process wait their turn in order, so a write gets `database is locked` only when the writes queued ahead of it take longer than the busy timeout (5 s by default), that is, only when writes come faster than the disk can commit them.
+
+Open the database in WAL mode with `_txlock=immediate`:
+
+```go
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
+```
+
+- **A write on its own** (`db.Exec` of an `INSERT`, `UPDATE` or `DELETE`) needs nothing more. Writes that come at the same time are committed together.
+- **A transaction that reads and then writes** is what `_txlock=immediate` is for. Its `BEGIN` waits its turn for the write lock, so it never fails halfway:
+
+  ```go
+  func buy(ctx context.Context, db *sql.DB, item, qty int) error {
+  	tx, err := db.BeginTx(ctx, nil) // waits here for the write lock
+  	if err != nil {
+  		return err
+  	}
+  	defer tx.Rollback()
+  	var stock int
+  	if err := tx.QueryRowContext(ctx, `SELECT stock FROM items WHERE id = ?`, item).Scan(&stock); err != nil {
+  		return err
+  	}
+  	if stock < qty {
+  		return errSoldOut
+  	}
+  	if _, err := tx.ExecContext(ctx, `UPDATE items SET stock = stock - ? WHERE id = ?`, qty, item); err != nil {
+  		return err
+  	}
+  	return tx.Commit()
+  }
+  ```
+
+  Without it, SQLite starts the transaction as a reader, and its first write fails at once with `database is locked` when another connection holds the write lock or has committed since it read. A longer timeout does not help.
+- **A transaction that only reads** says so: `db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})`. It takes no write lock and waits for no writer. Under `_txlock=immediate` a plain `db.Begin()` takes the write lock at `BEGIN`, even if it then only reads.
+
+When it can still come, and what to do then: [database is locked](docs/database-is-locked.md).
 
 <!-- bench:readme-contention-linux-amd64 -->
 **linux/amd64** (AMD EPYC 7B13, Go 1.27.4, commit `10d5df4`):
@@ -165,7 +200,7 @@ import (
 db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate")
 ```
 
-The name is a file, `:memory:` or a [SQLite URI](https://sqlite.org/uri.html). `_pragma=name(value)` runs a PRAGMA on every new connection, and `_txlock=immediate` makes `BEGIN` wait its turn for the write lock, so that a transaction that reads before it writes never fails with `database is locked` halfway. Start a transaction that only reads with `db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})`: it takes no write lock. A connection waits 5 seconds for a lock unless `busy_timeout` says otherwise. The rest is on [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite).
+The name is a file, `:memory:` or a [SQLite URI](https://sqlite.org/uri.html). `_pragma=name(value)` runs a PRAGMA on every new connection, and `_txlock=immediate` makes `BEGIN` wait its turn for the write lock (see [Concurrent writes without `database is locked`](#concurrent-writes-without-database-is-locked)). A connection waits 5 seconds for a lock unless `busy_timeout` says otherwise. The rest is on [pkg.go.dev](https://pkg.go.dev/github.com/liustack/sqlite).
 
 Each connection keeps SQLite's page cache, up to 2 MB by default, until it closes, and `database/sql` opens a connection for every query that runs at the same time. Give the pool a size, and let it keep that many idle so that connections are not closed and opened again:
 
@@ -232,6 +267,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 | [Principles](docs/principles.md) | You want to know what the driver promises, what it cannot, and what it will not trade for speed |
 | [Benchmarks](docs/benchmarks.md) | You want the full numbers, or to run them on your machine |
 | [Architecture](docs/architecture.md) | You want to know how C becomes Go assembly, or how group commit works |
+| [database is locked](docs/database-is-locked.md) | A write got `database is locked`, or you want to know how to write transactions so that none does |
 | [Group commit](docs/group-commit.md) | You want to know which concurrent writes merge, and what error each gets when one fails |
 | [Statement cache](docs/query-cache.md) | You want to know which statements the driver keeps for you, and why a kept one never reads something stale |
 | [Replication](docs/replication.md) | You want a copy of the database in S3, R2 or MinIO, or to restore one |
