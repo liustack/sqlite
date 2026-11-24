@@ -1,4 +1,4 @@
-<!-- translatedFrom: 570de50b7702 -->
+<!-- translatedFrom: 2ad569031014 -->
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。<br>并发写按顺序排队，<code>database is locked</code> 只代表真过载，不再是运气不好。</b></p>
@@ -129,7 +129,7 @@ if err != nil {
 }
 defer r.Close()
 
-db, err := sql.Open("sqlite", "app.db")
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
 ```
 
 换一台机器，一个调用就把数据库恢复回来，可以是最新的样子，也可以是之前某个时间的样子，默认至少能回到一天前：
@@ -182,7 +182,7 @@ SQLite 给的错误是 `*sqlite.Error`。用 `errors.As` 取出来，`Code()` �
 Go 写的 SQL 函数、聚合函数、窗口函数、排序规则和虚拟表放在 connector 上，这样连接池里的每个连接都有：
 
 ```go
-c, err := sqlite.NewConnector("file:app.db",
+c, err := sqlite.NewConnector("file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate",
 	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
 	sqlite.WithAggregate("mode", 1, newMode),
 	sqlite.WithCollation("fold", fold),

@@ -28,7 +28,7 @@ if err != nil {
 }
 defer r.Close()
 
-db, err := sql.Open("sqlite", "app.db")
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
 ```
 
 To replicate several databases, call `New` once for each file, each with a URL of its own, and open each file with `sql.Open` after its `New`. Each replicator has its own goroutines, staging folder and connection to the store.

@@ -128,7 +128,7 @@ if err != nil {
 }
 defer r.Close()
 
-db, err := sql.Open("sqlite", "app.db")
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
 ```
 
 On a new machine one call brings the database back, as it is now or as it was at an earlier time, at least a day back by default:
@@ -181,7 +181,7 @@ An error from SQLite is a `*sqlite.Error`. `errors.As` gets it, and `Code()` and
 SQL functions, aggregates, window functions, collations and virtual tables written in Go go on the connector, so that every connection of the pool has them:
 
 ```go
-c, err := sqlite.NewConnector("file:app.db",
+c, err := sqlite.NewConnector("file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate",
 	sqlite.WithFunction("reverse", 1, reverse, sqlite.Deterministic),
 	sqlite.WithAggregate("mode", 1, newMode),
 	sqlite.WithCollation("fold", fold),

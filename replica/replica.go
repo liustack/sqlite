@@ -17,7 +17,7 @@
 //		return err
 //	}
 //	defer r.Close()
-//	db, err := sql.Open("sqlite", "app.db")
+//	db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
 //
 // Each commit is copied into a local staging folder beside the database
 // within SyncInterval and uploaded from there. Writes never wait for S3.
