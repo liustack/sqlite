@@ -1,4 +1,4 @@
-<!-- translatedFrom: b7e010575ece -->
+<!-- translatedFrom: a3e5b100a972 -->
 # 架构
 
 [English](architecture.md) · 简体中文
@@ -59,7 +59,7 @@ SQLite 有 33 个可写的全局变量：它的配置、分配器和页缓存的
 
 - **影子栈。** 每个连接有一块 32 MiB 的区域，按自身大小对齐，后面跟一个保护页，用 mmap 映射，C 用到哪里才碰到哪里。Windows 没有不预留内存的映射，所以在 windows 上用 `VirtualAlloc` 保留并提交整块：它计入提交上限，但 C 碰到哪里才真正占用内存。调用 C 时传入指向它的指针。调用的字符串和输出参数也写在这里，所以一次调用不分配任何内存。
 - **Poll。** C 的循环每走 10000 个 tick 调用一次 `host_poll`。它的栈检查就是 Go 运行时能中止这个 goroutine 的地方。
-- **windows/amd64 上给硬件异常留空间。** C 里出现硬件异常时（比如通过坏指针读内存），windows 会把 CPU 状态写在线程栈指针下面，在引擎里那就是 goroutine 的栈。Go 在那里只留了 4 KiB，开了 AMX 的 CPU 状态要 12.8 KiB，所以栈快到底时多出来的部分会写进堆里（[golang/go#81238](https://github.com/golang/go/issues/81238)）。在 windows/amd64 上，每个生成的函数在 Go 的栈检查之后再查一次还有没有多 12 KiB 空着，不够就先把栈扩大（`internal/goasm/gen/emit.go` 的 `roomCheck`）。C 调用的 Go 函数（回调，或 `malloc`）运行时 Go 可能缩栈，在函数自己的代码里、在它的 defer 里、在运行时收尾一个已经 recover 的 panic 时都可能，所以 windows 上 C 通过一个生成的包装函数去调它，包装函数等它返回之后再把空间留够（`callText`，`engine_room_windows_amd64.go`）。linux 和 darwin 的代码不变：检查写在 `#ifdef GOOS_windows` 里。windows/arm64 不加检查：它的 CPU 状态放得进那 4 KiB（liustack/tifajs 在 GitHub 的 Arm runner 上量到 2.5 KiB）。有 Go 栈检查的函数多 4 条指令，没有的多 7 条（要先取 g），调用 Go 函数多经过一层函数。在 linux/amd64 上把 windows 的代码打开来量（AMD EPYC 7B13，两种交替各 6 轮，取每轮变化的中位数）：插入事务慢 3.3%，查 10 到 1,000 行慢 2.4%，聚合慢 2.0%，按主键查一行慢 1.5%，`bench/` 里其余基准的变化都在噪声以内。Go 代码里的异常（比如程序的某个 Go 函数里的空指针）仍然只有 Go 留的 4 KiB，和任何 Go 程序在 windows 上一样，要等 Go 修。
+- **windows/amd64 上给硬件异常留空间。** C 里出现硬件异常时（比如通过坏指针读内存），windows 会把 CPU 状态写在线程栈指针下面，在引擎里那就是 goroutine 的栈。Go 在那里只留了 4 KiB，开了 AMX 的 CPU 状态要 12.8 KiB，所以栈快到底时多出来的部分会写进堆里（[golang/go#81238](https://github.com/golang/go/issues/81238)）。在 windows/amd64 上，每个生成的函数在 Go 的栈检查之后再查一次还有没有多 12 KiB 空着，不够就先把栈扩大（`internal/goasm/gen/emit.go` 的 `roomCheck`）。C 调用的 Go 函数（回调，或 `malloc`）运行时 Go 可能缩栈，在函数自己的代码里、在它的 defer 里、在运行时收尾一个已经 recover 的 panic 时都可能，所以 windows 上 C 通过一个生成的包装函数去调它，包装函数等它返回之后再把空间留够（`callText`，`engine_room_windows_amd64.go`）。linux 和 darwin 的代码不变：检查写在 `#ifdef GOOS_windows` 里。windows/arm64 不加检查：它的 CPU 状态放得进那 4 KiB（liustack/beastjs 在 GitHub 的 Arm runner 上量到 2.5 KiB）。有 Go 栈检查的函数多 4 条指令，没有的多 7 条（要先取 g），调用 Go 函数多经过一层函数。在 linux/amd64 上把 windows 的代码打开来量（AMD EPYC 7B13，两种交替各 6 轮，取每轮变化的中位数）：插入事务慢 3.3%，查 10 到 1,000 行慢 2.4%，聚合慢 2.0%，按主键查一行慢 1.5%，`bench/` 里其余基准的变化都在噪声以内。Go 代码里的异常（比如程序的某个 Go 函数里的空指针）仍然只有 Go 留的 4 KiB，和任何 Go 程序在 windows 上一样，要等 Go 修。
 - **内存。** `malloc`、`realloc` 和 `free` 都是 Go 写的：256 KiB 以内的大小分档，每档从约 256 KiB 的 mmap 区块里切，超过的各自单独映射。块全部释放的区块，这一档连续一两秒用不上它才还给系统，每档另有几个空区块一直留着。不立刻还，是因为别的连接每提交一次，读者就把自己缓存的页全部释放，读的时候再要回来，立刻还的话每次提交都要映射和解除映射一遍。分档共有 32 组，各有各的锁，连接从它的影子栈分到的那一组里取内存（分给连接最少的那组），所以同时运行的连接不会在 `malloc` 里互相等。每组各留各的空区块：16 个连接同时干活时每个连接多占约 160 KiB，一个连接把每一档都用过时每组最多留 17 MiB。一组连续一两秒没有连接，就把空区块还给系统，所以程序一时开过很多连接，也不会把每一组的空区块一直留着。垃圾回收器看不到 SQLite 的内存。
 - **线程。** SQLite 以多线程模式运行：许多 goroutine 上同时有连接，但每个连接同一时刻只由一个 goroutine 使用。`engine/os.c` 安装的互斥锁是 Go 的 `sync.Mutex`（用 `SQLITE_CONFIG_MUTEX`，因为 SQLite 3.54 没有对应的编译选项）。
 - **文件。** `engine/os.c` 就是 VFS（名字叫 `go`）。它的每个方法都调用 `internal/vfs`。
@@ -231,7 +231,7 @@ sequenceDiagram
 
 ## 让引擎更快
 
-引擎比 clang 编出来的同一份 C 慢：在 Apple M4 上，引擎内部的计算最多要用 1.44 倍的时间，几何平均 1.20 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#和-c-版-sqlite-比)）。其中一部分是这条路线本身的代价。liustack/tifajs 用同样的方式编译它的 C，量过同一份 C、同样的选项下差 11% 到 13%，来自经过 Go 栈的参数和结果、放在影子栈上的取过地址的局部变量，以及每次调用多出来的几条指令。想要赢回一些时，照 tifajs 试过又放弃的那些路得出的规矩做：
+引擎比 clang 编出来的同一份 C 慢：在 Apple M4 上，引擎内部的计算最多要用 1.44 倍的时间，几何平均 1.20 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#和-c-版-sqlite-比)）。其中一部分是这条路线本身的代价。liustack/beastjs 用同样的方式编译它的 C，量过同一份 C、同样的选项下差 11% 到 13%，来自经过 Go 栈的参数和结果、放在影子栈上的取过地址的局部变量，以及每次调用多出来的几条指令。想要赢回一些时，照 beastjs 试过又放弃的那些路得出的规矩做：
 
 - **不用 Go 的私有实现。** 不用 `go:linkname` 接进 runtime，不依赖 Go 怎么用某个寄存器，不依赖 Go 团队可能在某个版本里改掉的东西。否则每个 Go 版本都要重新核对，哪一版都可能让驱动坏掉。
 - **引擎留在 goroutine 的栈上。** 像 cgo、wazero、purego 那样让它跑在自己的栈上，C 里的一次出错就会结束整个进程，而不是让这一次调用 panic。
@@ -239,7 +239,7 @@ sequenceDiagram
 - **每个平台得到同样的位。** 数学函数继续不用融合乘加，每个平台算出同样的结果。
 - **SQLite 的 C 保持发布时的样子。** 改动放在生成器、`engine/libc` 或 Go host 里。
 
-tifajs 也守同样的规矩，还写了它是怎么得出这些规矩的：[Making the engine faster](https://github.com/liustack/tifajs/blob/main/docs/internals/architecture.md#making-the-engine-faster)（英文）。试一个想法之前，先查 tifajs 试过但没做的清单：[What was tried and not done](https://github.com/liustack/tifajs/blob/main/docs/internals/performance.md#what-was-tried-and-not-done)（英文）。
+beastjs 也守同样的规矩，还写了它是怎么得出这些规矩的：[Making the engine faster](https://github.com/liustack/beastjs/blob/main/docs/internals/architecture.md#making-the-engine-faster)（英文）。试一个想法之前，先查 beastjs 试过但没做的清单：[What was tried and not done](https://github.com/liustack/beastjs/blob/main/docs/internals/performance.md#what-was-tried-and-not-done)（英文）。
 
 时间花在哪里，是拿 SQLite 和原生编译的同一份 C 比着量的，用 `bench/native/engine.sql` 的十个负载，在下面两处改动之前。在 darwin/arm64 上，不用编译器内建函数和换用我们的 libc 都不花时间：那 31% 全在转成 Go 汇编这一步。在 linux/amd64 上，不用内建函数占 6 个点，musl 的函数比 glibc 的再多 4 个点，转成 Go 汇编占 17 个点。
 
@@ -255,7 +255,7 @@ tifajs 也守同样的规矩，还写了它是怎么得出这些规矩的：[Mak
 
 有三类决定不交给 profile，因为它们的代价取决于程序自己的数据，训练不可能知道：
 
-- **内联什么。** `make gen` 编译两遍。第一遍不带 profile，把内联了的每一处调用记下来。第二遍带 profile，只在记下来的调用里内联。放手让 profile 决定的话，它会往训练里跑得最多的函数里内联更多东西，引擎的其余部分为此付出代价：tifajs 量过，这样要多用 5% 到 15% 的时间。
+- **内联什么。** `make gen` 编译两遍。第一遍不带 profile，把内联了的每一处调用记下来。第二遍带 profile，只在记下来的调用里内联。放手让 profile 决定的话，它会往训练里跑得最多的函数里内联更多东西，引擎的其余部分为此付出代价：beastjs 量过，这样要多用 5% 到 15% 的时间。
 - **要小还是要快。** 带 profile 时，编译器会把训练里很少跑或没跑过的代码编得小而不是快，还会认定一个循环转的圈数就是训练里的圈数。两样都关掉了。
 - **循环在哪里为 poll 计数。** 加 poll 的那一步按不带 profile 时的方式给每个循环估重。
 
@@ -268,6 +268,6 @@ tifajs 也守同样的规矩，还写了它是怎么得出这些规矩的：[Mak
 ## 没有走的路
 
 - **cgo**（mattn/go-sqlite3）：每次构建、每个目标平台都要 C 编译器，交叉编译也难。免去这些正是这个项目存在的原因。
-- **把 C 翻译成 Go**（modernc.org/sqlite，用 ccgo 做的）：不用 cgo，但比 cgo 慢：点查询要 1.3 到 1.4 倍的时间，join 要 1.7 到 2.4 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md)）。tifajs 之前为 QuickJS 走过这条路，也是因为同样的原因离开了。
+- **把 C 翻译成 Go**（modernc.org/sqlite，用 ccgo 做的）：不用 cgo，但比 cgo 慢：点查询要 1.3 到 1.4 倍的时间，join 要 1.7 到 2.4 倍（见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md)）。beastjs 之前为 QuickJS 走过这条路，也是因为同样的原因离开了。
 - **WebAssembly**（ncruces/go-sqlite3）：SQLite 先编成 wasm，再由 wasm2go 翻译成 Go。不用 cgo，但 C 到 CPU 之间多绕了一层机器模型。
 - **用 purego 加载共享库**：没法得到单个静态二进制，SQLite 版本取决于系统，每次调用的开销也更大。
