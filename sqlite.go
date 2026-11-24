@@ -9,7 +9,7 @@
 //
 // It registers itself as "sqlite":
 //
-//	db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+//	db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
 //
 // modernc.org/sqlite and github.com/glebarez/go-sqlite register the same
 // name, so a program that imports one of them as well panics at start. Use
@@ -26,8 +26,10 @@
 //     It may be given more than once. Not optimize, which may write: run it
 //     with Exec once the database is open.
 //   - _txlock=deferred, immediate or exclusive: how BEGIN starts a
-//     transaction (deferred by default). A read-only transaction always
-//     starts deferred.
+//     transaction (deferred by default). Use immediate when a transaction
+//     reads and then writes: BEGIN then waits its turn for the write lock,
+//     so the transaction does not fail halfway with "database is locked".
+//     A read-only transaction always starts deferred.
 //   - _time_format=sqlite: how a time.Time is written. The only format, and
 //     the default, is "2006-01-02 15:04:05.999999999-07:00".
 //   - _wal_limit=bytes: the length of the WAL past which the driver starts

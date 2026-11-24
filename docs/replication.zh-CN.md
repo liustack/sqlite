@@ -6,7 +6,7 @@ read_when:
   - 被问到机器没了数据会怎样，或者复制在 R2 上花多少钱
   - 把复制中的数据库搬到另一台机器
   - 改 replica 面向用户的行为
-translatedFrom: d8a2bb243ee4
+translatedFrom: 2c76dec9b31c
 ---
 
 # 复制
@@ -28,7 +28,7 @@ if err != nil {
 }
 defer r.Close()
 
-db, err := sql.Open("sqlite", "app.db")
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_txlock=immediate")
 ```
 
 复制多个数据库时，每个文件调一次 `New`，各用各的 URL，每个文件在它的 `New` 之后再 `sql.Open`。每个复制器有自己的 goroutine、暂存目录和到存储的连接。
