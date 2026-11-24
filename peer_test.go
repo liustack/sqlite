@@ -111,7 +111,11 @@ func startPeer(t *testing.T, kind, path string) *peer {
 	t.Helper()
 	var cmd *exec.Cmd
 	if kind == "sqlite3" {
-		cmd = exec.Command("sqlite3", "-batch", path)
+		// It waits for a lock as long as this driver does by default (5 s):
+		// the shell alone waits for none, and gives "database is locked" as
+		// soon as it meets one, as while a connection here closes and locks
+		// the database to checkpoint.
+		cmd = exec.Command("sqlite3", "-batch", "-cmd", ".timeout 5000", path)
 	} else {
 		exe, err := os.Executable()
 		if err != nil {
@@ -159,6 +163,18 @@ func (p *peer) do(q string) string {
 		b.WriteString(line)
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// up waits until the shell runs, before it reads the database: a newer
+// shell reads it at its first statement, also one like SELECT 1.
+func (p *peer) up() {
+	p.t.Helper()
+	if _, err := io.WriteString(p.in, ".print "+peerDone+"\n"); err != nil {
+		p.t.Fatalf("peer: %v", err)
+	}
+	if line, err := p.out.ReadString('\n'); err != nil || line != peerDone+"\n" {
+		p.t.Fatalf("peer: %q %v", line, err)
+	}
 }
 
 // want runs one statement in the peer, which must print want.
