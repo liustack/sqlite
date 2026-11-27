@@ -23,6 +23,18 @@ It is for Go programs that keep their data in SQLite and want to stay plain Go: 
 
 > liustack/sqlite is at v0.1. The APIs may still change before v1.
 
+## What stops you from running SQLite on a server?
+
+| The worry | Measured |
+| :-- | :-- |
+| `database is locked` | 256 goroutines writing for 30 s: 0 locked, mattn 283 ([how](docs/database-is-locked.md)) |
+| One writer at a time | 64 goroutines, `synchronous=FULL`: 55,955 writes/s, mattn 851 ([group commit](docs/group-commit.md)) |
+| A WAL that keeps growing | 64 goroutines inserting for 30 s: the WAL stays at 4 MiB, mattn's grows to 5.49 GiB ([benchmarks](docs/benchmarks.md#many-writers-at-once)) |
+| Data on one machine | Every commit is in R2 about a second later. A new machine goes on where the old one stopped, and a bad deploy rewinds to the second before it ([replication](docs/replication.md)) |
+| cgo | No cgo, no C compiler, and reading one row by key takes 3.85 µs, mattn (cgo) 7.54 µs ([benchmarks](#benchmarks)) |
+
+Measured on linux/amd64, AMD EPYC 7B13, 4 cores. What is left is your app.
+
 ## Why it exists
 
 While building [Tifa](https://github.com/liustack/tifa), I wanted every app to deploy as one Go binary copied to a small VPS. The data had to live in SQLite, and CGO had to stay off, or there goes cross-compiling and the `scratch` image.
