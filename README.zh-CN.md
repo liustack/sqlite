@@ -1,4 +1,4 @@
-<!-- translatedFrom: 43eb33d32a7e -->
+<!-- translatedFrom: 355bf853b0cb -->
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。<br>并发写按顺序排队，<code>database is locked</code> 只代表真过载，不再是运气不好。</b></p>
@@ -23,6 +23,18 @@
 给数据放在 SQLite 里、又想保持纯 Go 的 Go 程序用：一个静态二进制，在哪台机器上都能交叉编译，构建和容器里都不需要 C 编译器。以前这样做要牺牲速度，现在落在后面的反而是 cgo 驱动。
 
 > liustack/sqlite 还在 v0.1，到 v1 之前 API 可能还会变。
+
+## 还有什么拦着你在服务器上用 SQLite？
+
+| 你担心的 | 实测 |
+| :-- | :-- |
+| `database is locked` | 256 个 goroutine 连写 30 秒，0 次 locked，mattn 283 次（[怎么做到的](docs/database-is-locked.zh-CN.md)） |
+| 一次只能一个写入者 | 64 个 goroutine、`synchronous=FULL`，每秒 55,955 次写，mattn 851 次（[合并提交](docs/group-commit.zh-CN.md)） |
+| WAL 越涨越大 | 64 个 goroutine 连续插入 30 秒，WAL 停在 4 MiB，mattn 的涨到 5.49 GiB（[基准测试](docs/benchmarks.zh-CN.md#很多写者同时写)） |
+| 数据只在一台机器上 | 每次提交约一秒后就在 R2 里。换台机器从旧机器停下的地方接着跑，上线删错了数据也能倒回到删之前的那一秒（[复制](docs/replication.zh-CN.md)） |
+| cgo | 不用 cgo，不用 C 编译器，按主键读一行 3.85 µs，mattn（cgo）7.54 µs（[基准测试](#基准测试)） |
+
+数字测自 linux/amd64，AMD EPYC 7B13，4 核。剩下的就是你的业务了。
 
 ## 为什么有它
 
