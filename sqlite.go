@@ -43,6 +43,38 @@
 // one each time the WAL has grown by wal_autocheckpoint frames, where SQLite
 // runs one after every commit once the WAL is that long. PRAGMA
 // wal_autocheckpoint reads and sets it as before.
+//
+// # Foreign keys in a migration
+//
+// PRAGMA foreign_keys does nothing inside a transaction
+// (https://sqlite.org/pragma.html#pragma_foreign_keys). So with
+// _pragma=foreign_keys(1), a migration that rebuilds a table as SQLite
+// describes (https://sqlite.org/lang_altertable.html#otheralter) inside a
+// transaction runs with foreign keys on, also when it runs PRAGMA
+// foreign_keys=OFF itself. Its DROP TABLE then deletes, without an error,
+// every row of another table that refers to the table with ON DELETE
+// CASCADE. Migration tools such as goose and golang-migrate run each file in
+// a transaction by default. Turn foreign keys off on a connection of its
+// own before BEGIN, check them before COMMIT, and close that connection so
+// that the pool never hands it out:
+//
+//	conn, err := db.Conn(ctx)
+//	if err != nil {
+//		return err
+//	}
+//	// Returning driver.ErrBadConn closes conn and takes it out of the pool.
+//	defer conn.Raw(func(any) error { return driver.ErrBadConn })
+//	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+//		return err
+//	}
+//	tx, err := conn.BeginTx(ctx, nil)
+//	if err != nil {
+//		return err
+//	}
+//	defer tx.Rollback()
+//	// The migration, then PRAGMA foreign_key_check with tx: any row it
+//	// gives is a reference the migration broke, so return before Commit.
+//	return tx.Commit()
 package sqlite
 
 import (
