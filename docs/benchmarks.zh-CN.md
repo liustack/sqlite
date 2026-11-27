@@ -1,4 +1,4 @@
-<!-- translatedFrom: 15bdc5e7d1ff -->
+<!-- translatedFrom: 92d0bcccb978 -->
 # 基准测试
 
 [English](benchmarks.md) · 简体中文
@@ -350,7 +350,7 @@
 - **用 `_txlock=immediate`，或者第一条语句就写**，本驱动在 x64 和 Arm 上都没有一次写报 `database is locked`，最慢的一次 160 到 976 ms。mattn 和 modernc 在每一项这样的场景里都有写因此失败，ncruces 在 256 个 goroutine 时有（x64 上 4 次，Arm 上 40 次），Arm 上 `synchronous=FULL` 时也有（2 次）。
 - **短事务在 Windows x64 上更慢。**用 `_txlock=immediate` 且事务里不做事时，本驱动在 x64 上每秒 3235 次，Arm 上 4947 次，mattn 是 7198 和 4923 次，而在 linux 上本驱动比 mattn 多（16039 对 13348）。驱动在交出写锁之前跑自动检查点，而 x64 runner 的磁盘刷盘慢（1000 帧约 67 ms），后面的写者就得等着。别的驱动用的是 SQLite 自己的检查点，它在锁放开之后才跑，代价是 WAL 可能一直涨。事务里做 1 或 2 ms 的事时几个驱动差不多：x64 上本驱动每秒 335 到 485 次写，mattn 272 到 562 次，Arm 上 367 到 459 次对 286 到 545 次。
 - **自动提交的插入**由组提交合并，仍然最多：x64 上每秒 85210 次，Arm 上 127k 次，mattn 是 14354 和 18148 次。
-- **别的驱动的 WAL** 在插入用例里到了 1.12 到 1.62 GiB（mattn 在 x64 上 180 MiB），本驱动 4 MiB。
+- **别的驱动的 WAL** 在插入用例里到了 1.12 到 1.62 GiB（mattn 在 x64 上 180 MiB），本驱动 4 MiB。用 deferred 事务时，本驱动的 WAL 在 x64 上到了 199 MiB，在 Arm 上到了 272 MiB，比 modernc（132 和 89.3 MiB）大，在 Arm 上也比 ncruces（156 MiB）大（见 [wal-growth.zh-CN.md](wal-growth.zh-CN.md)）。
 
 ## 复制
 

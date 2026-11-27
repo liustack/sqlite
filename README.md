@@ -29,7 +29,6 @@ It is for Go programs that keep their data in SQLite and want to stay plain Go: 
 | :-- | :-- |
 | `database is locked` | 256 goroutines writing for 30 s: 0 locked, mattn 283 ([how](docs/database-is-locked.md)) |
 | One writer at a time | 64 goroutines, `synchronous=FULL`: 55,955 writes/s, mattn 851 ([group commit](docs/group-commit.md)) |
-| A WAL that keeps growing | 64 goroutines inserting for 30 s: the WAL stays at 4 MiB, mattn's grows to 5.49 GiB ([benchmarks](docs/benchmarks.md#many-writers-at-once)) |
 | Data on one machine | Every commit is in R2 about a second later. A new machine goes on where the old one stopped, and a bad deploy rewinds to the second before it ([replication](docs/replication.md)) |
 | cgo | No cgo, no C compiler, and reading one row by key takes 3.85 µs, mattn (cgo) 7.54 µs ([benchmarks](#benchmarks)) |
 
@@ -280,6 +279,7 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 | [Benchmarks](docs/benchmarks.md) | You want the full numbers, or to run them on your machine |
 | [Architecture](docs/architecture.md) | You want to know how C becomes Go assembly, or how group commit works |
 | [database is locked](docs/database-is-locked.md) | A write got `database is locked`, or you want to know how to write transactions so that none does |
+| [A WAL that grows](docs/wal-growth.md) | The `-wal` file is large or keeps growing, or your program holds reads open for long |
 | [Group commit](docs/group-commit.md) | You want to know which concurrent writes merge, and what error each gets when one fails |
 | [Statement cache](docs/query-cache.md) | You want to know which statements the driver keeps for you, and why a kept one never reads something stale |
 | [Replication](docs/replication.md) | You want a copy of the database in S3, R2 or MinIO, or to restore one |

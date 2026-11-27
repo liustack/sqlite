@@ -1,4 +1,4 @@
-<!-- translatedFrom: 355bf853b0cb -->
+<!-- translatedFrom: ee44c04346c9 -->
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。<br>并发写按顺序排队，<code>database is locked</code> 只代表真过载，不再是运气不好。</b></p>
@@ -30,7 +30,6 @@
 | :-- | :-- |
 | `database is locked` | 256 个 goroutine 连写 30 秒，0 次 locked，mattn 283 次（[怎么做到的](docs/database-is-locked.zh-CN.md)） |
 | 一次只能一个写入者 | 64 个 goroutine、`synchronous=FULL`，每秒 55,955 次写，mattn 851 次（[合并提交](docs/group-commit.zh-CN.md)） |
-| WAL 越涨越大 | 64 个 goroutine 连续插入 30 秒，WAL 停在 4 MiB，mattn 的涨到 5.49 GiB（[基准测试](docs/benchmarks.zh-CN.md#很多写者同时写)） |
 | 数据只在一台机器上 | 每次提交约一秒后就在 R2 里。换台机器从旧机器停下的地方接着跑，上线删错了数据也能倒回到删之前的那一秒（[复制](docs/replication.zh-CN.md)） |
 | cgo | 不用 cgo，不用 C 编译器，按主键读一行 3.85 µs，mattn（cgo）7.54 µs（[基准测试](#基准测试)） |
 
@@ -281,6 +280,7 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 | [基准测试](docs/benchmarks.zh-CN.md) | 想看完整数据，或者在自己机器上跑一遍 |
 | [架构](docs/architecture.zh-CN.md) | 想知道 C 怎么变成 Go 汇编，或者合并提交怎么工作 |
 | [database is locked](docs/database-is-locked.zh-CN.md) | 有写操作报了 `database is locked`，或者想知道事务怎么写才不会碰上 |
+| [WAL 越涨越大](docs/wal-growth.zh-CN.md) | `-wal` 文件很大或一直在涨，或者程序会长时间开着读 |
 | [合并提交](docs/group-commit.zh-CN.md) | 想知道并发写入哪些会合并、失败时各自拿到什么错误 |
 | [语句缓存](docs/query-cache.zh-CN.md) | 想知道驱动替你留下哪些语句，以及留下的语句为什么不会读到旧东西 |
 | [复制](docs/replication.zh-CN.md) | 想把数据库复制到 S3、R2 或 MinIO，或者从副本恢复 |

@@ -4,7 +4,7 @@ read_when:
   - 决定要不要用这个驱动在服务器上跑 SQLite
   - 提一个让驱动更快或更省内存的改动
   - 被问到驱动为什么不做别的驱动做的事（给读让路、等着凑批、让 C 在自己的栈上跑）
-translatedFrom: 696bbbf45729
+translatedFrom: ead35ef1a010
 ---
 
 # 原则
@@ -31,7 +31,7 @@ SQLite 只有一个写入者，这一点不会变。变的是谁在等：同一�
 - **合并执行的写和单独执行结果一样。** 每条都在自己的 SAVEPOINT 里跑，有自己的 LastInsertId 和 RowsAffected，一条失败不连累其他。唯一的例外是 `changes()` 和 `total_changes()`（见 [group-commit.zh-CN.md](group-commit.zh-CN.md)）。
 - **跑过的写不会再跑。** 一次失败结束整批时，已经跑过的写拿到 `SQLITE_ABORT_ROLLBACK`，只有还没进 SQLite 的写回到队列。
 - **事务声明了要写时（`_txlock=immediate`，或第一条语句就是写），同一个程序的写入者之间不会拿到 `database is locked`。** 它们按到达顺序等。实测次数见 [benchmarks.zh-CN.md](benchmarks.zh-CN.md#很多写者同时写)。
-- **并发写不会让 WAL 一直涨。** 驱动在持有写锁时做检查点，所以不管多少 goroutine 在写，WAL 每 1000 页从头开始写，崩溃后数据库也打开得快（见 [architecture.zh-CN.md](architecture.zh-CN.md#自动检查点)）。读挡着它从头写时，从 64 MiB 起驱动每次最多等 100 ms 让读让开。一个永远不结束的读仍然会让它涨，和 SQLite 一样（见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-长度的上限)）。
+- **并发写不会让 WAL 一直涨。** 驱动在持有写锁时做检查点，所以 WAL 上没有读者时，不管多少 goroutine 在写，WAL 默认每 1000 页从头开始写，崩溃后数据库也打开得快（见 [architecture.zh-CN.md](architecture.zh-CN.md#自动检查点)）。读挡着它从头写时，从 64 MiB 起驱动每次最多等 100 ms 让读让开。一个永远不结束的读仍然会让它涨，和 SQLite 一样（见 [architecture.zh-CN.md](architecture.zh-CN.md#wal-长度的上限)），很多短的读事务一个接一个、中间没有空隙时也会。怎么让它保持小，见 [wal-growth.zh-CN.md](wal-growth.zh-CN.md)。
 - **任何地方都不需要 C 编译器。** SQLite 原版的 C 一字不改，编译成入库的 Go 汇编。`CGO_ENABLED=0` 就能为 linux、darwin、windows 的 amd64 和 arm64 构建。
 
 ## 它保证不了什么
