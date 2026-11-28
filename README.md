@@ -267,8 +267,8 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 ## Left out on purpose
 
 - No loadable extensions: SQLite is built without `load_extension`, as the engine is Go assembly with nothing to load a C library into. Built in instead: JSON, FTS5 (full-text search), R*Tree, the math functions and `median` and `percentile`, all compiled into the engine. The packages of `ext/` add regexp, uuid, hash, stats, unicode, csv, series and vec, and `sqlite.WithFunction` adds functions of your own in Go ([Use](#use)).
-- No shared cache: `cache=shared` gives an error. For a memory database that all connections of a pool see, use `file:/name?vfs=memdb`.
-- Double-quoted strings are identifiers only (`SQLITE_DQS=0`, as SQLite advises): write string literals in single quotes.
+- No shared cache: `cache=shared` gives an error. SQLite calls shared cache obsolete and advises WAL in its place. Connections that share a cache lock each other at the level of tables and get `database table is locked`, and leaving it out of the build makes SQLite faster. For a memory database that all connections of a pool see, use `file:/name?vfs=memdb`.
+- Double-quoted strings are identifiers only (`SQLITE_DQS=0`, as SQLite advises): write string literals in single quotes. SQL moved from mattn/go-sqlite3 or modernc.org/sqlite that writes `WHERE name = "bob"` gets `no such column: "bob"`. Those drivers read `"bob"` as text when no column has that name, so a column name spelled wrong turns into a string, and the query gives a wrong result with no error.
 - Other targets (freebsd, 32-bit, riscv64, ...) do not build: the build stops with an error that names the supported ones.
 
 ## Documentation
