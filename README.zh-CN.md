@@ -1,4 +1,4 @@
-<!-- translatedFrom: ee44c04346c9 -->
+<!-- translatedFrom: 28ebb3c34d2d -->
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。<br>并发写按顺序排队，<code>database is locked</code> 只代表真过载，不再是运气不好。</b></p>
@@ -265,9 +265,9 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 - **数字里留着输掉的地方。** 上面的表保留了别的驱动更快的行，[docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md) 写明了每次怎么测的、测的时候机器上还跑着什么。
 - **每次推送都测**，linux/amd64、linux/arm64、darwin/arm64、windows/amd64、windows/arm64（除 windows 外开着竞态检测），还测 sqlite3 命令行同时写同一个库，以及写到一半杀掉进程。
 
-## 还没有的
+## 有意不做的
 
-- 没有可加载扩展：SQLite 编译时去掉了 `load_extension`。
+- 没有可加载扩展：SQLite 编译时去掉了 `load_extension`，因为引擎是 Go 汇编，没有能装进 C 库的地方。内置的有：JSON、FTS5（全文搜索）、R*Tree、数学函数，以及 `median` 和 `percentile`，都编进了引擎。`ext/` 下的包另外提供 regexp、uuid、hash、stats、unicode、csv、series 和 vec，自己的函数用 `sqlite.WithFunction` 拿 Go 写（[使用](#使用)）。
 - 没有共享缓存：`cache=shared` 会报错。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
 - 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。
 - 其他平台（freebsd、32 位、riscv64 等）构建不了：构建会报错，错误里写着支持哪些平台。
