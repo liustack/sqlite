@@ -264,9 +264,9 @@ The driver registers as `sqlite`, as modernc.org/sqlite and glebarez/go-sqlite d
 - **The numbers show where it loses.** The tables above keep the rows where another driver is faster, and [docs/benchmarks.md](docs/benchmarks.md) says how each run was taken and what else ran on the machine.
 - **Every push is tested** on linux/amd64, linux/arm64, darwin/arm64, windows/amd64 and windows/arm64 (with the race detector, except on windows), with the sqlite3 shell writing the same database at the same time, and with processes killed while they write.
 
-## Not there yet
+## Left out on purpose
 
-- No loadable extensions: SQLite is built without `load_extension`.
+- No loadable extensions: SQLite is built without `load_extension`, as the engine is Go assembly with nothing to load a C library into. Built in instead: JSON, FTS5 (full-text search), R*Tree, the math functions and `median` and `percentile`, all compiled into the engine. The packages of `ext/` add regexp, uuid, hash, stats, unicode, csv, series and vec, and `sqlite.WithFunction` adds functions of your own in Go ([Use](#use)).
 - No shared cache: `cache=shared` gives an error. For a memory database that all connections of a pool see, use `file:/name?vfs=memdb`.
 - Double-quoted strings are identifiers only (`SQLITE_DQS=0`, as SQLite advises): write string literals in single quotes.
 - Other targets (freebsd, 32-bit, riscv64, ...) do not build: the build stops with an error that names the supported ones.
