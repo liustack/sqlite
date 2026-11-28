@@ -1,4 +1,4 @@
-<!-- translatedFrom: 28ebb3c34d2d -->
+<!-- translatedFrom: 906890e37030 -->
 <h1 align="center"><img src="assets/brand/sqlite-banner.png" alt="SQLite driver for Go"></h1>
 
 <p align="center"><b>全网最快的 cgo-free SQLite 驱动，完全兼容 Go 的 <code>database/sql</code>。<br>自带数据实时备到 Cloudflare R2，让你的应用在单台 VPS 上也能稳定可靠。<br>并发写按顺序排队，<code>database is locked</code> 只代表真过载，不再是运气不好。</b></p>
@@ -268,8 +268,8 @@ sqlite.Register(sqlite.Join(regexp.Option(), uuid.Option()))
 ## 有意不做的
 
 - 没有可加载扩展：SQLite 编译时去掉了 `load_extension`，因为引擎是 Go 汇编，没有能装进 C 库的地方。内置的有：JSON、FTS5（全文搜索）、R*Tree、数学函数，以及 `median` 和 `percentile`，都编进了引擎。`ext/` 下的包另外提供 regexp、uuid、hash、stats、unicode、csv、series 和 vec，自己的函数用 `sqlite.WithFunction` 拿 Go 写（[使用](#使用)）。
-- 没有共享缓存：`cache=shared` 会报错。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
-- 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。
+- 没有共享缓存：`cache=shared` 会报错。SQLite 官方说共享缓存已经过时，建议改用 WAL。共用一份缓存的连接会按表互相加锁，报 `database table is locked`，而且编译时去掉它，SQLite 会更快。想让池里所有连接看到同一个内存数据库，用 `file:/name?vfs=memdb`。
+- 双引号只表示标识符（`SQLITE_DQS=0`，SQLite 官方的建议）：字符串字面量请用单引号。从 mattn/go-sqlite3 或 modernc.org/sqlite 迁过来的 SQL，写了 `WHERE name = "bob"` 的会报 `no such column: "bob"`。那两个驱动在找不到叫 bob 的列时把 `"bob"` 当成字符串，于是列名拼错也会变成字符串，查询不报错，只是结果错了。
 - 其他平台（freebsd、32 位、riscv64 等）构建不了：构建会报错，错误里写着支持哪些平台。
 
 ## 文档
